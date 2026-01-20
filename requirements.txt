@@ -21,6 +21,12 @@ pandas>=2.0.0
 # Utilities
 tqdm>=4.66.0
 python-dotenv>=1.0.0
+datasets>=2.14.0
+
+# Training (GRPO with Unsloth)
+unsloth>=2024.12
+trl>=0.12.0
+peft>=0.13.0
 
 # Optional: Flash attention for faster inference
 # pip install flash-attn --no-build-isolation

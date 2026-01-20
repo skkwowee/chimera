@@ -49,3 +49,40 @@ labeling:
 
     Be precise about numbers (health, money, ammo) and positions.
     For strategic advice, consider economy, positioning, and round context.
+
+# GRPO Training settings
+training:
+  # Model settings
+  model_name: "Qwen/Qwen3-VL-8B-Instruct"
+  use_4bit: true
+  use_vllm: true
+  torch_dtype: "bfloat16"
+
+  # LoRA settings
+  use_lora: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+
+  # Training hyperparameters
+  num_epochs: 3
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 2e-5
+  warmup_ratio: 0.1
+
+  # GRPO settings
+  num_generations: 4
+  max_new_tokens: 1024
+  temperature: 0.7
+  importance_sampling_level: "sequence"  # GSPO variant
+
+  # Reward weights
+  format_weight: 0.3
+  accuracy_weight: 0.5
+  reasoning_weight: 0.2
+
+  # Output
+  output_dir: "outputs/grpo"
+  save_steps: 100
+  logging_steps: 10
