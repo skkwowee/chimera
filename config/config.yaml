@@ -1,0 +1,51 @@
+# Chimera Configuration
+
+# Paths
+paths:
+  raw_screenshots: "data/raw"
+  labeled_data: "data/labeled"
+  processed_data: "data/processed"
+
+# Claude API settings (for labeling)
+claude:
+  model: "claude-sonnet-4-20250514"
+  max_tokens: 1024
+
+# Local VLM settings (for inference)
+vlm:
+  # Options:
+  #   - Qwen/Qwen3-VL-8B-Instruct (recommended, ~18GB VRAM)
+  #   - Qwen/Qwen3-VL-30B-A3B-Instruct (MoE, ~8GB active)
+  #   - deepseek-ai/deepseek-vl2-small (~8GB)
+  #   - deepseek-ai/deepseek-vl2 (~15GB)
+  model_name: "Qwen/Qwen3-VL-8B-Instruct"
+  device: "cuda"
+  torch_dtype: "bfloat16"
+
+# CS2 game state schema
+game_state:
+  fields:
+    - map_name
+    - round_phase        # buy, playing, post-plant
+    - player_side        # T or CT
+    - player_health
+    - player_armor
+    - player_money
+    - team_money_total
+    - weapon_primary
+    - weapon_secondary
+    - utility            # list of grenades
+    - alive_teammates
+    - alive_enemies
+    - bomb_status        # carried, planted, defused, exploded, null
+    - site               # A, B, mid, etc.
+    - visible_enemies    # count
+
+# Labeling prompt template
+labeling:
+  system_prompt: |
+    You are an expert CS2 analyst. Given a screenshot from Counter-Strike 2,
+    extract the game state and provide strategic advice.
+
+    Be precise about numbers (health, money, ammo) and positions.
+    For strategic advice, consider economy, positioning, and round context.
