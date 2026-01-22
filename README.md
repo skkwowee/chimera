@@ -2,6 +2,13 @@
 
 CS2 gaming copilot that analyzes screenshots and provides real-time strategic advice using vision-language models.
 
+## Why This Problem?
+
+1. Domain gap in frontier VLMs (weapon identification failure)
+2. Strategic knowledge exists but isn't grounded to visuals
+3. Generalization across games is the real goal
+4. Games as a proxy for embodied AI
+
 ## Features
 
 - **Screenshot Analysis**: Extract game state (health, armor, money, weapons, player counts, bomb status)
