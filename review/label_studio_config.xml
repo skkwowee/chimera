@@ -1,0 +1,40 @@
+<View>
+  <Header value="CS2 Screenshot Review"/>
+
+  <View style="display: flex; gap: 20px;">
+    <!-- Left: Image -->
+    <View style="flex: 1;">
+      <Image name="screenshot" value="$image"/>
+    </View>
+
+    <!-- Right: Predicted Label -->
+    <View style="flex: 1; font-family: monospace; font-size: 12px; white-space: pre-wrap; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px; overflow: auto; max-height: 600px;">
+      <Header value="Predicted Label"/>
+      <Text name="predicted_label" value="$label_json"/>
+    </View>
+  </View>
+
+  <Header value="Review" style="margin-top: 20px;"/>
+
+  <Choices name="accuracy" toName="screenshot" choice="single-radio">
+    <Choice value="accurate" alias="Accurate"/>
+    <Choice value="minor_errors" alias="Minor Errors"/>
+    <Choice value="major_errors" alias="Major Errors"/>
+    <Choice value="completely_wrong" alias="Completely Wrong"/>
+  </Choices>
+
+  <Header value="What's wrong? (check all that apply)"/>
+  <Choices name="error_types" toName="screenshot" choice="multiple">
+    <Choice value="wrong_map"/>
+    <Choice value="wrong_weapon"/>
+    <Choice value="wrong_health_armor"/>
+    <Choice value="wrong_player_count"/>
+    <Choice value="missed_visible_enemy"/>
+    <Choice value="wrong_site_location"/>
+    <Choice value="bad_tactical_advice"/>
+    <Choice value="wrong_economy_assessment"/>
+  </Choices>
+
+  <Header value="Notes"/>
+  <TextArea name="notes" toName="screenshot" rows="3" placeholder="Any corrections or observations..."/>
+</View>

@@ -59,6 +59,11 @@ unsloth_compiled_cache/
 *.log
 logs/
 
+# Human review (Label Studio working data)
+review/projects/
+review/exports/
+# review/samples/ is tracked - shows example image+label pairs
+
 # OS
 .DS_Store
 Thumbs.db
