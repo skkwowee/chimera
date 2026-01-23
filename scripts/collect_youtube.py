@@ -2,12 +2,13 @@
 """
 Collect CS2 screenshots from YouTube gameplay videos.
 
-Downloads videos and extracts frames at regular intervals for training data.
+Downloads videos at 1080p (preferred) or 720p and extracts frames at regular
+intervals for training data. Higher resolution improves HUD element readability.
 
 Usage:
     python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID"
     python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID" --interval 10
-    python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID" --max-size 100
+    python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID" --max-size 500
 """
 
 import argparse
@@ -40,14 +41,15 @@ def download_video(url: str, output_path: Path, max_size_mb: int = 100) -> Path:
     """Download video with size limit."""
     print(f"Downloading video (max {max_size_mb}MB)...")
 
-    # Prefer direct HTTPS formats (not m3u8/HLS which often fail)
-    # Format 18 = 360p mp4 combined, or similar single-file formats
-    # Avoid m3u8 streams that require HLS download
+    # Prefer 1080p for high-quality training data
+    # Fall back to 720p if 1080p unavailable
+    # Avoid m3u8/HLS streams that often fail
     format_selector = (
-        f"18/17/"  # Classic combined formats (360p/144p mp4)
-        f"best[protocol=https][ext=mp4][height<=480][filesize<{max_size_mb}M]/"
-        f"best[protocol=https][height<=480]/"
-        f"worst[protocol=https]"
+        f"bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=1080]+bestaudio/"  # 1080p with audio merge
+        f"best[height<=1080][ext=mp4]/"  # 1080p combined if available
+        f"best[height<=720][ext=mp4]/"   # 720p fallback
+        f"best[height<=1080]/"           # Any 1080p format
+        f"best"                          # Last resort
     )
 
     cmd = [
@@ -123,8 +125,8 @@ def main():
     parser.add_argument(
         "--max-size", "-s",
         type=int,
-        default=100,
-        help="Maximum video download size in MB (default: 100)"
+        default=500,
+        help="Maximum video download size in MB (default: 500, suitable for 1080p)"
     )
     parser.add_argument(
         "--prefix", "-p",

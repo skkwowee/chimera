@@ -33,10 +33,12 @@ chimera/
 │   ├── labeling/            # Claude API labeling
 │   └── training/            # GRPO training module
 ├── scripts/
+│   ├── collect_youtube.py   # Download CS2 gameplay from YouTube
 │   ├── label_screenshots.py # Generate labels with Claude
 │   ├── run_inference.py     # Run VLM inference
 │   ├── evaluate.py          # Evaluate predictions
-│   └── train_grpo.py        # GRPO fine-tuning
+│   ├── train_grpo.py        # GRPO fine-tuning
+│   └── generate_review.py   # Generate HTML viewer for review
 └── notebooks/               # Jupyter notebooks
 ```
 
@@ -61,7 +63,19 @@ cp .env.example .env
 
 ## Usage
 
-### 1. Label Screenshots with Claude
+### 1. Collect Screenshots from YouTube
+
+Download CS2 gameplay videos and extract frames at 1080p:
+
+```bash
+# Basic usage (extracts frame every 5 seconds)
+python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID"
+
+# Custom interval (every 10 seconds)
+python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID" --interval 10
+```
+
+### 2. Label Screenshots with Claude
 
 Generate ground truth labels using Claude's vision capabilities:
 
@@ -73,7 +87,7 @@ python scripts/label_screenshots.py --single path/to/screenshot.png
 python scripts/label_screenshots.py --input data/raw --output data/labeled
 ```
 
-### 2. Run VLM Inference
+### 3. Run VLM Inference
 
 Analyze screenshots with local vision-language models:
 
@@ -87,7 +101,7 @@ python scripts/run_inference.py --input data/raw --output data/predictions
 # Available models: qwen3, qwen3-moe, qwen2, deepseek
 ```
 
-### 3. Evaluate Predictions
+### 4. Evaluate Predictions
 
 Compare VLM predictions against ground truth:
 
@@ -95,7 +109,22 @@ Compare VLM predictions against ground truth:
 python scripts/evaluate.py --predictions data/predictions --labels data/labeled
 ```
 
-### 4. Fine-tune with GRPO
+### 5. Review Labels
+
+Generate a standalone HTML viewer to inspect images and labels side-by-side:
+
+```bash
+# Generate with embedded images (works offline, ~2MB per 5 images)
+python scripts/generate_review.py --images data/samples --labels data/labeled --embed
+
+# Generate with file references (smaller, requires local server)
+python scripts/generate_review.py --images data/raw --labels data/labeled
+python -m http.server 8000  # Then open http://localhost:8000/review.html
+```
+
+Navigate with arrow keys, press F to flag items for review.
+
+### 6. Fine-tune with GRPO
 
 Train Qwen3-VL on your labeled data using Group Relative Policy Optimization:
 

@@ -41,7 +41,7 @@ def label_single(image_path: str, output_path: str | None = None):
     return result
 
 
-def label_directory(input_dir: str, output_dir: str, skip_existing: bool = True):
+def label_directory(input_dir: str, output_dir: str, skip_existing: bool = True, limit: int | None = None):
     """Label all screenshots in a directory."""
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -55,6 +55,10 @@ def label_directory(input_dir: str, output_dir: str, skip_existing: bool = True)
     else:
         to_label = dataset.image_paths
         print(f"Found {len(to_label)} screenshots to label")
+
+    if limit and len(to_label) > limit:
+        to_label = to_label[:limit]
+        print(f"Limiting to first {limit} images")
 
     if not to_label:
         print("Nothing to label!")
@@ -77,13 +81,14 @@ def main():
     parser.add_argument("--output", type=str, default="data/labeled", help="Output directory")
     parser.add_argument("--output-file", type=str, help="Output file for single image")
     parser.add_argument("--no-skip", action="store_true", help="Re-label existing screenshots")
+    parser.add_argument("--limit", type=int, help="Maximum number of images to label")
 
     args = parser.parse_args()
 
     if args.single:
         label_single(args.single, args.output_file)
     else:
-        label_directory(args.input, args.output, skip_existing=not args.no_skip)
+        label_directory(args.input, args.output, skip_existing=not args.no_skip, limit=args.limit)
 
 
 if __name__ == "__main__":
