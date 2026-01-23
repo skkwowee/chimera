@@ -147,6 +147,20 @@ def generate_html(pairs: list[tuple[Path, Path]], embed_images: bool = False) ->
             opacity: 0.4;
             cursor: not-allowed;
         }}
+        .jump-input {{
+            width: 60px;
+            padding: 8px;
+            border: 1px solid #3a3a3a;
+            border-radius: 6px;
+            background: #2a2a2a;
+            color: #e0e0e0;
+            font-size: 14px;
+            text-align: center;
+        }}
+        .jump-input:focus {{
+            outline: none;
+            border-color: #4fc3f7;
+        }}
         .main {{
             display: flex;
             gap: 12px;
@@ -265,6 +279,7 @@ def generate_html(pairs: list[tuple[Path, Path]], embed_images: bool = False) ->
 
         function App() {{
             const [index, setIndex] = React.useState(0);
+            const [jumpValue, setJumpValue] = React.useState('');
             const [flagged, setFlagged] = React.useState(() => {{
                 const saved = localStorage.getItem('chimera-flagged');
                 return saved ? JSON.parse(saved) : {{}};
@@ -292,6 +307,17 @@ def generate_html(pairs: list[tuple[Path, Path]], embed_images: bool = False) ->
                 }}
                 setFlagged(newFlagged);
                 localStorage.setItem('chimera-flagged', JSON.stringify(newFlagged));
+            }};
+
+            const handleJump = (e) => {{
+                if (e.key === 'Enter') {{
+                    const page = parseInt(jumpValue, 10);
+                    if (page >= 1 && page <= total) {{
+                        setIndex(page - 1);
+                        setJumpValue('');
+                        e.target.blur();
+                    }}
+                }}
             }};
 
             const exportFlagged = () => {{
@@ -326,8 +352,16 @@ def generate_html(pairs: list[tuple[Path, Path]], embed_images: bool = False) ->
                             <span className="nav-info"> — {{index + 1}} / {{total}}</span>
                         </div>
                         <div className="nav-buttons">
-                            <span className="help">← → navigate | F flag</span>
+                            <span className="help">← → navigate | F flag | Enter to jump</span>
                             <button className="nav-btn" onClick={{() => setIndex(i => i - 1)}} disabled={{index === 0}}>← Prev</button>
+                            <input
+                                type="text"
+                                className="jump-input"
+                                placeholder={{`1-${{total}}`}}
+                                value={{jumpValue}}
+                                onChange={{(e) => setJumpValue(e.target.value)}}
+                                onKeyDown={{handleJump}}
+                            />
                             <button className="nav-btn" onClick={{() => setIndex(i => i + 1)}} disabled={{index === total - 1}}>Next →</button>
                             <button className={{`flag-btn ${{flagged[item.filename] ? 'flagged' : 'unflagged'}}`}} onClick={{toggleFlag}}>
                                 {{flagged[item.filename] ? '⚑ Flagged' : '⚐ Flag'}}
