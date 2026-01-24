@@ -90,9 +90,9 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="qwen3",
+        default="qwen3-moe",
         choices=["deepseek", "qwen3", "qwen3-moe", "qwen2"],
-        help="Model to use (qwen3 recommended)",
+        help="Model to use (default: qwen3-moe)",
     )
     parser.add_argument(
         "--labeled-only",
