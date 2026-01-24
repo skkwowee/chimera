@@ -31,7 +31,8 @@ chimera/
 │   ├── data/                # Data loading utilities
 │   ├── inference/           # VLM inference (Qwen, DeepSeek)
 │   ├── labeling/            # Claude API labeling
-│   └── training/            # GRPO training module
+│   ├── training/            # GRPO training module
+│   └── prompts.py           # Shared prompts for all models
 ├── scripts/
 │   ├── collect_youtube.py   # Download CS2 gameplay from YouTube
 │   ├── label_screenshots.py # Generate labels with Claude
@@ -98,6 +99,9 @@ python scripts/run_inference.py --single screenshot.png --model qwen3
 # Batch inference
 python scripts/run_inference.py --input data/raw --output data/predictions
 
+# Only process images that have Claude labels (for comparison)
+python scripts/run_inference.py --labeled-only --input data/raw --output data/predictions
+
 # Available models: qwen3, qwen3-moe, qwen2, deepseek
 ```
 
@@ -120,6 +124,9 @@ python scripts/generate_review.py --images data/samples --labels data/labeled --
 # Generate with file references (smaller, requires local server)
 python scripts/generate_review.py --images data/raw --labels data/labeled
 python -m http.server 8000  # Then open http://localhost:8000/review.html
+
+# Compare Claude labels vs Qwen predictions side-by-side
+python scripts/generate_review.py --compare --embed
 ```
 
 Navigate with arrow keys, press F to flag items for review.
