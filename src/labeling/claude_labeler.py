@@ -11,6 +11,8 @@ from typing import Optional
 import anthropic
 from PIL import Image
 
+from src.prompts import CS2_SYSTEM_PROMPT, CS2_USER_PROMPT
+
 
 class ClaudeLabeler:
     """Labels CS2 screenshots using Claude's vision API."""
@@ -23,46 +25,7 @@ class ClaudeLabeler:
         self.client = anthropic.Anthropic()
         self.model = model
         self.max_tokens = max_tokens
-
-        self.system_prompt = """You are an expert CS2 analyst. Given a screenshot from Counter-Strike 2,
-extract the game state and provide strategic advice.
-
-You must respond with valid JSON in this exact format:
-{
-    "game_state": {
-        "map_name": "string or null",
-        "round_phase": "buy|playing|freezetime|post-plant|warmup",
-        "player_side": "T|CT",
-        "player_health": number,
-        "player_armor": number,
-        "player_money": number,
-        "team_money_total": number or null,
-        "weapon_primary": "string or null",
-        "weapon_secondary": "string or null",
-        "utility": ["list", "of", "grenades"],
-        "alive_teammates": number,
-        "alive_enemies": number,
-        "bomb_status": "carried|planted|dropped|null",
-        "site": "A|B|mid|connector|etc or null",
-        "visible_enemies": number
-    },
-    "analysis": {
-        "situation_summary": "Brief description of current situation",
-        "economy_assessment": "full-buy|half-buy|eco|force-buy|save",
-        "round_importance": "low|medium|high|critical",
-        "immediate_threats": ["list of threats"],
-        "opportunities": ["list of opportunities"]
-    },
-    "advice": {
-        "primary_action": "What to do right now",
-        "reasoning": "Why this is the right call",
-        "fallback": "What to do if primary fails",
-        "callout": "What to communicate to team"
-    }
-}
-
-Be precise about numbers you can see in the HUD. If you can't determine a value, use null.
-For strategic advice, consider economy, positioning, team state, and round context."""
+        self.system_prompt = CS2_SYSTEM_PROMPT
 
     def _encode_image(self, image_path: Path) -> tuple[str, str]:
         """Encode image to base64 and determine media type."""
@@ -110,7 +73,7 @@ For strategic advice, consider economy, positioning, team state, and round conte
             },
             {
                 "type": "text",
-                "text": "Analyze this CS2 screenshot. Extract the game state and provide strategic advice.",
+                "text": CS2_USER_PROMPT,
             },
         ]
 

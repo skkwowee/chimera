@@ -14,20 +14,7 @@ from typing import Optional
 import torch
 from PIL import Image
 
-
-# Default prompt for CS2 analysis
-DEFAULT_CS2_PROMPT = """You are an expert CS2 analyst. Analyze this screenshot and provide:
-
-1. Game State: Extract visible information (health, armor, money, weapons, utility, player counts, bomb status, location)
-2. Situation Analysis: What's happening in the round
-3. Strategic Advice: What the player should do next and why
-
-Respond in JSON format:
-{
-    "game_state": {...},
-    "analysis": {...},
-    "advice": {...}
-}"""
+from src.prompts import CS2_SYSTEM_PROMPT
 
 
 def _parse_json_response(response: str) -> dict:
@@ -121,7 +108,7 @@ class DeepSeekVLInference:
             self.load_model()
 
         image_path = Path(image_path)
-        prompt_text = prompt or DEFAULT_CS2_PROMPT
+        prompt_text = prompt or CS2_SYSTEM_PROMPT
 
         # DeepSeek-VL2 conversation format
         conversation = [
@@ -260,15 +247,10 @@ class Qwen3VLInference:
             "device_map": "auto",
         }
 
-        if self.use_flash_attention:
-            try:
-                import flash_attn  # noqa: F401
-                model_kwargs["attn_implementation"] = "flash_attention_2"
-                print("Using flash attention 2")
-            except ImportError:
-                # Fall back to SDPA (PyTorch 2.0+ built-in efficient attention)
-                model_kwargs["attn_implementation"] = "sdpa"
-                print("Flash attention not installed, using PyTorch SDPA")
+        # Use SDPA (PyTorch 2.0+ built-in efficient attention)
+        # Flash attention can cause OOM issues on some systems
+        model_kwargs["attn_implementation"] = "sdpa"
+        print("Using PyTorch SDPA")
 
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(
             self.model_name,
@@ -288,7 +270,7 @@ class Qwen3VLInference:
             self.load_model()
 
         image_path = Path(image_path)
-        prompt_text = prompt or DEFAULT_CS2_PROMPT
+        prompt_text = prompt or CS2_SYSTEM_PROMPT
 
         # Load image
         image = Image.open(image_path).convert("RGB")
@@ -436,7 +418,7 @@ class QwenVLInference:
             self.load_model()
 
         image_path = Path(image_path)
-        prompt_text = prompt or DEFAULT_CS2_PROMPT
+        prompt_text = prompt or CS2_SYSTEM_PROMPT
 
         # Qwen2-VL message format
         messages = [
