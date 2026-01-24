@@ -16,7 +16,7 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.inference.deepseek_vl import DeepSeekVLInference, Qwen3VLInference, QwenVLInference
+from src.inference.vlm import DeepSeekVLInference, Qwen3VLInference, QwenVLInference
 from src.data import ScreenshotDataset
 
 
@@ -51,21 +51,30 @@ def analyze_single(image_path: str, model_type: str = "deepseek", output_path: s
     return result
 
 
-def analyze_directory(input_dir: str, output_dir: str, model_type: str = "deepseek"):
+def analyze_directory(input_dir: str, output_dir: str, model_type: str = "deepseek", labeled_only: bool = False, labels_dir: str = "data/labeled"):
     """Analyze all screenshots in a directory."""
     input_path = Path(input_dir)
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     dataset = ScreenshotDataset(input_path)
-    print(f"Found {len(dataset)} screenshots to analyze")
 
-    if len(dataset) == 0:
+    if labeled_only:
+        # Only process images that have corresponding labels
+        labels_path = Path(labels_dir)
+        labeled_stems = {p.stem for p in labels_path.glob("*.json")}
+        image_paths = [p for p in dataset.image_paths if p.stem in labeled_stems]
+        print(f"Found {len(image_paths)} labeled screenshots to analyze (out of {len(dataset)} total)")
+    else:
+        image_paths = dataset.image_paths
+        print(f"Found {len(dataset)} screenshots to analyze")
+
+    if len(image_paths) == 0:
         print("No screenshots found!")
         return
 
     model = get_model(model_type)
-    results = model.analyze_batch(dataset.image_paths, output_path)
+    results = model.analyze_batch(image_paths, output_path)
 
     print(f"\nAnalysis complete: {len(results)} screenshots processed")
 
@@ -85,13 +94,24 @@ def main():
         choices=["deepseek", "qwen3", "qwen3-moe", "qwen2"],
         help="Model to use (qwen3 recommended)",
     )
+    parser.add_argument(
+        "--labeled-only",
+        action="store_true",
+        help="Only process images that have corresponding labels",
+    )
+    parser.add_argument(
+        "--labels-dir",
+        type=str,
+        default="data/labeled",
+        help="Directory containing labels (for --labeled-only)",
+    )
 
     args = parser.parse_args()
 
     if args.single:
         analyze_single(args.single, args.model, args.output_file)
     else:
-        analyze_directory(args.input, args.output, args.model)
+        analyze_directory(args.input, args.output, args.model, args.labeled_only, args.labels_dir)
 
 
 if __name__ == "__main__":

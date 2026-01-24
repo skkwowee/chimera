@@ -262,9 +262,13 @@ class Qwen3VLInference:
 
         if self.use_flash_attention:
             try:
+                import flash_attn  # noqa: F401
                 model_kwargs["attn_implementation"] = "flash_attention_2"
-            except Exception:
-                print("Flash attention not available, using default attention")
+                print("Using flash attention 2")
+            except ImportError:
+                # Fall back to SDPA (PyTorch 2.0+ built-in efficient attention)
+                model_kwargs["attn_implementation"] = "sdpa"
+                print("Flash attention not installed, using PyTorch SDPA")
 
         self.model = Qwen3VLForConditionalGeneration.from_pretrained(
             self.model_name,
@@ -406,9 +410,13 @@ class QwenVLInference:
 
         if self.use_flash_attention:
             try:
+                import flash_attn  # noqa: F401
                 model_kwargs["attn_implementation"] = "flash_attention_2"
-            except Exception:
-                print("Flash attention not available, using default attention")
+                print("Using flash attention 2")
+            except ImportError:
+                # Fall back to SDPA (PyTorch 2.0+ built-in efficient attention)
+                model_kwargs["attn_implementation"] = "sdpa"
+                print("Flash attention not installed, using PyTorch SDPA")
 
         self.model = Qwen2VLForConditionalGeneration.from_pretrained(
             self.model_name,
