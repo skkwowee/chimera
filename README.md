@@ -9,6 +9,8 @@ CS2 gaming copilot that analyzes screenshots and provides real-time strategic ad
 3. Generalization across games is the real goal
 4. Games as a proxy for embodied AI
 
+To test if the task is learnable: try overfitting on 10 examples, probe zero-shot visual grounding (e.g., "what weapon is this?"), and check if errors are systematic vs random.
+
 ## Features
 
 - **Screenshot Analysis**: Extract game state (health, armor, money, weapons, player counts, bomb status)
