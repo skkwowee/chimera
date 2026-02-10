@@ -9,7 +9,7 @@ Usage:
     python scripts/train_grpo.py --screenshots data/raw --labels data/labeled
 
     # Custom settings
-    python scripts/train_grpo.py --epochs 5 --lr 1e-5 --accuracy-weight 0.6
+    python scripts/train_grpo.py --epochs 5 --lr 1e-5 --reward-weights 0.05 0.5 0.1 0.2 0.15
 
     # Resume from checkpoint
     python scripts/train_grpo.py --resume outputs/grpo/checkpoint-500
@@ -162,8 +162,8 @@ def parse_args():
     grpo_group.add_argument(
         "--num-generations",
         type=int,
-        default=4,
-        help="Number of responses to generate per prompt",
+        default=16,
+        help="Group size for relative ranking (more = better advantage estimates)",
     )
     grpo_group.add_argument(
         "--max-tokens",
@@ -178,25 +178,15 @@ def parse_args():
         help="Sampling temperature for generation",
     )
 
-    # Reward weights
+    # Reward weights: [format_gate, hard_accuracy, soft_accuracy, consistency, reasoning]
     reward_group = parser.add_argument_group("Reward weights")
     reward_group.add_argument(
-        "--format-weight",
+        "--reward-weights",
         type=float,
-        default=0.3,
-        help="Weight for JSON format reward",
-    )
-    reward_group.add_argument(
-        "--accuracy-weight",
-        type=float,
-        default=0.5,
-        help="Weight for game state accuracy reward",
-    )
-    reward_group.add_argument(
-        "--reasoning-weight",
-        type=float,
-        default=0.2,
-        help="Weight for reasoning quality reward",
+        nargs=5,
+        default=[0.05, 0.40, 0.15, 0.25, 0.15],
+        metavar=("FORMAT", "HARD_ACC", "SOFT_ACC", "CONSISTENCY", "REASONING"),
+        help="Weights for the 5 reward signals",
     )
 
     # Checkpointing
@@ -275,9 +265,7 @@ def main():
         num_generations=args.num_generations,
         max_new_tokens=args.max_tokens,
         temperature=args.temperature,
-        format_weight=args.format_weight,
-        accuracy_weight=args.accuracy_weight,
-        reasoning_weight=args.reasoning_weight,
+        reward_weights=args.reward_weights,
         output_dir=args.output,
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
@@ -371,7 +359,15 @@ def main():
     print("Training complete!")
     print("=" * 60)
     print(f"Model saved to: {output_path}")
-    print(f"Final mean combined reward: {results.get('mean_combined_reward', 'N/A'):.4f}")
+    print(f"Final mean weighted total: {results.get('mean_weighted_total', 'N/A'):.4f}")
+    for signal in ("format_gate", "hard_field_accuracy", "soft_field_accuracy",
+                    "consistency", "reasoning_quality"):
+        val = results.get(f"mean_{signal}", "N/A")
+        label = signal.replace("_", " ").title()
+        if isinstance(val, float):
+            print(f"  {label}: {val:.4f}")
+        else:
+            print(f"  {label}: {val}")
 
 
 if __name__ == "__main__":

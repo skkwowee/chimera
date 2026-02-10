@@ -1,10 +1,16 @@
 """
 CS2-specific reward functions for GRPO training.
 
-Provides reward signals for:
-- JSON format validity
-- Game state extraction accuracy
-- Reasoning and advice quality
+Designed as separate reward functions for TRL's GRPOTrainer (passed as a list
+to reward_funcs). Each function provides an independent signal so GRPO can
+compute per-signal advantages instead of muddying them into one ranking.
+
+Reward functions:
+1. Format gate       — binary 0/1, invalid JSON gets nothing
+2. Hard field accuracy — verifiable HUD-readable fields (health, armor, weapons)
+3. Soft field accuracy — inferential fields (money, bomb status, map)
+4. Consistency        — does reasoning follow from perceived game state
+5. Reasoning quality  — structural quality of analysis and advice
 """
 
 import json
@@ -19,16 +25,32 @@ VALID_BOMB_STATUSES = {"carried", "planted", "dropped", "defused", "exploded", N
 VALID_ECONOMY_ASSESSMENTS = {"full-buy", "half-buy", "eco", "force-buy", "save"}
 VALID_ROUND_IMPORTANCE = {"low", "medium", "high", "critical"}
 
-# Numeric fields and their reasonable ranges for CS2
-NUMERIC_FIELDS = {
+# Hard fields: directly readable from the HUD, high signal
+# Values are (min, max) ranges for CS2
+HARD_FIELDS = {
     "player_health": (0, 100),
     "player_armor": (0, 100),
-    "player_money": (0, 16000),
-    "team_money_total": (0, 80000),
     "alive_teammates": (0, 4),
     "alive_enemies": (0, 5),
     "visible_enemies": (0, 5),
 }
+
+HARD_STRING_FIELDS = ["weapon_primary", "weapon_secondary"]
+HARD_CATEGORICAL_FIELDS = [
+    ("player_side", VALID_PLAYER_SIDES),
+    ("round_phase", VALID_ROUND_PHASES),
+]
+
+# Soft fields: require inference or reading small text
+SOFT_FIELDS = {
+    "player_money": (0, 16000),
+    "team_money_total": (0, 80000),
+}
+
+SOFT_STRING_FIELDS = ["map_name", "site"]
+SOFT_CATEGORICAL_FIELDS = [
+    ("bomb_status", VALID_BOMB_STATUSES),
+]
 
 
 def _extract_json_from_response(response: str) -> dict | None:
@@ -58,66 +80,143 @@ def _extract_json_from_response(response: str) -> dict | None:
     return None
 
 
-def json_format_reward(response: str) -> float:
+# ---------------------------------------------------------------------------
+# Reward component helpers
+# ---------------------------------------------------------------------------
+
+def _score_numeric_field(
+    predicted: dict,
+    gt_state: dict,
+    field: str,
+    tolerance: float = 0.1,
+) -> float | None:
+    """Score a single numeric field. Returns None if field missing from ground truth."""
+    if field not in gt_state:
+        return None
+
+    gt_val = gt_state[field]
+    pred_val = predicted.get(field)
+
+    if gt_val is None:
+        return 1.0 if pred_val is None else 0.0
+    if pred_val is None:
+        return 0.0
+
+    try:
+        gt_val = float(gt_val)
+        pred_val = float(pred_val)
+    except (TypeError, ValueError):
+        return 0.0
+
+    if gt_val == 0:
+        return 1.0 if pred_val == 0 else 0.0
+
+    rel_error = abs(pred_val - gt_val) / abs(gt_val)
+    if rel_error <= tolerance:
+        return 1.0
+    return max(0.0, 1.0 - (rel_error - tolerance) / tolerance)
+
+
+def _score_string_field(predicted: dict, gt_state: dict, field: str) -> float | None:
+    """Score a string field (case-insensitive). Returns None if missing from GT."""
+    if field not in gt_state:
+        return None
+
+    gt_val = gt_state[field]
+    pred_val = predicted.get(field)
+
+    if gt_val is None:
+        return 1.0 if pred_val is None else 0.0
+    if pred_val is None:
+        return 0.0
+
+    return 1.0 if str(gt_val).lower().strip() == str(pred_val).lower().strip() else 0.0
+
+
+def _score_categorical_field(
+    predicted: dict,
+    gt_state: dict,
+    field: str,
+) -> float | None:
+    """Score a categorical field. Returns None if missing from GT."""
+    if field not in gt_state:
+        return None
+
+    gt_val = gt_state[field]
+    pred_val = predicted.get(field)
+
+    if gt_val is not None and pred_val is not None:
+        return 1.0 if str(gt_val).lower() == str(pred_val).lower() else 0.0
+    return 1.0 if gt_val == pred_val else 0.0
+
+
+def _score_list_field(predicted: dict, gt_state: dict, field: str) -> float | None:
+    """Score a list field via Jaccard similarity. Returns None if missing from GT."""
+    if field not in gt_state:
+        return None
+
+    gt_list = gt_state[field]
+    pred_list = predicted.get(field, [])
+
+    if not isinstance(gt_list, list):
+        gt_list = []
+    if not isinstance(pred_list, list):
+        pred_list = []
+
+    gt_set = {str(x).lower() for x in gt_list}
+    pred_set = {str(x).lower() for x in pred_list}
+
+    if len(gt_set) == 0 and len(pred_set) == 0:
+        return 1.0
+    if len(gt_set) == 0 or len(pred_set) == 0:
+        return 0.0
+
+    intersection = len(gt_set & pred_set)
+    union = len(gt_set | pred_set)
+    return intersection / union
+
+
+# ---------------------------------------------------------------------------
+# 1. Format gate reward
+# ---------------------------------------------------------------------------
+
+def format_gate_reward(response: str, **kwargs) -> float:
     """
-    Reward for valid JSON structure with expected fields.
-
-    Scoring:
-    - +0.5 for valid JSON
-    - +0.2 for having game_state field
-    - +0.15 for having analysis field
-    - +0.15 for having advice field
-
-    Args:
-        response: Raw model output string
-
-    Returns:
-        Reward score between 0.0 and 1.0
+    Binary gate: 1.0 if response contains valid JSON with expected top-level
+    keys, 0.0 otherwise. All other rewards are meaningless without valid JSON,
+    so this acts as a hard filter.
     """
-    reward = 0.0
-
     parsed = _extract_json_from_response(response)
     if parsed is None:
         return 0.0
 
-    # Valid JSON structure
-    reward += 0.5
+    # Must have all three top-level sections
+    has_game_state = isinstance(parsed.get("game_state"), dict)
+    has_analysis = isinstance(parsed.get("analysis"), dict)
+    has_advice = isinstance(parsed.get("advice"), dict)
 
-    # Check for expected top-level fields
-    if "game_state" in parsed and isinstance(parsed["game_state"], dict):
-        reward += 0.2
-
-    if "analysis" in parsed and isinstance(parsed["analysis"], dict):
-        reward += 0.15
-
-    if "advice" in parsed and isinstance(parsed["advice"], dict):
-        reward += 0.15
-
-    return reward
+    return 1.0 if (has_game_state and has_analysis and has_advice) else 0.0
 
 
-def game_state_accuracy_reward(
+# ---------------------------------------------------------------------------
+# 2. Hard field accuracy reward (HUD-readable, verifiable)
+# ---------------------------------------------------------------------------
+
+def hard_field_accuracy_reward(
     response: str,
-    ground_truth: dict[str, Any],
-    numeric_tolerance: float = 0.1,
+    ground_truth: dict[str, Any] | None = None,
+    **kwargs,
 ) -> float:
     """
-    Reward for game state field accuracy compared to ground truth.
+    Accuracy on fields directly readable from the HUD.
 
-    Scoring per field:
-    - Numeric fields: 1.0 if within tolerance, partial credit otherwise
-    - Categorical fields: 1.0 for exact match, 0.0 otherwise
-    - List fields (utility): Jaccard similarity
-    - String fields: 1.0 for exact match (case-insensitive)
-
-    Args:
-        response: Raw model output string
-        ground_truth: Dict with ground truth game_state values
-        numeric_tolerance: Relative tolerance for numeric fields (0.1 = 10%)
-
-    Returns:
-        Reward score between 0.0 and 1.0
+    These are high-signal, verifiable fields: health, armor, weapons, player
+    counts, side, round phase. Getting these wrong means the model can't see
+    the screen — this is the most important reward signal.
     """
+    if ground_truth is None:
+        return 0.0
+
     parsed = _extract_json_from_response(response)
     if parsed is None or "game_state" not in parsed:
         return 0.0
@@ -128,144 +227,249 @@ def game_state_accuracy_reward(
     if not isinstance(predicted, dict) or not isinstance(gt_state, dict):
         return 0.0
 
-    field_scores = []
+    scores = []
 
-    for field, (min_val, max_val) in NUMERIC_FIELDS.items():
-        if field not in gt_state:
-            continue
+    # Numeric HUD fields
+    for field in HARD_FIELDS:
+        score = _score_numeric_field(predicted, gt_state, field)
+        if score is not None:
+            scores.append(score)
 
-        gt_val = gt_state[field]
-        pred_val = predicted.get(field)
-
-        if gt_val is None:
-            # Ground truth is null, reward if prediction is also null
-            field_scores.append(1.0 if pred_val is None else 0.0)
-            continue
-
-        if pred_val is None:
-            field_scores.append(0.0)
-            continue
-
-        try:
-            gt_val = float(gt_val)
-            pred_val = float(pred_val)
-        except (TypeError, ValueError):
-            field_scores.append(0.0)
-            continue
-
-        # Calculate relative error
-        if gt_val == 0:
-            score = 1.0 if pred_val == 0 else 0.0
-        else:
-            rel_error = abs(pred_val - gt_val) / abs(gt_val)
-            if rel_error <= numeric_tolerance:
-                score = 1.0
-            else:
-                # Partial credit: linear decay from tolerance to 2x tolerance
-                score = max(0.0, 1.0 - (rel_error - numeric_tolerance) / numeric_tolerance)
-
-        field_scores.append(score)
+    # String fields (weapon names)
+    for field in HARD_STRING_FIELDS:
+        score = _score_string_field(predicted, gt_state, field)
+        if score is not None:
+            scores.append(score)
 
     # Categorical fields
-    categorical_fields = [
-        ("round_phase", VALID_ROUND_PHASES),
-        ("player_side", VALID_PLAYER_SIDES),
-        ("bomb_status", VALID_BOMB_STATUSES),
-    ]
+    for field, _ in HARD_CATEGORICAL_FIELDS:
+        score = _score_categorical_field(predicted, gt_state, field)
+        if score is not None:
+            scores.append(score)
 
-    for field, valid_values in categorical_fields:
-        if field not in gt_state:
-            continue
+    # Utility list
+    score = _score_list_field(predicted, gt_state, "utility")
+    if score is not None:
+        scores.append(score)
 
-        gt_val = gt_state[field]
-        pred_val = predicted.get(field)
-
-        # Case-insensitive comparison for non-null values
-        if gt_val is not None and pred_val is not None:
-            gt_val_lower = str(gt_val).lower() if gt_val else None
-            pred_val_lower = str(pred_val).lower() if pred_val else None
-            score = 1.0 if gt_val_lower == pred_val_lower else 0.0
-        else:
-            score = 1.0 if gt_val == pred_val else 0.0
-
-        field_scores.append(score)
-
-    # String fields (map_name, site, weapons)
-    string_fields = ["map_name", "site", "weapon_primary", "weapon_secondary"]
-
-    for field in string_fields:
-        if field not in gt_state:
-            continue
-
-        gt_val = gt_state[field]
-        pred_val = predicted.get(field)
-
-        if gt_val is None:
-            score = 1.0 if pred_val is None else 0.0
-        elif pred_val is None:
-            score = 0.0
-        else:
-            # Case-insensitive comparison
-            gt_lower = str(gt_val).lower().strip()
-            pred_lower = str(pred_val).lower().strip()
-            score = 1.0 if gt_lower == pred_lower else 0.0
-
-        field_scores.append(score)
-
-    # List field (utility)
-    if "utility" in gt_state:
-        gt_utility = gt_state["utility"]
-        pred_utility = predicted.get("utility", [])
-
-        if not isinstance(gt_utility, list):
-            gt_utility = []
-        if not isinstance(pred_utility, list):
-            pred_utility = []
-
-        # Jaccard similarity
-        gt_set = set(str(x).lower() for x in gt_utility)
-        pred_set = set(str(x).lower() for x in pred_utility)
-
-        if len(gt_set) == 0 and len(pred_set) == 0:
-            score = 1.0
-        elif len(gt_set) == 0 or len(pred_set) == 0:
-            score = 0.0
-        else:
-            intersection = len(gt_set & pred_set)
-            union = len(gt_set | pred_set)
-            score = intersection / union
-
-        field_scores.append(score)
-
-    if not field_scores:
+    if not scores:
         return 0.0
 
-    return sum(field_scores) / len(field_scores)
+    return sum(scores) / len(scores)
 
 
-def reasoning_quality_reward(response: str) -> float:
+# ---------------------------------------------------------------------------
+# 3. Soft field accuracy reward (inferential)
+# ---------------------------------------------------------------------------
+
+def soft_field_accuracy_reward(
+    response: str,
+    ground_truth: dict[str, Any] | None = None,
+    **kwargs,
+) -> float:
     """
-    Reward for quality of analysis and advice reasoning.
+    Accuracy on fields that require inference or reading small/contextual text.
 
-    Scoring components:
-    - Analysis quality (0.5 max):
-      - Has situation_summary with reasonable length: +0.15
-      - Has valid economy_assessment enum: +0.15
-      - Has valid round_importance enum: +0.1
-      - Has immediate_threats list: +0.05
-      - Has opportunities list: +0.05
+    Money values, bomb status, map name, site — these are harder to read and
+    more forgivable to get wrong.
+    """
+    if ground_truth is None:
+        return 0.0
 
-    - Advice quality (0.5 max):
-      - Has primary_action with reasonable length: +0.2
-      - Has reasoning with reasonable length: +0.15
-      - Has fallback: +0.1
-      - Has callout: +0.05
+    parsed = _extract_json_from_response(response)
+    if parsed is None or "game_state" not in parsed:
+        return 0.0
 
-    Args:
-        response: Raw model output string
+    predicted = parsed["game_state"]
+    gt_state = ground_truth.get("game_state", ground_truth)
 
-    Returns:
-        Reward score between 0.0 and 1.0
+    if not isinstance(predicted, dict) or not isinstance(gt_state, dict):
+        return 0.0
+
+    scores = []
+
+    # Numeric soft fields
+    for field in SOFT_FIELDS:
+        score = _score_numeric_field(predicted, gt_state, field)
+        if score is not None:
+            scores.append(score)
+
+    # String soft fields
+    for field in SOFT_STRING_FIELDS:
+        score = _score_string_field(predicted, gt_state, field)
+        if score is not None:
+            scores.append(score)
+
+    # Categorical soft fields
+    for field, _ in SOFT_CATEGORICAL_FIELDS:
+        score = _score_categorical_field(predicted, gt_state, field)
+        if score is not None:
+            scores.append(score)
+
+    if not scores:
+        return 0.0
+
+    return sum(scores) / len(scores)
+
+
+# ---------------------------------------------------------------------------
+# 4. Consistency reward (perception → reasoning coherence)
+# ---------------------------------------------------------------------------
+
+def consistency_reward(response: str, **kwargs) -> float:
+    """
+    Checks whether analysis and advice are coherent with the extracted game state.
+
+    This is the reward that teaches actual reasoning — not "did you fill out
+    the fields" but "does your output form a coherent chain from
+    perception → analysis → action."
+    """
+    parsed = _extract_json_from_response(response)
+    if parsed is None:
+        return 0.0
+
+    gs = parsed.get("game_state", {})
+    analysis = parsed.get("analysis", {})
+    advice = parsed.get("advice", {})
+
+    if not all(isinstance(x, dict) for x in (gs, analysis, advice)):
+        return 0.0
+
+    checks_passed = 0
+    checks_total = 0
+
+    # --- Economy assessment should match money ---
+    money = gs.get("player_money")
+    econ = analysis.get("economy_assessment", "")
+    if money is not None and econ:
+        checks_total += 1
+        try:
+            money = float(money)
+            if money >= 4000 and econ in ("full-buy", "force-buy"):
+                checks_passed += 1
+            elif 2000 <= money < 4000 and econ in ("half-buy", "force-buy", "eco"):
+                checks_passed += 1
+            elif money < 2000 and econ in ("eco", "save"):
+                checks_passed += 1
+        except (TypeError, ValueError):
+            pass
+
+    # --- Round importance should escalate when few players alive ---
+    alive_t = gs.get("alive_teammates")
+    alive_e = gs.get("alive_enemies")
+    importance = analysis.get("round_importance", "")
+    if alive_t is not None and alive_e is not None and importance:
+        checks_total += 1
+        try:
+            alive_t = int(alive_t)
+            alive_e = int(alive_e)
+            total_alive = alive_t + alive_e
+            if total_alive <= 3 and importance in ("high", "critical"):
+                checks_passed += 1
+            elif total_alive >= 8 and importance in ("low", "medium"):
+                checks_passed += 1
+            elif importance in VALID_ROUND_IMPORTANCE:
+                checks_passed += 0.5  # valid but can't verify
+        except (TypeError, ValueError):
+            pass
+
+    # --- Low health → advice should reflect caution ---
+    health = gs.get("player_health")
+    action = advice.get("primary_action", "")
+    fallback = advice.get("fallback", "")
+    action_lower = (action + " " + fallback).lower()
+    if health is not None and action:
+        checks_total += 1
+        try:
+            health = float(health)
+            if health < 30:
+                caution_words = ("fall back", "retreat", "safe", "avoid", "passive",
+                                 "rotate", "disengage", "careful", "low health")
+                if any(w in action_lower for w in caution_words):
+                    checks_passed += 1
+                else:
+                    checks_passed += 0.25  # gave advice but didn't account for health
+            else:
+                checks_passed += 1  # healthy — any action is reasonable
+        except (TypeError, ValueError):
+            pass
+
+    # --- Visible enemies → advice should acknowledge engagement ---
+    visible = gs.get("visible_enemies")
+    if visible is not None and action:
+        checks_total += 1
+        try:
+            visible = int(visible)
+            if visible > 0:
+                engage_words = ("enem", "fight", "peek", "shoot", "engage", "trade",
+                                "duel", "contact", "spotted", "push")
+                if any(w in action_lower for w in engage_words):
+                    checks_passed += 1
+                else:
+                    checks_passed += 0.25
+            else:
+                checks_passed += 1  # no enemies visible — any positioning is fine
+        except (TypeError, ValueError):
+            pass
+
+    # --- Bomb status → advice should reflect it ---
+    bomb = gs.get("bomb_status")
+    if bomb and isinstance(bomb, str) and action:
+        checks_total += 1
+        bomb_lower = bomb.lower()
+        if bomb_lower == "planted":
+            defuse_words = ("defuse", "retake", "bomb", "site", "rotate", "plant")
+            if any(w in action_lower for w in defuse_words):
+                checks_passed += 1
+            else:
+                checks_passed += 0.25
+        elif bomb_lower == "carried":
+            # If you're carrying the bomb (T side), advice might mention planting
+            side = gs.get("player_side", "")
+            if isinstance(side, str) and side.upper() == "T":
+                carry_words = ("plant", "bomb", "site", "execute", "entry")
+                if any(w in action_lower for w in carry_words):
+                    checks_passed += 1
+                else:
+                    checks_passed += 0.5
+            else:
+                checks_passed += 1  # CT side, bomb carried by enemy
+        else:
+            checks_passed += 1  # other statuses — less constrained
+
+    # --- Threats mentioned should be grounded in game state ---
+    threats = analysis.get("immediate_threats", [])
+    if isinstance(threats, list) and len(threats) > 0:
+        checks_total += 1
+        # At least one threat should reference something from game state
+        threat_text = " ".join(str(t).lower() for t in threats)
+        grounded = False
+        if visible is not None and int(visible) > 0 and "enem" in threat_text:
+            grounded = True
+        if bomb and bomb.lower() == "planted" and "bomb" in threat_text:
+            grounded = True
+        if health is not None and float(health) < 50 and "health" in threat_text:
+            grounded = True
+        # If we can't verify, give partial credit for having threats at all
+        checks_passed += 1.0 if grounded else 0.5
+
+    if checks_total == 0:
+        return 0.0
+
+    return checks_passed / checks_total
+
+
+# ---------------------------------------------------------------------------
+# 5. Reasoning quality reward
+# ---------------------------------------------------------------------------
+
+def reasoning_quality_reward(response: str, **kwargs) -> float:
+    """
+    Structural quality of analysis and advice fields.
+
+    Checks that the model produces substantive reasoning with valid enum values,
+    not just placeholder text. Focuses on form rather than correctness (that's
+    what consistency_reward is for).
     """
     parsed = _extract_json_from_response(response)
     if parsed is None:
@@ -273,53 +477,44 @@ def reasoning_quality_reward(response: str) -> float:
 
     reward = 0.0
 
-    # Analysis quality
+    # Analysis quality (0.5 max)
     analysis = parsed.get("analysis", {})
     if isinstance(analysis, dict):
-        # Situation summary
         summary = analysis.get("situation_summary", "")
         if isinstance(summary, str) and 10 <= len(summary) <= 500:
             reward += 0.15
 
-        # Economy assessment
         economy = analysis.get("economy_assessment")
         if economy in VALID_ECONOMY_ASSESSMENTS:
             reward += 0.15
 
-        # Round importance
         importance = analysis.get("round_importance")
         if importance in VALID_ROUND_IMPORTANCE:
             reward += 0.1
 
-        # Threats list
         threats = analysis.get("immediate_threats", [])
         if isinstance(threats, list) and len(threats) > 0:
             reward += 0.05
 
-        # Opportunities list
         opportunities = analysis.get("opportunities", [])
         if isinstance(opportunities, list) and len(opportunities) > 0:
             reward += 0.05
 
-    # Advice quality
+    # Advice quality (0.5 max)
     advice = parsed.get("advice", {})
     if isinstance(advice, dict):
-        # Primary action
         action = advice.get("primary_action", "")
         if isinstance(action, str) and 5 <= len(action) <= 300:
             reward += 0.2
 
-        # Reasoning
         reasoning = advice.get("reasoning", "")
         if isinstance(reasoning, str) and 10 <= len(reasoning) <= 500:
             reward += 0.15
 
-        # Fallback
         fallback = advice.get("fallback", "")
         if isinstance(fallback, str) and len(fallback) > 0:
             reward += 0.1
 
-        # Callout
         callout = advice.get("callout", "")
         if isinstance(callout, str) and len(callout) > 0:
             reward += 0.05
@@ -327,50 +522,16 @@ def reasoning_quality_reward(response: str) -> float:
     return reward
 
 
-def combined_reward(
-    response: str,
-    ground_truth: dict[str, Any] | None = None,
-    format_weight: float = 0.3,
-    accuracy_weight: float = 0.5,
-    reasoning_weight: float = 0.2,
-) -> float:
-    """
-    Weighted combination of all reward components.
+# ---------------------------------------------------------------------------
+# All reward functions in order (for trainer consumption)
+# ---------------------------------------------------------------------------
 
-    Default weights emphasize accuracy (50%), with format (30%) and
-    reasoning quality (20%) as secondary signals.
+REWARD_FUNCTIONS = [
+    format_gate_reward,
+    hard_field_accuracy_reward,
+    soft_field_accuracy_reward,
+    consistency_reward,
+    reasoning_quality_reward,
+]
 
-    Args:
-        response: Raw model output string
-        ground_truth: Dict with ground truth values (required for accuracy)
-        format_weight: Weight for JSON format reward
-        accuracy_weight: Weight for game state accuracy reward
-        reasoning_weight: Weight for reasoning quality reward
-
-    Returns:
-        Combined reward score between 0.0 and 1.0
-    """
-    # Normalize weights
-    total_weight = format_weight + accuracy_weight + reasoning_weight
-    format_weight /= total_weight
-    accuracy_weight /= total_weight
-    reasoning_weight /= total_weight
-
-    format_score = json_format_reward(response)
-    reasoning_score = reasoning_quality_reward(response)
-
-    # Accuracy requires ground truth
-    if ground_truth is not None:
-        accuracy_score = game_state_accuracy_reward(response, ground_truth)
-    else:
-        # If no ground truth, redistribute weight to other components
-        accuracy_score = 0.0
-        format_weight += accuracy_weight / 2
-        reasoning_weight += accuracy_weight / 2
-        accuracy_weight = 0.0
-
-    return (
-        format_weight * format_score
-        + accuracy_weight * accuracy_score
-        + reasoning_weight * reasoning_score
-    )
+DEFAULT_REWARD_WEIGHTS = [0.05, 0.40, 0.15, 0.25, 0.15]

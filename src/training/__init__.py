@@ -1,8 +1,11 @@
 from .rewards import (
-    json_format_reward,
-    game_state_accuracy_reward,
+    format_gate_reward,
+    hard_field_accuracy_reward,
+    soft_field_accuracy_reward,
+    consistency_reward,
     reasoning_quality_reward,
-    combined_reward,
+    REWARD_FUNCTIONS,
+    DEFAULT_REWARD_WEIGHTS,
 )
 from .data_utils import (
     GRPODataItem,
@@ -14,10 +17,13 @@ from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
 
 __all__ = [
     # Rewards
-    "json_format_reward",
-    "game_state_accuracy_reward",
+    "format_gate_reward",
+    "hard_field_accuracy_reward",
+    "soft_field_accuracy_reward",
+    "consistency_reward",
     "reasoning_quality_reward",
-    "combined_reward",
+    "REWARD_FUNCTIONS",
+    "DEFAULT_REWARD_WEIGHTS",
     # Data utilities
     "GRPODataItem",
     "convert_labeled_to_grpo_format",

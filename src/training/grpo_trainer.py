@@ -2,6 +2,8 @@
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
 Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
+Passes separate reward functions to TRL's GRPOTrainer so GRPO computes
+per-signal advantages instead of collapsing everything into one scalar.
 """
 
 # Import unsloth first to ensure all optimizations are applied
@@ -16,6 +18,16 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import torch
+
+from .rewards import (
+    REWARD_FUNCTIONS,
+    DEFAULT_REWARD_WEIGHTS,
+    format_gate_reward,
+    hard_field_accuracy_reward,
+    soft_field_accuracy_reward,
+    consistency_reward,
+    reasoning_quality_reward,
+)
 
 
 @dataclass
@@ -51,15 +63,15 @@ class CS2GRPOConfig:
     weight_decay: float = 0.01
 
     # GRPO settings
-    num_generations: int = 4  # Number of responses to generate per prompt
+    num_generations: int = 16  # Group size for relative ranking
     max_new_tokens: int = 1024
     temperature: float = 0.7
     importance_sampling_level: str = "sequence"  # GSPO variant for stability
 
-    # Reward weights
-    format_weight: float = 0.3
-    accuracy_weight: float = 0.5
-    reasoning_weight: float = 0.2
+    # Reward weights: [format_gate, hard_accuracy, soft_accuracy, consistency, reasoning]
+    reward_weights: list[float] = field(
+        default_factory=lambda: list(DEFAULT_REWARD_WEIGHTS)
+    )
 
     # Output settings
     output_dir: str = "outputs/grpo"
@@ -79,18 +91,21 @@ class CS2GRPOTrainer:
     GRPO trainer for CS2 screenshot analysis using Unsloth.
 
     Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
+    Passes 5 separate reward functions to TRL so GRPO computes independent
+    advantages per signal:
+      1. Format gate (binary)
+      2. Hard field accuracy (HUD-readable, verifiable)
+      3. Soft field accuracy (inferential)
+      4. Consistency (perception → reasoning coherence)
+      5. Reasoning quality (structural)
     """
 
     def __init__(self, config: CS2GRPOConfig | None = None):
-        """
-        Args:
-            config: Training configuration (uses defaults if not provided)
-        """
         self.config = config or CS2GRPOConfig()
         self.model = None
         self.tokenizer = None
         self.processor = None
-        self.reward_fn = None
+        self.reward_fns: list[Callable] = list(REWARD_FUNCTIONS)
         self.train_dataset = None
         self.val_dataset = None
 
@@ -166,13 +181,10 @@ class CS2GRPOTrainer:
 
         def format_sample(sample: dict) -> dict:
             """Format a sample for Unsloth GRPO training."""
-            # Build conversation format for Qwen3-VL
             prompt_content = sample["prompt"]
             if isinstance(prompt_content, list):
-                # Already in multimodal format
                 messages = [{"role": "user", "content": prompt_content}]
             else:
-                # Text-only format
                 messages = [{"role": "user", "content": prompt_content}]
 
             return {
@@ -193,51 +205,41 @@ class CS2GRPOTrainer:
         if self.val_dataset:
             print(f"Prepared {len(self.val_dataset)} validation samples")
 
-    def set_reward_function(
+    def set_reward_functions(
         self,
-        reward_fn: Callable[[str, dict | None], float] | None = None,
+        reward_fns: list[Callable] | None = None,
     ):
         """
-        Set the reward function for GRPO training.
+        Override the default reward functions.
 
         Args:
-            reward_fn: Custom reward function (response, ground_truth) -> float
-                      Uses combined_reward by default
+            reward_fns: List of callables with signature
+                        (response: str, ground_truth: dict | None, **kwargs) -> float
         """
-        if reward_fn is not None:
-            self.reward_fn = reward_fn
-        else:
-            from .rewards import combined_reward
+        if reward_fns is not None:
+            self.reward_fns = reward_fns
+        print(f"Reward functions configured: {len(self.reward_fns)} signals")
 
-            def default_reward(response: str, ground_truth: dict | None) -> float:
-                return combined_reward(
-                    response,
-                    ground_truth,
-                    format_weight=self.config.format_weight,
-                    accuracy_weight=self.config.accuracy_weight,
-                    reasoning_weight=self.config.reasoning_weight,
-                )
+    def _create_reward_wrappers(self) -> list[Callable]:
+        """
+        Wrap each reward function for TRL's GRPOTrainer batch interface.
 
-            self.reward_fn = default_reward
+        Each wrapper has signature: (completions: list[str], **kwargs) -> list[float]
+        """
+        wrappers = []
 
-        print("Reward function configured")
+        for fn in self.reward_fns:
+            def make_wrapper(reward_fn):
+                def wrapper(completions: list[str], **kwargs) -> list[float]:
+                    ground_truths = kwargs.get("ground_truth", [None] * len(completions))
+                    return [
+                        reward_fn(completion, ground_truth=gt)
+                        for completion, gt in zip(completions, ground_truths)
+                    ]
+                return wrapper
+            wrappers.append(make_wrapper(fn))
 
-    def _create_reward_wrapper(self):
-        """Create a reward function wrapper for TRL's GRPO trainer."""
-        reward_fn = self.reward_fn
-
-        def reward_wrapper(completions: list[str], **kwargs) -> list[float]:
-            """Compute rewards for a batch of completions."""
-            ground_truths = kwargs.get("ground_truth", [None] * len(completions))
-
-            rewards = []
-            for completion, gt in zip(completions, ground_truths):
-                reward = reward_fn(completion, gt)
-                rewards.append(reward)
-
-            return rewards
-
-        return reward_wrapper
+        return wrappers
 
     def train(self, resume_from: Optional[str] = None):
         """
@@ -252,9 +254,6 @@ class CS2GRPOTrainer:
         if self.train_dataset is None:
             raise ValueError("No training data prepared. Call prepare_data() first.")
 
-        if self.reward_fn is None:
-            self.set_reward_function()
-
         try:
             from trl import GRPOConfig, GRPOTrainer
         except ImportError:
@@ -264,6 +263,9 @@ class CS2GRPOTrainer:
             )
 
         print("Configuring GRPO trainer...")
+        print(f"  Reward signals: {len(self.reward_fns)}")
+        print(f"  Reward weights: {self.config.reward_weights}")
+        print(f"  Group size (num_generations): {self.config.num_generations}")
 
         # Create output directory
         output_dir = Path(self.config.output_dir)
@@ -295,18 +297,20 @@ class CS2GRPOTrainer:
             temperature=self.config.temperature,
             # GSPO variant for stability
             importance_sampling_level=self.config.importance_sampling_level,
+            # Reward weights for the 5 separate reward functions
+            reward_weights=self.config.reward_weights,
             # Reporting
             report_to="none",  # Disable wandb by default
         )
 
-        # Create GRPO trainer
+        # Create GRPO trainer with separate reward functions
         trainer = GRPOTrainer(
             model=self.model,
             processing_class=self.tokenizer,
             args=grpo_config,
             train_dataset=self.train_dataset,
             eval_dataset=self.val_dataset,
-            reward_funcs=self._create_reward_wrapper(),
+            reward_funcs=self._create_reward_wrappers(),
         )
 
         print("Starting GRPO training...")
@@ -380,7 +384,7 @@ class CS2GRPOTrainer:
             eval_data: Evaluation samples (uses val_dataset if not provided)
 
         Returns:
-            Dictionary with evaluation metrics
+            Dictionary with per-signal and aggregate evaluation metrics
         """
         if self.model is None:
             self.load_model()
@@ -390,26 +394,26 @@ class CS2GRPOTrainer:
             raise ValueError("No evaluation data available")
 
         from tqdm import tqdm
-        from .rewards import (
-            json_format_reward,
-            game_state_accuracy_reward,
-            reasoning_quality_reward,
-        )
 
         print("Evaluating model...")
 
-        metrics = {
-            "format_reward": [],
-            "accuracy_reward": [],
-            "reasoning_reward": [],
-            "combined_reward": [],
-        }
+        signal_names = [
+            "format_gate",
+            "hard_field_accuracy",
+            "soft_field_accuracy",
+            "consistency",
+            "reasoning_quality",
+        ]
+        metrics = {name: [] for name in signal_names}
+        metrics["weighted_total"] = []
 
         try:
             from unsloth import FastVisionModel
             FastVisionModel.for_inference(self.model)
         except Exception:
             pass
+
+        weights = self.config.reward_weights
 
         for sample in tqdm(eval_dataset, desc="Evaluating"):
             # Generate response
@@ -439,19 +443,23 @@ class CS2GRPOTrainer:
                 skip_special_tokens=True,
             )
 
-            # Compute rewards
-            metrics["format_reward"].append(json_format_reward(response))
-            metrics["accuracy_reward"].append(
-                game_state_accuracy_reward(response, ground_truth)
-            )
-            metrics["reasoning_reward"].append(reasoning_quality_reward(response))
+            # Compute each reward signal
+            scores = [
+                format_gate_reward(response),
+                hard_field_accuracy_reward(response, ground_truth=ground_truth),
+                soft_field_accuracy_reward(response, ground_truth=ground_truth),
+                consistency_reward(response),
+                reasoning_quality_reward(response),
+            ]
 
-            if self.reward_fn:
-                metrics["combined_reward"].append(
-                    self.reward_fn(response, ground_truth)
-                )
+            for name, score in zip(signal_names, scores):
+                metrics[name].append(score)
 
-        # Compute averages
+            # Weighted total
+            weighted = sum(w * s for w, s in zip(weights, scores))
+            metrics["weighted_total"].append(weighted)
+
+        # Compute summary statistics
         results = {}
         for key, values in metrics.items():
             if values:
