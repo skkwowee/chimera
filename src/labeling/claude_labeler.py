@@ -19,7 +19,7 @@ class ClaudeLabeler:
 
     def __init__(
         self,
-        model: str = "claude-opus-4-5-20251101",
+        model: str = "claude-opus-4-6",
         max_tokens: int = 1024,
     ):
         self.client = anthropic.Anthropic()

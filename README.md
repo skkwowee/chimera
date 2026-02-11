@@ -16,8 +16,8 @@ To test if the task is learnable: try overfitting on 10 examples, probe zero-sho
 - **Screenshot Analysis**: Extract game state (health, armor, money, weapons, player counts, bomb status)
 - **Strategic Analysis**: Economy assessment, round importance, threats and opportunities
 - **Tactical Advice**: Primary actions, reasoning, fallback plans, team callouts
-- **Multiple VLM Support**: Qwen3-VL, Qwen2-VL, DeepSeek-VL2
-- **GRPO Training**: Fine-tune models on your own labeled data using Unsloth
+- **VLM Inference**: Qwen3-VL-8B for local inference, Claude Opus 4.6 as SOTA baseline
+- **GRPO Training**: Fine-tune Qwen3-VL-8B on your own labeled data using Unsloth
 
 ## Project Structure
 
@@ -31,7 +31,7 @@ chimera/
 │   └── predictions/         # VLM predictions
 ├── src/
 │   ├── data/                # Data loading utilities
-│   ├── inference/           # VLM inference (Qwen, DeepSeek)
+│   ├── inference/           # VLM inference (Qwen3-VL-8B)
 │   ├── labeling/            # Claude API labeling
 │   ├── training/            # GRPO training module
 │   └── prompts.py           # Shared prompts for all models
@@ -92,19 +92,17 @@ python scripts/label_screenshots.py --input data/raw --output data/labeled
 
 ### 3. Run VLM Inference
 
-Analyze screenshots with local vision-language models:
+Analyze screenshots with Qwen3-VL-8B:
 
 ```bash
-# Single image with Qwen3-VL (recommended)
-python scripts/run_inference.py --single screenshot.png --model qwen3
+# Single image
+python scripts/run_inference.py --single screenshot.png
 
 # Batch inference
 python scripts/run_inference.py --input data/raw --output data/predictions
 
 # Only process images that have Claude labels (for comparison)
 python scripts/run_inference.py --labeled-only --input data/raw --output data/predictions
-
-# Available models: qwen3, qwen3-moe, qwen2, deepseek
 ```
 
 ### 4. Evaluate Predictions
@@ -135,7 +133,7 @@ Navigate with arrow keys, press F to flag items for review.
 
 ### 6. Fine-tune with GRPO
 
-Train Qwen3-VL on your labeled data using Group Relative Policy Optimization:
+Train Qwen3-VL-8B on your labeled data using Group Relative Policy Optimization:
 
 ```bash
 # Basic training
@@ -206,7 +204,7 @@ All analysis outputs follow this JSON structure:
 
 Edit `config/config.yaml` to customize:
 
-- Model selection and parameters
+- Model parameters
 - Training hyperparameters
 - Reward function weights
 - Data paths

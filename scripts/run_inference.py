@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
-Run inference on CS2 screenshots using local VLM.
+Run inference on CS2 screenshots using Qwen3-VL-8B.
 
 Usage:
     python scripts/run_inference.py --single path/to/screenshot.png
     python scripts/run_inference.py --input data/raw --output data/predictions
-    python scripts/run_inference.py --model qwen  # Use Qwen2-VL instead
 """
 
 import argparse
@@ -16,27 +15,13 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.inference.vlm import DeepSeekVLInference, Qwen3VLInference, QwenVLInference
+from src.inference.vlm import Qwen3VLInference
 from src.data import ScreenshotDataset
 
 
-def get_model(model_type: str):
-    """Get the appropriate model class."""
-    if model_type == "deepseek":
-        return DeepSeekVLInference()
-    elif model_type == "qwen3":
-        return Qwen3VLInference()
-    elif model_type == "qwen3-moe":
-        return Qwen3VLInference(model_name="Qwen/Qwen3-VL-30B-A3B-Instruct")
-    elif model_type == "qwen" or model_type == "qwen2":
-        return QwenVLInference()
-    else:
-        raise ValueError(f"Unknown model type: {model_type}. Choose from: deepseek, qwen3, qwen3-moe, qwen2")
-
-
-def analyze_single(image_path: str, model_type: str = "deepseek", output_path: str | None = None):
+def analyze_single(image_path: str, output_path: str | None = None):
     """Analyze a single screenshot."""
-    model = get_model(model_type)
+    model = Qwen3VLInference()
     model.load_model()
 
     result = model.analyze(image_path)
@@ -51,7 +36,7 @@ def analyze_single(image_path: str, model_type: str = "deepseek", output_path: s
     return result
 
 
-def analyze_directory(input_dir: str, output_dir: str, model_type: str = "deepseek", labeled_only: bool = False, labels_dir: str = "data/labeled"):
+def analyze_directory(input_dir: str, output_dir: str, labeled_only: bool = False, labels_dir: str = "data/labeled"):
     """Analyze all screenshots in a directory."""
     input_path = Path(input_dir)
     output_path = Path(output_dir)
@@ -73,7 +58,7 @@ def analyze_directory(input_dir: str, output_dir: str, model_type: str = "deepse
         print("No screenshots found!")
         return
 
-    model = get_model(model_type)
+    model = Qwen3VLInference()
     results = model.analyze_batch(image_paths, output_path)
 
     print(f"\nAnalysis complete: {len(results)} screenshots processed")
@@ -87,13 +72,6 @@ def main():
     parser.add_argument("--input", type=str, default="data/raw", help="Input directory")
     parser.add_argument("--output", type=str, default="data/predictions", help="Output directory")
     parser.add_argument("--output-file", type=str, help="Output file for single image")
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="qwen3-moe",
-        choices=["deepseek", "qwen3", "qwen3-moe", "qwen2"],
-        help="Model to use (default: qwen3-moe)",
-    )
     parser.add_argument(
         "--labeled-only",
         action="store_true",
@@ -109,9 +87,9 @@ def main():
     args = parser.parse_args()
 
     if args.single:
-        analyze_single(args.single, args.model, args.output_file)
+        analyze_single(args.single, args.output_file)
     else:
-        analyze_directory(args.input, args.output, args.model, args.labeled_only, args.labels_dir)
+        analyze_directory(args.input, args.output, args.labeled_only, args.labels_dir)
 
 
 if __name__ == "__main__":

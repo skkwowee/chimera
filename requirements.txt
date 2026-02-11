@@ -1,6 +1,6 @@
 # Core
 torch>=2.0.0
-transformers>=4.45.0  # Required for Qwen2-VL
+transformers>=4.45.0
 accelerate>=0.27.0
 
 # Vision models
@@ -33,7 +33,3 @@ peft>=0.13.0
 
 # Qwen3-VL (requires transformers from source):
 #   pip install git+https://github.com/huggingface/transformers
-
-# DeepSeek-VL2 (install separately):
-#   git clone https://github.com/deepseek-ai/DeepSeek-VL2
-#   cd DeepSeek-VL2 && pip install -e .

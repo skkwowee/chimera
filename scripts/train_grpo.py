@@ -75,12 +75,6 @@ def parse_args():
     # Model settings
     model_group = parser.add_argument_group("Model settings")
     model_group.add_argument(
-        "--model",
-        type=str,
-        default="Qwen/Qwen3-VL-8B-Instruct",
-        help="Model name or path",
-    )
-    model_group.add_argument(
         "--no-4bit",
         action="store_true",
         help="Disable 4-bit quantization (uses more VRAM)",
@@ -249,7 +243,7 @@ def main():
 
     # Create config from args
     config = CS2GRPOConfig(
-        model_name=args.model,
+        model_name="Qwen/Qwen3-VL-8B-Instruct",
         use_4bit=not args.no_4bit,
         use_vllm=not args.no_vllm,
         torch_dtype=args.dtype,

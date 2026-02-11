@@ -8,17 +8,12 @@ paths:
 
 # Claude API settings (for labeling)
 claude:
-  model: "claude-opus-4-5-20251101"
+  model: "claude-opus-4-6"
   max_tokens: 1024
 
 # Local VLM settings (for inference)
 vlm:
-  # Options:
-  #   - Qwen/Qwen3-VL-30B-A3B-Instruct (MoE, recommended, ~8GB active)
-  #   - Qwen/Qwen3-VL-8B-Instruct (~18GB VRAM)
-  #   - deepseek-ai/deepseek-vl2-small (~8GB)
-  #   - deepseek-ai/deepseek-vl2 (~15GB)
-  model_name: "Qwen/Qwen3-VL-30B-A3B-Instruct"
+  model_name: "Qwen/Qwen3-VL-8B-Instruct"
   device: "cuda"
   torch_dtype: "bfloat16"
 
