@@ -62,6 +62,9 @@ logs/
 # Generated review file
 review.html
 
+# Experiment state (managed by harness)
+experiment-state.json
+
 # OS
 .DS_Store
 Thumbs.db

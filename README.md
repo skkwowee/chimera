@@ -211,6 +211,42 @@ Edit `config/config.yaml` to customize:
 - Reward function weights
 - Data paths
 
+## Research: Strategy-First Visual Grounding
+
+**Hypothesis:** A VLM pretrained on structured game replay data (strategy) before visual fine-tuning (perception) needs fewer labeled screenshots to achieve the same accuracy — and produces better strategic reasoning — than one trained on screenshots alone.
+
+Like humans: learn the game from replays and theory, then apply that knowledge when watching live.
+
+### The experiment
+
+| Model | Description |
+|-------|-------------|
+| A | Qwen3-VL zero-shot (no training) |
+| B | Qwen3-VL + SFT on 100 screenshots (vision only) |
+| C | Qwen3-VL + demo pretraining + SFT on 100 screenshots (strategy + vision) |
+| D | Qwen3-VL + demo pretraining + SFT on 20 screenshots (data efficiency test) |
+
+If C > B, pretraining helps. If D ≈ B, pretraining reduces data requirements.
+
+### Pipeline
+
+Each step is isolated: it reads from defined inputs, writes to defined outputs, and validates its own results. Intermediate artifacts are cleaned up. See `experiment-state.json` for current progress and machine-readable state.
+
+- [ ] **Step 1 — Demo data pipeline.** Download pro demos, parse with awpy, extract key-moment snapshots (pre-round, first contact, post-plant) into structured JSON with full game state + round outcome.
+- [ ] **Step 2 — Strategy pretraining dataset.** Convert snapshots into text-based SFT format. Game state as input, analysis + outcome as target. Train/val split with balance checks.
+- [ ] **Step 3 — Phase 1: Strategy pretraining.** SFT on Qwen3-VL language backbone (no vision layers). LoRA. Model learns XvX win rates, economy decisions, positional reasoning from real pro match outcomes.
+- [ ] **Step 4 — Screenshot labeling + baseline.** Label ~100 screenshots with Claude. Run zero-shot eval (Model A) to establish the floor.
+- [ ] **Step 5 — Phase 2: Visual grounding.** Train Models B, C, D. Compare strategy-pretrained vs vision-only vs few-shot.
+- [ ] **Step 6 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
+
+### Why this matters beyond games
+
+The general principle — *learn reasoning from cheap structured data, then ground in vision with minimal labels* — applies to robotics (sim logs → real-world), medical imaging (patient records → radiology), and autonomous driving (telemetry → camera perception). Games are the controlled environment to prove the paradigm.
+
+### Resuming work
+
+Read `experiment-state.json` for current step, what's done, and what's next. Each step lists its inputs, outputs, and validation criteria. Start a session by checking the state file and running validation on the last completed step to confirm nothing is broken.
+
 ## License
 
 MIT
