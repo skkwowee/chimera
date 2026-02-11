@@ -300,7 +300,7 @@ class CS2GRPOTrainer:
             # Reward weights for the 5 separate reward functions
             reward_weights=self.config.reward_weights,
             # Reporting
-            report_to="none",  # Disable wandb by default
+            report_to="wandb",
         )
 
         # Create GRPO trainer with separate reward functions

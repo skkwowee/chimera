@@ -231,7 +231,7 @@ class CS2SFTTrainer:
             dataset_text_field="",  # We use messages format
             dataset_kwargs={"skip_prepare_dataset": True},
             # Reporting
-            report_to="none",  # Disable wandb by default
+            report_to="wandb",
         )
 
         # Create SFT trainer
