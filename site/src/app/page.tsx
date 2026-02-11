@@ -85,8 +85,8 @@ function Abstract() {
           asked to visually ground strategic concepts they have never learned.
         </p>
         <p>
-          We propose <strong className="text-foreground">knowledge pretraining</strong> — a
-          two-phase training paradigm where the model learns to think before it sees. First, supervised fine-tuning (SFT) on structured
+          We propose a <strong className="text-foreground">two-phase post-training</strong> paradigm
+          where the model learns to think before it sees. First, supervised fine-tuning (SFT) on structured
           game replay data teaches the model CS2 domain knowledge — economy decisions,
           positional reasoning, round outcomes — through text alone. Second, Group Relative
           Policy Optimization (GRPO) refines visual grounding using five decomposed reward
