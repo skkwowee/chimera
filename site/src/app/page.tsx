@@ -41,12 +41,11 @@ function Hero() {
         NeurIPS 2026 (in preparation)
       </div>
       <h1 className="mx-auto max-w-4xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl md:text-6xl">
-        Strategy-First{" "}
-        <span className="text-accent">Visual Grounding</span>
+        Think Before{" "}
+        <span className="text-accent">You See</span>
       </h1>
       <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted sm:text-xl">
-        Leveraging structured game data for efficient vision-language model
-        fine-tuning in Counter-Strike 2
+        Knowledge pretraining for efficient visual grounding in game AI
       </p>
       <p className="mt-4 text-sm text-muted">
         David Zeng
@@ -86,8 +85,8 @@ function Abstract() {
           asked to visually ground strategic concepts they have never learned.
         </p>
         <p>
-          We propose <strong className="text-foreground">strategy-first visual grounding</strong>,
-          a two-phase training paradigm. First, supervised fine-tuning (SFT) on structured
+          We propose <strong className="text-foreground">knowledge pretraining</strong> — a
+          two-phase training paradigm where the model learns to think before it sees. First, supervised fine-tuning (SFT) on structured
           game replay data teaches the model CS2 domain knowledge — economy decisions,
           positional reasoning, round outcomes — through text alone. Second, Group Relative
           Policy Optimization (GRPO) refines visual grounding using five decomposed reward
@@ -453,9 +452,8 @@ function Citation() {
         </h2>
         <pre className="mt-6 overflow-auto rounded-xl border border-border bg-card p-6 text-xs leading-relaxed text-muted">
 {`@article{zeng2026chimera,
-  title={Strategy-First Visual Grounding: Leveraging
-         Structured Game Data for Efficient Vision-Language
-         Model Fine-Tuning},
+  title={Think Before You See: Knowledge Pretraining
+         for Efficient Visual Grounding in Game AI},
   author={Zeng, David},
   journal={arXiv preprint arXiv:26XX.XXXXX},
   year={2026}

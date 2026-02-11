@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chimera — Strategy-First Visual Grounding for Game AI",
+  title: "Chimera — Think Before You See",
   description:
-    "Leveraging structured game data for efficient vision-language model fine-tuning in Counter-Strike 2.",
+    "Knowledge pretraining for efficient visual grounding in game AI.",
 };
 
 export default function RootLayout({
