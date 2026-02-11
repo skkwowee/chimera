@@ -45,7 +45,7 @@ function Hero() {
         <span className="text-accent">You See</span>
       </h1>
       <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted sm:text-xl">
-        Knowledge pretraining for efficient visual grounding in game AI
+        Can VLMs learn to play CS2?
       </p>
       <p className="mt-4 text-sm text-muted">
         David Zeng
@@ -452,8 +452,8 @@ function Citation() {
         </h2>
         <pre className="mt-6 overflow-auto rounded-xl border border-border bg-card p-6 text-xs leading-relaxed text-muted">
 {`@article{zeng2026chimera,
-  title={Think Before You See: Knowledge Pretraining
-         for Efficient Visual Grounding in Game AI},
+  title={Think Before You See: VLMs as Game Agents
+         Without Reinforcement Learning from Scratch},
   author={Zeng, David},
   journal={arXiv preprint arXiv:26XX.XXXXX},
   year={2026}

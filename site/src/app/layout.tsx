@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Chimera — Think Before You See",
   description:
-    "Knowledge pretraining for efficient visual grounding in game AI.",
+    "Can VLMs learn to play CS2? VLMs as game agents without reinforcement learning from scratch.",
 };
 
 export default function RootLayout({
