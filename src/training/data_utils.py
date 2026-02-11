@@ -258,3 +258,81 @@ def format_ground_truth_as_json(ground_truth: dict) -> str:
         JSON string formatted for model output
     """
     return json.dumps(ground_truth, indent=2)
+
+
+def convert_labeled_to_sft_format(
+    screenshots_dir: Path | str,
+    labels_dir: Path | str,
+    prompt: str | None = None,
+) -> list[GRPODataItem]:
+    """
+    Convert existing labeled data to SFT training format.
+
+    Same matching logic as convert_labeled_to_grpo_format — reuses GRPODataItem
+    since the fields are identical.
+
+    Args:
+        screenshots_dir: Directory containing screenshot images
+        labels_dir: Directory containing JSON label files
+        prompt: Custom prompt to use (defaults to DEFAULT_PROMPT)
+
+    Returns:
+        List of GRPODataItem instances ready for SFT training
+    """
+    return convert_labeled_to_grpo_format(screenshots_dir, labels_dir, prompt)
+
+
+def create_sft_dataset(
+    items: list[GRPODataItem],
+    train_ratio: float = 0.9,
+    seed: int = 42,
+) -> tuple[list[dict], list[dict]]:
+    """
+    Create SFT dataset from labeled items.
+
+    Each training sample is formatted as a conversation with the ground truth
+    as the assistant response. Validation samples also include ground_truth
+    as a separate key for use with evaluate().
+
+    Args:
+        items: List of GRPODataItem instances
+        train_ratio: Ratio of data for training (rest is validation)
+        seed: Random seed for reproducibility
+
+    Returns:
+        Tuple of (train_dataset, val_dataset) where each entry has 'messages'
+        and val entries also have 'ground_truth' and 'image_path'
+    """
+    random.seed(seed)
+    shuffled = items.copy()
+    random.shuffle(shuffled)
+
+    split_idx = int(len(shuffled) * train_ratio)
+    train_items = shuffled[:split_idx]
+    val_items = shuffled[split_idx:]
+
+    def format_train_item(item: GRPODataItem) -> dict:
+        """Format item for SFT training with assistant response."""
+        messages = prepare_conversation_format(
+            image_path=item.image_path,
+            prompt=item.prompt,
+            response=format_ground_truth_as_json(item.ground_truth),
+        )
+        return {"messages": messages}
+
+    def format_val_item(item: GRPODataItem) -> dict:
+        """Format item for evaluation — user message only + ground_truth for scoring."""
+        messages = prepare_conversation_format(
+            image_path=item.image_path,
+            prompt=item.prompt,
+        )
+        return {
+            "messages": messages,
+            "ground_truth": item.ground_truth,
+            "image_path": str(item.image_path),
+        }
+
+    train_dataset = [format_train_item(item) for item in train_items]
+    val_dataset = [format_val_item(item) for item in val_items]
+
+    return train_dataset, val_dataset

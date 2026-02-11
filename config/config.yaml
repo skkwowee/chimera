@@ -45,6 +45,34 @@ labeling:
     Be precise about numbers (health, money, ammo) and positions.
     For strategic advice, consider economy, positioning, and round context.
 
+# SFT Training settings (run before GRPO)
+sft_training:
+  model_name: "Qwen/Qwen3-VL-8B-Instruct"
+  use_4bit: true
+  torch_dtype: "bfloat16"
+
+  # LoRA settings
+  use_lora: true
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+
+  # Training hyperparameters
+  num_epochs: 3
+  batch_size: 1
+  gradient_accumulation_steps: 4
+  learning_rate: 2e-5
+  warmup_ratio: 0.1
+
+  # SFT-specific
+  max_seq_length: 2048
+  finetune_vision_layers: true  # SFT trains vision; GRPO freezes for vLLM
+
+  # Output (merged model used as GRPO base)
+  output_dir: "outputs/sft"
+  save_steps: 100
+  logging_steps: 10
+
 # GRPO Training settings
 training:
   # Model settings

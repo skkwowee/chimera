@@ -17,7 +17,8 @@ To test if the task is learnable: try overfitting on 10 examples, probe zero-sho
 - **Strategic Analysis**: Economy assessment, round importance, threats and opportunities
 - **Tactical Advice**: Primary actions, reasoning, fallback plans, team callouts
 - **VLM Inference**: Qwen3-VL-8B for local inference, Claude Opus 4.6 as SOTA baseline
-- **GRPO Training**: Fine-tune Qwen3-VL-8B on your own labeled data using Unsloth
+- **SFT Training**: Supervised fine-tuning to teach output format and CS2 domain knowledge
+- **GRPO Training**: Reinforcement learning refinement using multi-signal rewards
 
 ## Project Structure
 
@@ -33,14 +34,15 @@ chimera/
 │   ├── data/                # Data loading utilities
 │   ├── inference/           # VLM inference (Qwen3-VL-8B)
 │   ├── labeling/            # Claude API labeling
-│   ├── training/            # GRPO training module
+│   ├── training/            # SFT + GRPO training modules
 │   └── prompts.py           # Shared prompts for all models
 ├── scripts/
 │   ├── collect_youtube.py   # Download CS2 gameplay from YouTube
 │   ├── label_screenshots.py # Generate labels with Claude
 │   ├── run_inference.py     # Run VLM inference
 │   ├── evaluate.py          # Evaluate predictions
-│   ├── train_grpo.py        # GRPO fine-tuning
+│   ├── train_sft.py         # SFT fine-tuning (run first)
+│   ├── train_grpo.py        # GRPO fine-tuning (uses SFT output)
 │   └── generate_review.py   # Generate HTML viewer for review
 └── notebooks/               # Jupyter notebooks
 ```
@@ -131,12 +133,41 @@ python scripts/generate_review.py --compare --embed
 
 Navigate with arrow keys, press F to flag items for review.
 
-### 6. Fine-tune with GRPO
+### 6. Fine-tune with SFT
 
-Train Qwen3-VL-8B on your labeled data using Group Relative Policy Optimization:
+Supervised fine-tuning teaches the model the output format (valid JSON with `game_state`/`analysis`/`advice`) and CS2 domain knowledge through supervised learning on Claude-labeled data. Run this before GRPO.
 
 ```bash
-# Basic training
+# Basic training (saves merged model for GRPO handoff)
+python scripts/train_sft.py --screenshots data/raw --labels data/labeled
+
+# Dry run (check VRAM usage)
+python scripts/train_sft.py --dry-run
+
+# Custom settings
+python scripts/train_sft.py \
+    --epochs 5 \
+    --lr 1e-5 \
+    --max-seq-length 4096
+
+# Resume from checkpoint
+python scripts/train_sft.py --resume outputs/sft/checkpoint-500
+```
+
+SFT outputs a merged 16-bit model to `outputs/sft/final_model/merged_16bit/`.
+
+### 7. Refine with GRPO
+
+GRPO (Group Relative Policy Optimization) refines quality using multi-signal rewards. Load the SFT merged output as the base model:
+
+```bash
+# Use SFT output as base (recommended pipeline)
+python scripts/train_grpo.py \
+    --model-name outputs/sft/final_model/merged_16bit \
+    --screenshots data/raw \
+    --labels data/labeled
+
+# Or train from scratch (without SFT)
 python scripts/train_grpo.py --screenshots data/raw --labels data/labeled
 
 # Dry run (check VRAM usage)
@@ -146,7 +177,7 @@ python scripts/train_grpo.py --dry-run
 python scripts/train_grpo.py \
     --epochs 5 \
     --lr 1e-5 \
-    --accuracy-weight 0.6 \
+    --reward-weights 0.05 0.5 0.1 0.2 0.15 \
     --lora-r 32
 
 # Resume from checkpoint
@@ -198,6 +229,7 @@ All analysis outputs follow this JSON structure:
 |------|------|-----------------|
 | Inference (Qwen3-VL-8B) | ~18 GB | RTX 4090, A100 |
 | Inference (4-bit) | ~6 GB | RTX 3080+ |
+| SFT Training | ~18 GB | RTX 4090 (24GB) |
 | GRPO Training | ~20 GB | RTX 4090 (24GB) |
 
 ## Configuration

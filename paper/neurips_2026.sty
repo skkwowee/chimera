@@ -1,0 +1,75 @@
+% NeurIPS 2026 Style File
+% Based on the standard NeurIPS formatting guidelines
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{neurips_2026}[2026/01/01 NeurIPS 2026 submission/camera-ready style file]
+
+% Page layout
+\usepackage[letterpaper]{geometry}
+\geometry{
+  textwidth=5.5in,
+  textheight=9in,
+  top=1in,
+  headheight=12pt,
+  headsep=25pt,
+  footskip=30pt
+}
+
+% Fonts
+\usepackage{times}
+\usepackage{mathptmx}
+
+% Bibliography
+\usepackage[numbers]{natbib}
+\setlength{\bibsep}{0pt}
+
+% Sections
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+\titleformat{\subsubsection}{\normalfont\normalsize\bfseries}{\thesubsubsection}{1em}{}
+
+% Title
+\renewcommand{\maketitle}{%
+  \begin{center}%
+    {\LARGE\bfseries\@title\par}%
+    \vskip 1.5em%
+    {\large
+      \lineskip .5em%
+      \begin{tabular}[t]{c}%
+        \@author
+      \end{tabular}\par}%
+    \vskip 1em%
+  \end{center}%
+  \par
+  \vskip 1.5em
+}
+
+% Abstract
+\renewenvironment{abstract}%
+{%
+  \small
+  \begin{center}%
+    \bfseries Abstract
+  \end{center}%
+  \quotation
+}%
+{\endquotation}
+
+% Spacing
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{1em}
+
+% Hyperref setup (if loaded)
+\AtBeginDocument{%
+  \@ifpackageloaded{hyperref}{%
+    \hypersetup{
+      colorlinks=true,
+      linkcolor=blue,
+      citecolor=blue,
+      urlcolor=blue
+    }%
+  }{}%
+}
+
+\endinput

@@ -13,7 +13,12 @@ from .data_utils import (
     create_grpo_dataset,
     GRPODataLoader,
 )
+from .data_utils import (
+    convert_labeled_to_sft_format,
+    create_sft_dataset,
+)
 from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
+from .sft_trainer import CS2SFTConfig, CS2SFTTrainer
 
 __all__ = [
     # Rewards
@@ -29,7 +34,11 @@ __all__ = [
     "convert_labeled_to_grpo_format",
     "create_grpo_dataset",
     "GRPODataLoader",
-    # Trainer
+    "convert_labeled_to_sft_format",
+    "create_sft_dataset",
+    # Trainers
     "CS2GRPOConfig",
     "CS2GRPOTrainer",
+    "CS2SFTConfig",
+    "CS2SFTTrainer",
 ]

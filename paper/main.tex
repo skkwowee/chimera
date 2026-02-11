@@ -1,0 +1,151 @@
+\documentclass{article}
+
+\usepackage{neurips_2026}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\title{Strategy-First Visual Grounding: Leveraging Structured Game Data for Efficient Vision-Language Model Fine-Tuning}
+
+\author{
+  David Zeng \\
+  % TODO: Add affiliation \\
+  % TODO: Add email \\
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Vision-language models (VLMs) struggle with domain-specific visual grounding tasks in competitive gaming environments, where rapid and accurate scene understanding is critical for strategic decision-making. We propose a novel training paradigm that performs supervised fine-tuning on structured game replay data before visual fine-tuning, enabling the model to learn strategic reasoning patterns independently from visual perception. We evaluate our approach on Counter-Strike 2 (CS2) screenshot analysis tasks, demonstrating improved performance over standard vision-only fine-tuning approaches.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+% TODO: Introduce the problem of building AI gaming copilots
+% TODO: Motivate why VLMs are a natural fit for this domain
+% TODO: Explain the challenge: VLMs trained on general data struggle with domain-specific visual grounding
+% TODO: Present the key hypothesis: strategy-first training (SFT on structured data) before visual grounding
+% TODO: Summarize contributions and results
+
+\section{Related Work}
+\label{sec:related}
+
+% TODO: Cover VLM architectures and training paradigms (Qwen-VL, LLaVA, etc.)
+% TODO: Discuss parameter-efficient fine-tuning methods (LoRA)
+% TODO: Review reinforcement learning from human feedback and GRPO
+% TODO: Survey game AI and esports analytics work
+% TODO: Position our work relative to existing approaches
+
+\section{Method}
+\label{sec:method}
+
+% TODO: Overview of the Chimera system architecture
+% TODO: Explain the two-stage training pipeline
+
+\subsection{Problem Formulation}
+\label{sec:problem}
+
+% TODO: Formalize the visual grounding task for CS2
+% TODO: Define input/output spaces (screenshots -> strategic advice)
+% TODO: Describe the structured replay data format
+
+\subsection{SFT on Structured Data}
+\label{sec:sft}
+
+% TODO: Explain Phase 1: training on text-only structured game state data
+% TODO: Describe the dataset composition and preprocessing
+% TODO: Detail the LoRA configuration for efficient fine-tuning
+% TODO: Discuss how this enables learning strategic reasoning without visual noise
+
+\subsection{GRPO Refinement}
+\label{sec:grpo}
+
+% TODO: Explain Phase 2: visual grounding with Group Relative Policy Optimization
+% TODO: Describe how GRPO enables learning from preferences without a separate reward model
+% TODO: Detail the visual fine-tuning process on screenshots
+
+\subsection{Reward Design}
+\label{sec:reward}
+
+% TODO: Explain the reward function design for strategic advice quality
+% TODO: Discuss how we incorporate domain knowledge (e.g., tactical correctness, utility prioritization)
+% TODO: Address the challenge of evaluating open-ended strategic suggestions
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering\vspace{2in}[Placeholder: System Architecture Diagram]}}
+\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on structured replay data to learn strategic reasoning. Phase 2 applies GRPO for visual grounding on screenshot-advice pairs.}
+\label{fig:architecture}
+\end{figure}
+
+\section{Experiments}
+\label{sec:experiments}
+
+% TODO: Describe the overall experimental setup and evaluation protocol
+
+\subsection{Setup}
+\label{sec:setup}
+
+% TODO: Detail the dataset (size, sources, split)
+% TODO: Describe the base model (Qwen2-VL)
+% TODO: Specify training hyperparameters for both phases
+% TODO: Define evaluation metrics
+
+\subsection{Baselines}
+\label{sec:baselines}
+
+% TODO: Describe baseline approaches:
+%   - Zero-shot VLM
+%   - Vision-only SFT (no structured data pretraining)
+%   - Full fine-tuning (no LoRA)
+% TODO: Explain comparison methodology
+
+\subsection{Results}
+\label{sec:results}
+
+% TODO: Present quantitative results comparing strategy-first vs. vision-only training
+% TODO: Show ablation studies (effect of structured data scale, LoRA rank, etc.)
+% TODO: Include qualitative examples of generated advice
+
+\begin{table}[t]
+\centering
+\caption{Performance comparison on CS2 screenshot analysis. Strategy-first training (ours) outperforms vision-only baselines across all metrics.}
+\label{tab:results}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Method} & \textbf{Tactical Acc.} & \textbf{Utility Score} & \textbf{Win Rate} \\
+\midrule
+Zero-shot VLM & -- & -- & -- \\
+Vision-only SFT & -- & -- & -- \\
+Strategy-first (Ours) & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Analysis}
+\label{sec:analysis}
+
+% TODO: Analyze why strategy-first training works
+% TODO: Investigate what the model learns in each phase
+% TODO: Discuss failure cases and limitations
+% TODO: Explore computational efficiency gains from the two-stage approach
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+% TODO: Summarize the key findings
+% TODO: Reiterate the benefits of strategy-first visual grounding
+% TODO: Discuss broader implications for domain-specific VLM adaptation
+% TODO: Suggest future directions (other games, multimodal reasoning tasks)
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
