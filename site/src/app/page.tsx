@@ -45,7 +45,7 @@ function Hero() {
         <span className="text-accent">You See</span>
       </h1>
       <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-muted sm:text-xl">
-        Can VLMs learn to play CS2?
+        VLMs as game agents without reinforcement learning from scratch
       </p>
       <p className="mt-4 text-sm text-muted">
         David Zeng
