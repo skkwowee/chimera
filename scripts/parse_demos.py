@@ -78,10 +78,15 @@ def parse_demo_parquet(dem_path: Path, output_dir: Path, dry_run: bool) -> dict:
     kills_df = dem.kills
     bomb_df = dem.bomb
 
+    damages_df = dem.damages
+    shots_df = dem.shots
+
     tick_count = ticks_df.shape[0] if ticks_df is not None else 0
     round_count = rounds_df.shape[0] if rounds_df is not None else 0
     kill_count = kills_df.shape[0] if kills_df is not None else 0
     bomb_count = bomb_df.shape[0] if bomb_df is not None else 0
+    dmg_count = damages_df.shape[0] if damages_df is not None else 0
+    shot_count = shots_df.shape[0] if shots_df is not None else 0
 
     stats = {
         "demo": dem_path.name,
@@ -89,11 +94,13 @@ def parse_demo_parquet(dem_path: Path, output_dir: Path, dry_run: bool) -> dict:
         "ticks": tick_count,
         "rounds": round_count,
         "kills": kill_count,
+        "damages": dmg_count,
+        "shots": shot_count,
         "bomb_events": bomb_count,
     }
 
     print(f"    {map_name}: {tick_count:,} ticks, {round_count} rounds, "
-          f"{kill_count} kills, {bomb_count} bomb events")
+          f"{kill_count} kills, {dmg_count} damages, {shot_count} shots, {bomb_count} bomb events")
 
     if dry_run:
         return stats
@@ -137,6 +144,48 @@ def parse_demo_parquet(dem_path: Path, output_dir: Path, dry_run: bool) -> dict:
         kills_data = json.loads(kills_slim.write_json())
         kills_path.write_text(json.dumps(kills_data, indent=2, ensure_ascii=False))
         print(f"    Wrote {kills_path.name} ({kill_count} kills)")
+
+    # --- Damages JSON ---
+    if damages_df is not None and not damages_df.is_empty():
+        dmg_cols = [
+            "tick", "round_num", "attacker_name", "attacker_side",
+            "attacker_X", "attacker_Y", "attacker_Z",
+            "victim_name", "victim_side",
+            "victim_X", "victim_Y", "victim_Z",
+            "weapon", "dmg_health", "dmg_health_real", "hitgroup",
+        ]
+        available = set(damages_df.columns)
+        dmg_select = [c for c in dmg_cols if c in available]
+        damages_slim = damages_df.select(dmg_select)
+        damages_path = output_dir / f"{stem}_damages.json"
+        damages_data = json.loads(damages_slim.write_json())
+        damages_path.write_text(json.dumps(damages_data, indent=2, ensure_ascii=False))
+        print(f"    Wrote {damages_path.name} ({dmg_count} damages)")
+
+    # --- Shots JSON ---
+    if shots_df is not None and not shots_df.is_empty():
+        # Join with ticks to get yaw at the moment of each shot
+        shot_cols = [c for c in shots_df.columns]
+        shots_with_yaw = shots_df
+        if ticks_df is not None and "yaw" in ticks_df.columns:
+            # Get yaw from ticks keyed on (tick, name/steamid)
+            yaw_key = "name" if "name" in ticks_df.columns else "steamid"
+            shot_key = "player_name" if "player_name" in shots_df.columns else "player_steamid"
+            yaw_lookup = ticks_df.select(["tick", yaw_key, "yaw"]).rename({yaw_key: shot_key})
+            shots_with_yaw = shots_df.join(yaw_lookup, on=["tick", shot_key], how="left")
+        # Select useful columns
+        out_cols = [
+            "tick", "round_num", "player_name", "player_side",
+            "player_X", "player_Y", "player_Z",
+            "weapon", "yaw",
+        ]
+        available = set(shots_with_yaw.columns)
+        shot_select = [c for c in out_cols if c in available]
+        shots_slim = shots_with_yaw.select(shot_select)
+        shots_path = output_dir / f"{stem}_shots.json"
+        shots_data = json.loads(shots_slim.write_json())
+        shots_path.write_text(json.dumps(shots_data, indent=2, ensure_ascii=False))
+        print(f"    Wrote {shots_path.name} ({shot_count} shots)")
 
     # --- Bomb JSON ---
     if bomb_df is not None and not bomb_df.is_empty():

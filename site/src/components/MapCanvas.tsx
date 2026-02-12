@@ -28,11 +28,30 @@ export interface KillLine {
   attackerSide: string;
 }
 
+export interface DamageLine {
+  attackerX: number;
+  attackerY: number;
+  victimX: number;
+  victimY: number;
+  attackerSide: string;
+  damage: number;
+  weapon: string;
+}
+
+export interface ShotTracer {
+  x: number;
+  y: number;
+  yaw: number;
+  side: string;
+}
+
 interface Props {
   mapName: string;
   players: PlayerFrame[];
   mapData: Record<string, MapInfo> | null;
   killLines?: KillLine[];
+  damageLines?: DamageLine[];
+  shotTracers?: ShotTracer[];
 }
 
 const CANVAS_SIZE = 1024;
@@ -40,11 +59,12 @@ const DOT_RADIUS = 8;
 const T_COLOR = "#f59e0b"; // amber-500
 const CT_COLOR = "#3b82f6"; // blue-500
 const DEAD_ALPHA = 0.3;
-const CONE_RADIUS = 60; // pixels
-const CONE_FOV = Math.PI / 2; // 90 degrees
-const CONE_ALPHA = 0.15;
+const CONE_WORLD_RADIUS = 1500; // world units — typical CS2 sightline
+const CONE_FOV = Math.PI / 2; // 90 deg horizontal FOV (4:3 @ 1280x960)
 
-export default function MapCanvas({ mapName, players, mapData, killLines }: Props) {
+const TRACER_LENGTH = 400; // world units for shot tracer line
+
+export default function MapCanvas({ mapName, players, mapData, killLines, damageLines, shotTracers }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -118,6 +138,50 @@ export default function MapCanvas({ mapName, players, mapData, killLines }: Prop
 
     if (!info) return;
 
+    // Draw shot tracers (missed shots — short directional line from shooter)
+    if (shotTracers && shotTracers.length > 0) {
+      const tracerPx = TRACER_LENGTH / info.scale;
+      for (const st of shotTracers) {
+        const [sx, sy] = worldToPixel(st.x, st.y);
+        const angle = yawToCanvasAngle(st.yaw);
+        const ex = sx + Math.cos(angle) * tracerPx;
+        const ey = sy + Math.sin(angle) * tracerPx;
+        ctx.save();
+        ctx.globalAlpha = 0.25;
+        ctx.strokeStyle = "#fbbf24"; // amber-400
+        ctx.lineWidth = 0.75;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Draw damage lines (gunfire hits — thinner and more subtle than kill lines)
+    if (damageLines && damageLines.length > 0) {
+      for (const dl of damageLines) {
+        const [ax, ay] = worldToPixel(dl.attackerX, dl.attackerY);
+        const [vx, vy] = worldToPixel(dl.victimX, dl.victimY);
+        const color = dl.attackerSide === "CT" ? CT_COLOR : T_COLOR;
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.6, 0.2 + dl.damage / 150);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(vx, vy);
+        ctx.stroke();
+        // Small dot at hit point
+        ctx.fillStyle = "#fff";
+        ctx.globalAlpha = Math.min(0.7, 0.25 + dl.damage / 120);
+        ctx.beginPath();
+        ctx.arc(vx, vy, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
     // Draw kill lines
     if (killLines && killLines.length > 0) {
       for (const kl of killLines) {
@@ -163,15 +227,31 @@ export default function MapCanvas({ mapName, players, mapData, killLines }: Prop
 
       ctx.globalAlpha = alpha;
 
-      // Vision cone (alive players with yaw data only)
+      // Vision cone with log falloff (alive players with yaw data only)
       if (p.alive && p.yaw != null) {
         const angle = yawToCanvasAngle(p.yaw);
+        const coneRadius = CONE_WORLD_RADIUS / info.scale; // world units → pixels
+
         ctx.save();
-        ctx.globalAlpha = CONE_ALPHA * levelAlpha;
-        ctx.fillStyle = color;
+        ctx.globalAlpha = levelAlpha;
+
+        // Radial gradient with log-curve falloff
+        const grad = ctx.createRadialGradient(px, py, 0, px, py, coneRadius);
+        const r = parseInt(color.slice(1, 3), 16);
+        const g = parseInt(color.slice(3, 5), 16);
+        const b = parseInt(color.slice(5, 7), 16);
+        // Log falloff: a = base * max(0, 1 - ln(1 + t*(e-1)))
+        const base = 0.12;
+        const e1 = Math.E - 1;
+        for (const t of [0, 0.03, 0.08, 0.15, 0.25, 0.4, 0.6, 0.8, 1.0]) {
+          const a = t === 0 ? base : base * Math.max(0, 1 - Math.log(1 + t * e1));
+          grad.addColorStop(t, `rgba(${r},${g},${b},${a.toFixed(3)})`);
+        }
+
+        ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.moveTo(px, py);
-        ctx.arc(px, py, CONE_RADIUS, angle - CONE_FOV / 2, angle + CONE_FOV / 2);
+        ctx.arc(px, py, coneRadius, angle - CONE_FOV / 2, angle + CONE_FOV / 2);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
@@ -216,7 +296,7 @@ export default function MapCanvas({ mapName, players, mapData, killLines }: Prop
 
       ctx.globalAlpha = 1;
     }
-  }, [players, mapName, info, imgLoaded, worldToPixel, hasLower, yawToCanvasAngle, killLines]);
+  }, [players, mapName, info, imgLoaded, worldToPixel, hasLower, yawToCanvasAngle, killLines, damageLines, shotTracers]);
 
   // Mouse hover for tooltip
   const handleMouseMove = useCallback(

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import DemoSelector from "@/components/DemoSelector";
-import MapCanvas, { type MapInfo, type PlayerFrame, type KillLine } from "@/components/MapCanvas";
+import MapCanvas, { type MapInfo, type PlayerFrame, type KillLine, type DamageLine, type ShotTracer } from "@/components/MapCanvas";
 import TimelineSlider, { type KillEvent } from "@/components/TimelineSlider";
 
 interface RoundData {
@@ -18,12 +18,42 @@ interface RoundData {
   frames: { tick: number; players: PlayerFrame[] }[];
 }
 
+interface DamageEvent {
+  tick: number;
+  round_num: number;
+  attacker_name: string;
+  attacker_side: string;
+  attacker_X: number;
+  attacker_Y: number;
+  victim_name: string;
+  victim_side: string;
+  victim_X: number;
+  victim_Y: number;
+  weapon: string;
+  dmg_health: number;
+  dmg_health_real: number;
+  hitgroup: string;
+}
+
+interface ShotEvent {
+  tick: number;
+  round_num: number;
+  player_name: string;
+  player_side: string;
+  player_X: number;
+  player_Y: number;
+  weapon: string;
+  yaw: number;
+}
+
 interface MetaData {
   stem: string;
   map_name: string;
   header: Record<string, string>;
   rounds: { round_num: number; winner: string; reason: string }[];
   kills: KillEvent[];
+  damages: DamageEvent[];
+  shots: ShotEvent[];
   bomb: unknown[];
 }
 
@@ -114,6 +144,47 @@ export default function ViewerPage() {
     })
     .filter((kl) => kl.attackerX !== 0 || kl.victimX !== 0);
 
+  // Damage lines: show hits within a brief tick window
+  const roundDamages: DamageEvent[] = (meta?.damages ?? []).filter(
+    (d) => d.round_num === selectedRound
+  );
+  const dmgLineWindow = 64; // ~1 second of ticks
+  const activeDamageLines: DamageLine[] = roundDamages
+    .filter((d) => {
+      if (!d.tick || !currentTick) return false;
+      const diff = currentTick - d.tick;
+      return diff >= 0 && diff < dmgLineWindow;
+    })
+    .map((d) => ({
+      attackerX: d.attacker_X ?? 0,
+      attackerY: d.attacker_Y ?? 0,
+      victimX: d.victim_X ?? 0,
+      victimY: d.victim_Y ?? 0,
+      attackerSide: d.attacker_side ?? "T",
+      damage: d.dmg_health_real ?? d.dmg_health ?? 0,
+      weapon: d.weapon ?? "",
+    }))
+    .filter((dl) => dl.attackerX !== 0 || dl.victimX !== 0);
+
+  // Shot tracers: show missed shots (shots that didn't result in damage at same tick)
+  const roundShots: ShotEvent[] = (meta?.shots ?? []).filter(
+    (s) => s.round_num === selectedRound
+  );
+  const shotWindow = 32; // ~0.5 seconds
+  const activeShotTracers: ShotTracer[] = roundShots
+    .filter((s) => {
+      if (!s.tick || !currentTick) return false;
+      const diff = currentTick - s.tick;
+      return diff >= 0 && diff < shotWindow;
+    })
+    .filter((s) => s.player_X !== 0 && s.yaw != null)
+    .map((s) => ({
+      x: s.player_X,
+      y: s.player_Y,
+      yaw: s.yaw,
+      side: s.player_side ?? "T",
+    }));
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Header */}
@@ -146,6 +217,8 @@ export default function ViewerPage() {
             players={players}
             mapData={mapData}
             killLines={activeKillLines}
+            damageLines={activeDamageLines}
+            shotTracers={activeShotTracers}
           />
         </div>
 
@@ -224,23 +297,36 @@ export default function ViewerPage() {
             </div>
           </div>
 
-          {/* Kill feed for this round */}
+          {/* Kill feed — only shows kills up to current tick */}
           <div className="rounded-lg border border-border bg-card p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
               Kills
             </h3>
             <div className="mt-2 max-h-48 space-y-0.5 overflow-y-auto">
-              {roundKills.length === 0 && (
-                <div className="text-xs text-muted">No kills</div>
+              {roundKills.filter((k) => k.tick <= currentTick).length === 0 && (
+                <div className="text-xs text-muted">No kills yet</div>
               )}
-              {roundKills.map((k, i) => (
-                <div key={i} className="text-xs">
-                  <span className="font-medium">{k.attacker_name}</span>
-                  <span className="text-muted">
-                    {" "}
-                    [{k.weapon}]{" "}
-                  </span>
-                  <span className="font-medium">{k.victim_name}</span>
+              {roundKills
+                .filter((k) => k.tick <= currentTick)
+                .map((k, i) => (
+                <div
+                  key={i}
+                  className={`text-xs ${k.weapon === "world" ? "text-muted/50 italic" : ""}`}
+                >
+                  {k.weapon === "world" ? (
+                    <span className="text-muted/50">
+                      {k.victim_name} died to world
+                    </span>
+                  ) : (
+                    <>
+                      <span className="font-medium">{k.attacker_name}</span>
+                      <span className="text-muted">
+                        {" "}
+                        [{k.weapon}]{" "}
+                      </span>
+                      <span className="font-medium">{k.victim_name}</span>
+                    </>
+                  )}
                 </div>
               ))}
             </div>

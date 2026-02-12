@@ -51,6 +51,8 @@ def export_demo(
     header_path = input_dir / f"{stem}_header.json"
     rounds_path = input_dir / f"{stem}_rounds.json"
     kills_path = input_dir / f"{stem}_kills.json"
+    damages_path = input_dir / f"{stem}_damages.json"
+    shots_path = input_dir / f"{stem}_shots.json"
     bomb_path = input_dir / f"{stem}_bomb.json"
 
     if not parquet_path.exists():
@@ -64,6 +66,8 @@ def export_demo(
     header = load_json(header_path) if header_path.exists() else {}
     rounds_data = load_json(rounds_path) if rounds_path.exists() else []
     kills_data = load_json(kills_path) if kills_path.exists() else []
+    damages_data = load_json(damages_path) if damages_path.exists() else []
+    shots_data = load_json(shots_path) if shots_path.exists() else []
     bomb_data = load_json(bomb_path) if bomb_path.exists() else []
 
     map_name = header.get("map_name", "unknown")
@@ -79,6 +83,8 @@ def export_demo(
         "header": header,
         "rounds": rounds_data,
         "kills": kills_data,
+        "damages": damages_data,
+        "shots": shots_data,
         "bomb": bomb_data,
     }
     (demo_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
