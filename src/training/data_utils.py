@@ -46,6 +46,7 @@ def convert_labeled_to_grpo_format(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
     prompt: str | None = None,
+    manifest: dict[str, dict] | None = None,
 ) -> list[GRPODataItem]:
     """
     Convert existing labeled data to GRPO training format.
@@ -54,6 +55,8 @@ def convert_labeled_to_grpo_format(
         screenshots_dir: Directory containing screenshot images
         labels_dir: Directory containing JSON label files
         prompt: Custom prompt to use (defaults to DEFAULT_PROMPT)
+        manifest: Optional manifest dict (from load_manifest/filter_manifest)
+                  to restrict which samples are included
 
     Returns:
         List of GRPODataItem instances ready for training
@@ -69,10 +72,16 @@ def convert_labeled_to_grpo_format(
         return items
 
     for label_path in sorted(labels_dir.glob("*.json")):
+        stem = label_path.stem
+
+        # Skip if manifest provided and this sample isn't in it
+        if manifest is not None and stem not in manifest:
+            continue
+
         # Find matching image
         image_path = None
         for fmt in supported_formats:
-            candidate = screenshots_dir / f"{label_path.stem}{fmt}"
+            candidate = screenshots_dir / f"{stem}{fmt}"
             if candidate.exists():
                 image_path = candidate
                 break
@@ -264,6 +273,7 @@ def convert_labeled_to_sft_format(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
     prompt: str | None = None,
+    manifest: dict[str, dict] | None = None,
 ) -> list[GRPODataItem]:
     """
     Convert existing labeled data to SFT training format.
@@ -275,11 +285,13 @@ def convert_labeled_to_sft_format(
         screenshots_dir: Directory containing screenshot images
         labels_dir: Directory containing JSON label files
         prompt: Custom prompt to use (defaults to DEFAULT_PROMPT)
+        manifest: Optional manifest dict (from load_manifest/filter_manifest)
+                  to restrict which samples are included
 
     Returns:
         List of GRPODataItem instances ready for SFT training
     """
-    return convert_labeled_to_grpo_format(screenshots_dir, labels_dir, prompt)
+    return convert_labeled_to_grpo_format(screenshots_dir, labels_dir, prompt, manifest)
 
 
 def create_sft_dataset(

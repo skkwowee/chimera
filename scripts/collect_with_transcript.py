@@ -24,6 +24,10 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+# Allow imports from project root
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data.manifest import append_to_manifest
+
 try:
     import imageio_ffmpeg
     FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -422,9 +426,10 @@ def main():
             vtt_path.unlink()
         sys.exit(0)
 
-    # Extract frames
+    # Extract frames and append to shared manifest
     print("\nExtracting frames...")
-    manifest = []
+    manifest_path = output_dir.parent / "manifest.jsonl"
+    extracted_count = 0
 
     for i, seg in enumerate(final):
         frame_name = f"{video_id}_{i:04d}.png"
@@ -433,34 +438,26 @@ def main():
         success = extract_frame_at_timestamp(video_path, seg.midpoint, frame_path)
 
         if success:
-            manifest.append({
-                "frame": frame_name,
+            entry = {
+                "id": Path(frame_name).stem,
+                "source": "youtube_transcript",
+                "video_id": video_id,
+                "video_title": video_title,
+                "video_url": args.url,
                 "timestamp": seg.midpoint,
-                "start": seg.start,
-                "end": seg.end,
                 "transcript": seg.text,
-                "relevance_score": seg.relevance_score,
-                "categories": seg.matched_categories
-            })
+                "transcript_start": seg.start,
+                "transcript_end": seg.end,
+                "relevance": seg.relevance_score,
+                "keywords": seg.matched_categories,
+            }
+            append_to_manifest(manifest_path, entry)
+            extracted_count += 1
             print(f"  [{i+1}/{len(final)}] {frame_name} @ {seg.midpoint:.1f}s")
         else:
             print(f"  [{i+1}/{len(final)}] FAILED: {frame_name}")
 
-    # Save manifest
-    manifest_path = output_dir / f"{video_id}_manifest.json"
-    with open(manifest_path, "w") as f:
-        json.dump({
-            "video_id": video_id,
-            "video_title": video_title,
-            "video_url": args.url,
-            "duration": duration,
-            "min_relevance": args.min_relevance,
-            "min_gap": args.min_gap,
-            "categories": categories,
-            "frames": manifest
-        }, f, indent=2)
-
-    print(f"\nExtracted {len(manifest)} frames")
+    print(f"\nExtracted {extracted_count} frames")
     print(f"Manifest: {manifest_path}")
 
     # Cleanup

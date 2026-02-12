@@ -18,14 +18,21 @@ class ScreenshotDataset:
         self,
         screenshots_dir: Path | str,
         labels_dir: Optional[Path | str] = None,
+        manifest_path: Optional[Path | str] = None,
     ):
         """
         Args:
             screenshots_dir: Directory containing screenshot images
             labels_dir: Optional directory containing JSON label files
+            manifest_path: Optional path to manifest.jsonl for metadata
         """
         self.screenshots_dir = Path(screenshots_dir)
         self.labels_dir = Path(labels_dir) if labels_dir else None
+        self._manifest = None
+
+        if manifest_path:
+            from .manifest import load_manifest
+            self._manifest = load_manifest(manifest_path)
 
         self.image_paths = self._find_images()
 
@@ -52,6 +59,7 @@ class ScreenshotDataset:
             "image_path": image_path,
             "image": Image.open(image_path).convert("RGB"),
             "label": None,
+            "metadata": None,
         }
 
         # Load label if available
@@ -61,7 +69,40 @@ class ScreenshotDataset:
                 with open(label_path) as f:
                     item["label"] = json.load(f)
 
+        # Attach manifest metadata if available
+        if self._manifest:
+            item["metadata"] = self._manifest.get(image_path.stem)
+
         return item
+
+    def filter(self, **kwargs) -> "ScreenshotDataset":
+        """Return a new dataset filtered by manifest fields.
+
+        Requires a manifest to be loaded. Uses the same filter semantics
+        as filter_manifest().
+
+        Args:
+            **kwargs: Field filters, e.g. source="youtube", tags=["awp"]
+
+        Returns:
+            New ScreenshotDataset with only matching images
+        """
+        if not self._manifest:
+            raise ValueError("Cannot filter without a manifest")
+
+        from .manifest import filter_manifest
+
+        filtered = filter_manifest(self._manifest, **kwargs)
+        filtered_ids = set(filtered.keys())
+
+        new_dataset = ScreenshotDataset.__new__(ScreenshotDataset)
+        new_dataset.screenshots_dir = self.screenshots_dir
+        new_dataset.labels_dir = self.labels_dir
+        new_dataset._manifest = filtered
+        new_dataset.image_paths = [
+            p for p in self.image_paths if p.stem in filtered_ids
+        ]
+        return new_dataset
 
     def __iter__(self) -> Iterator[dict]:
         for idx in range(len(self)):

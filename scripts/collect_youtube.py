@@ -17,6 +17,10 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Allow imports from project root
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data.manifest import append_to_manifest
+
 # Get ffmpeg from imageio_ffmpeg
 try:
     import imageio_ffmpeg
@@ -185,7 +189,22 @@ def main():
         # Extract frames
         frames = extract_frames(video_path, output_dir, args.interval, prefix)
 
+        # Append manifest entries for each frame
+        manifest_path = output_dir.parent / "manifest.jsonl"
+        video_url = args.url
+        for i, frame_path in enumerate(frames):
+            entry = {
+                "id": frame_path.stem,
+                "source": "youtube",
+                "video_id": video_id,
+                "video_title": video_title,
+                "video_url": video_url,
+                "timestamp": i * args.interval,
+            }
+            append_to_manifest(manifest_path, entry)
+
         print(f"\nExtracted {len(frames)} frames to {output_dir}/")
+        print(f"Manifest: {manifest_path}")
         if frames:
             print(f"First: {frames[0].name}")
             print(f"Last:  {frames[-1].name}")
