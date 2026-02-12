@@ -1,0 +1,50 @@
+# Chimera — Full Tick Parquet + React Viewer Progress
+
+## Current status
+F1-F8 COMPLETE. F9 (vision cones) and F10 (kill lines) are next.
+
+## What's done
+- F1: scripts/parse_demos.py — saves *_ticks.parquet + *_rounds.json + *_kills.json + *_bomb.json + *_header.json per demo. Legacy --snapshots flag preserved. All 4 demos parsed (6.15M ticks, 83 rounds, 563 kills).
+- F2: .gitignore — *.parquet, site/public/viewer-data/, site/public/maps/ added.
+- F3: scripts/export_viewer_data.py — reads parquet, downsamples every 16th tick, exports per-round JSON to site/public/viewer-data/. Copies radar PNGs + map-data.json to site/public/maps/.
+- F4-F6: React components (DemoSelector, MapCanvas, TimelineSlider) in site/src/components/.
+- F7: Viewer page at site/src/app/viewer/page.tsx. Added "Viewer" link to homepage nav.
+- F8: postcss.config.mjs — required for Tailwind v4 production builds.
+
+## What's next (F9-F10)
+- F9: Vision cones. awpy provides `yaw` and `pitch` per tick (confirmed working). Steps:
+  1. Add "yaw", "pitch" to PLAYER_PROPS in parse_demos.py
+  2. Add yaw/pitch to TICK_COLUMNS in parse_demos.py
+  3. Re-parse all 4 demos: python scripts/parse_demos.py data/demos/
+  4. Add yaw to per-player frame in export_viewer_data.py
+  5. Re-export: python scripts/export_viewer_data.py
+  6. Draw FOV cone (90 deg, ±45 from yaw) in MapCanvas.tsx
+- F10: Kill lines. Draw attacker→victim line at kill ticks on the canvas.
+
+## Key technical notes
+- awpy Demo attrs: bomb, kills, rounds, ticks (all polars DataFrames), header (dict)
+- Demo.__init__(path, tickrate=128), demo.parse(player_props=[...])
+- Ticks columns from awpy: inventory(list[str]), balance(i32), health(i32), has_defuser(bool), has_helmet(bool), place(str), armor(i32), current_equip_value(i32), side(str), X(f32), Y(f32), Z(f32), tick(i32), steamid(u64), name(str), round_num(u32)
+- View angles: yaw(f32) = horizontal look dir, pitch(f32) = vertical. Both in degrees.
+- Coordinate transform: pixel_x = (world_X - pos_x) / scale, pixel_y = (pos_y - world_Y) / scale
+- Map data from awpy: ~/.awpy/maps/ (run `awpy get maps` first). MAP_DATA dict has pos_x, pos_y, scale, lower_level_max_units per map.
+- Nuke lower_level_max_units = -495.0 (players below this Z are on lower level)
+- Site uses Next.js 16, React 19, Tailwind v4 (needs postcss.config.mjs!)
+- TypeScript check: cd site && ./node_modules/.bin/tsc --noEmit
+- Production: cd site && npm run build && npm run start -- -H 0.0.0.0
+- User accesses via SSH to WSL. Must bind to 0.0.0.0 for remote access.
+
+## Environment
+- Python venv: ~/chimera/.venv (polars 1.38.1, pyarrow 23.0.0, awpy installed)
+- Node: site/ dir, npm install done, node_modules present
+- 4 demo files: data/demos/furia-vs-vitality-m{1-4}-{mirage,inferno,nuke,overpass}.dem
+- Parquet output: data/processed/demos/*_ticks.parquet + metadata JSONs
+- Viewer data: site/public/viewer-data/ (83 round JSONs across 4 demos)
+- Radar maps: site/public/maps/ (5 PNGs + map-data.json)
+
+## How to start
+1. cd ~/chimera && source .venv/bin/activate
+2. Read feature-list.json — work on first feature where passes=false
+3. Run verify command for each feature after implementing
+4. Update feature-list.json passes=true when verified
+5. Update this file with progress

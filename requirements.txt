@@ -17,6 +17,7 @@ opencv-python>=4.9.0
 # Data handling
 pyyaml>=6.0
 pandas>=2.0.0
+awpy>=2.0.0
 
 # Utilities
 tqdm>=4.66.0

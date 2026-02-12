@@ -20,6 +20,9 @@ function Nav() {
           <a href="#demo" className="transition-colors hover:text-foreground">
             Demo
           </a>
+          <a href="/viewer" className="transition-colors hover:text-foreground">
+            Viewer
+          </a>
           <a
             href="https://github.com/skkwowee/chimera"
             target="_blank"
