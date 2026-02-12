@@ -1,7 +1,7 @@
 # Chimera — Full Tick Parquet + React Viewer Progress
 
 ## Current status
-ALL FEATURES COMPLETE (F1-F10).
+ALL FEATURES COMPLETE (F1-F11).
 
 ## What's done
 - F1: scripts/parse_demos.py — saves *_ticks.parquet + *_rounds.json + *_kills.json + *_bomb.json + *_header.json per demo. Legacy --snapshots flag preserved. All 4 demos parsed (6.15M ticks, 83 rounds, 563 kills).
@@ -14,6 +14,9 @@ ALL FEATURES COMPLETE (F1-F10).
 ## Session 2 completed
 - F9: Vision cones — yaw/pitch added to parquet, yaw exported per player frame, 90-degree FOV cone drawn on MapCanvas.
 - F10: Kill lines — dashed red attacker→victim lines shown for 128 ticks (~2 sec) after each kill. X marker at victim position.
+
+## Session 3 completed
+- F11: Wall-clipped vision cones — radar PNGs are dark RGBA (max lum 144, not 255). Wall mask uses alpha-channel edge detection (boundaries between opaque indoor geometry and transparent outdoor/void areas) plus luminance < 45 for dark interior wall outlines. 90 rays at 1px steps per player. Also refactored MapCanvas into drawOnCanvas() with split upper/lower canvas for Nuke.
 
 ## Key technical notes
 - awpy Demo attrs: bomb, kills, rounds, ticks (all polars DataFrames), header (dict)

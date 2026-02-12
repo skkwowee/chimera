@@ -80,6 +80,14 @@
       "files": ["site/src/components/MapCanvas.tsx", "site/src/app/viewer/page.tsx"],
       "verify": "Scrub to a kill tick and see a line drawn between attacker and victim positions",
       "passes": true
+    },
+    {
+      "id": "F11",
+      "name": "Wall-clipped vision cones",
+      "description": "Vision cones raycast against radar PNG wall mask instead of drawing through walls. Wall mask extracted from alpha channel (edge detection at opaque/transparent boundaries) + dark opaque pixels (interior wall outlines). 90 rays at 1px steps per player. Also split upper/lower canvas rendering for Nuke.",
+      "files": ["site/src/components/MapCanvas.tsx"],
+      "verify": "cd ~/chimera/site && npm run build && echo 'Open Mirage viewer — cones clip at mid doors, B apts entrance, A ramp walls'",
+      "passes": true
     }
   ]
 }
