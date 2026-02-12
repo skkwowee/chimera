@@ -1,192 +1,55 @@
 # Chimera
 
-CS2 gaming copilot that analyzes screenshots and provides real-time strategic advice using vision-language models.
+**Think Before You See: VLMs as Game Agents Without Reinforcement Learning from Scratch**
 
-## Why This Problem?
+Vision-language models struggle with domain-specific visual grounding in competitive gaming, where rapid scene understanding is critical for strategic decision-making. Chimera is a two-phase training paradigm that performs supervised fine-tuning on structured game replay data *before* visual fine-tuning, enabling the model to learn strategic reasoning independently from visual perception. We evaluate on Counter-Strike 2 screenshot analysis, demonstrating improved performance over vision-only fine-tuning.
 
-1. Domain gap in frontier VLMs (weapon identification failure)
-2. Strategic knowledge exists but isn't grounded to visuals
-3. Generalization across games is the real goal
-4. Games as a proxy for embodied AI
+## Motivation
 
-To test if the task is learnable: try overfitting on 10 examples, probe zero-shot visual grounding (e.g., "what weapon is this?"), and check if errors are systematic vs random.
+Frontier VLMs fail at basic CS2 visual grounding (e.g., weapon identification), yet the strategic knowledge they need already exists in structured replay data. The key insight: humans learn game strategy from replays and theory first, then apply that knowledge when watching live. We test whether VLMs benefit from the same curriculum.
 
-## Features
+**Hypothesis:** A VLM fine-tuned on structured game replay data (strategy) before visual fine-tuning (perception) needs fewer labeled screenshots to achieve the same accuracy — and produces better strategic reasoning — than one trained on screenshots alone.
 
-- **Screenshot Analysis**: Extract game state (health, armor, money, weapons, player counts, bomb status)
-- **Strategic Analysis**: Economy assessment, round importance, threats and opportunities
-- **Tactical Advice**: Primary actions, reasoning, fallback plans, team callouts
-- **VLM Inference**: Qwen3-VL-8B for local inference, Claude Opus 4.6 as SOTA baseline
-- **SFT Training**: Supervised fine-tuning to teach output format and CS2 domain knowledge
-- **GRPO Training**: Reinforcement learning refinement using multi-signal rewards
+## Method
 
-## Project Structure
+### Phase 1: Strategy Pre-training (SFT on Structured Data)
 
-```
-chimera/
-├── config/config.yaml       # Configuration settings
-├── data/
-│   ├── raw/                 # Raw screenshots
-│   ├── labeled/             # Claude-labeled ground truth
-│   ├── processed/           # Processed data
-│   └── predictions/         # VLM predictions
-├── src/
-│   ├── data/                # Data loading utilities
-│   ├── inference/           # VLM inference (Qwen3-VL-8B)
-│   ├── labeling/            # Claude API labeling
-│   ├── training/            # SFT + GRPO training modules
-│   └── prompts.py           # Shared prompts for all models
-├── scripts/
-│   ├── collect_youtube.py   # Download CS2 gameplay from YouTube
-│   ├── label_screenshots.py # Generate labels with Claude
-│   ├── run_inference.py     # Run VLM inference
-│   ├── evaluate.py          # Evaluate predictions
-│   ├── train_sft.py         # SFT fine-tuning (run first)
-│   ├── train_grpo.py        # GRPO fine-tuning (uses SFT output)
-│   └── generate_review.py   # Generate HTML viewer for review
-└── notebooks/               # Jupyter notebooks
-```
+Train on text-only structured game state data parsed from pro match demos. The model learns XvX win rates, economy decisions, and positional reasoning from real pro match outcomes — no vision layers involved. LoRA on the language backbone only.
 
-## Setup
+### Phase 2: Visual Grounding (GRPO on Screenshots)
 
-```bash
-# Clone the repository
-git clone https://github.com/skkwowee/chimera.git
-cd chimera
+Refine with Group Relative Policy Optimization on screenshot-advice pairs. Multi-signal reward function evaluates format correctness, tactical accuracy, and reasoning quality. The strategy knowledge from Phase 1 transfers to visual scene understanding.
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate
+## Experiment
 
-# Install dependencies
-pip install -r requirements.txt
+| Model | Description |
+|-------|-------------|
+| A | Qwen3-VL zero-shot (no training) |
+| B | Qwen3-VL + SFT on 100 screenshots (vision only) |
+| C | Qwen3-VL + demo pre-training + SFT on 100 screenshots (strategy + vision) |
+| D | Qwen3-VL + demo pre-training + SFT on 20 screenshots (data efficiency test) |
 
-# Copy environment template and add API keys
-cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY
-```
+If C > B, pre-training helps. If D ≈ B, pre-training reduces data requirements.
 
-## Usage
+### Pipeline
 
-### 1. Collect Screenshots from YouTube
+Each step is isolated: it reads from defined inputs, writes to defined outputs, and validates its own results. Intermediate artifacts are cleaned up.
 
-Download CS2 gameplay videos and extract frames at 1080p:
+- [x] **Step 1 — Data schema & manifest.** Unified data manifest (`src/data/manifest.py`, JSONL append-only) for tracking screenshot provenance, source, timestamps, and transcript context. Collection scripts write to `data/manifest.jsonl`, `ScreenshotDataset` loads/filters by manifest fields, training utils accept manifest filtering.
+- [ ] **Step 2 — Demo data pipeline.** Download pro demos, parse with awpy, extract key-moment snapshots (pre-round, first contact, post-plant) into structured JSON with full game state + round outcome.
+- [ ] **Step 3 — Strategy pre-training dataset.** Convert snapshots into text-based SFT format. Game state as input, analysis + outcome as target. Train/val split with balance checks.
+- [ ] **Step 4 — Phase 1: Strategy pre-training.** SFT on Qwen3-VL language backbone (no vision layers). LoRA. Model learns XvX win rates, economy decisions, positional reasoning from real pro match outcomes.
+- [ ] **Step 5 — Screenshot labeling + baseline.** Label ~100 screenshots with Claude. Run zero-shot eval (Model A) to establish the floor.
+- [ ] **Step 6 — Phase 2: Visual grounding.** Train Models B, C, D. Compare strategy-pretrained vs vision-only vs few-shot.
+- [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
 
-```bash
-# Basic usage (extracts frame every 5 seconds)
-python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID"
+### Resuming work
 
-# Custom interval (every 10 seconds)
-python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID" --interval 10
-```
-
-### 2. Label Screenshots with Claude
-
-Generate ground truth labels using Claude's vision capabilities:
-
-```bash
-# Label a single screenshot
-python scripts/label_screenshots.py --single path/to/screenshot.png
-
-# Label all screenshots in a directory
-python scripts/label_screenshots.py --input data/raw --output data/labeled
-```
-
-### 3. Run VLM Inference
-
-Analyze screenshots with Qwen3-VL-8B:
-
-```bash
-# Single image
-python scripts/run_inference.py --single screenshot.png
-
-# Batch inference
-python scripts/run_inference.py --input data/raw --output data/predictions
-
-# Only process images that have Claude labels (for comparison)
-python scripts/run_inference.py --labeled-only --input data/raw --output data/predictions
-```
-
-### 4. Evaluate Predictions
-
-Compare VLM predictions against ground truth:
-
-```bash
-python scripts/evaluate.py --predictions data/predictions --labels data/labeled
-```
-
-### 5. Review Labels
-
-Generate a standalone HTML viewer to inspect images and labels side-by-side:
-
-```bash
-# Generate with embedded images (works offline, ~2MB per 5 images)
-python scripts/generate_review.py --images data/samples --labels data/labeled --embed
-
-# Generate with file references (smaller, requires local server)
-python scripts/generate_review.py --images data/raw --labels data/labeled
-python -m http.server 8000  # Then open http://localhost:8000/review.html
-
-# Compare Claude labels vs Qwen predictions side-by-side
-python scripts/generate_review.py --compare --embed
-```
-
-Navigate with arrow keys, press F to flag items for review.
-
-### 6. Fine-tune with SFT
-
-Supervised fine-tuning teaches the model the output format (valid JSON with `game_state`/`analysis`/`advice`) and CS2 domain knowledge through supervised learning on Claude-labeled data. Run this before GRPO.
-
-```bash
-# Basic training (saves merged model for GRPO handoff)
-python scripts/train_sft.py --screenshots data/raw --labels data/labeled
-
-# Dry run (check VRAM usage)
-python scripts/train_sft.py --dry-run
-
-# Custom settings
-python scripts/train_sft.py \
-    --epochs 5 \
-    --lr 1e-5 \
-    --max-seq-length 4096
-
-# Resume from checkpoint
-python scripts/train_sft.py --resume outputs/sft/checkpoint-500
-```
-
-SFT outputs a merged 16-bit model to `outputs/sft/final_model/merged_16bit/`.
-
-### 7. Refine with GRPO
-
-GRPO (Group Relative Policy Optimization) refines quality using multi-signal rewards. Load the SFT merged output as the base model:
-
-```bash
-# Use SFT output as base (recommended pipeline)
-python scripts/train_grpo.py \
-    --model-name outputs/sft/final_model/merged_16bit \
-    --screenshots data/raw \
-    --labels data/labeled
-
-# Or train from scratch (without SFT)
-python scripts/train_grpo.py --screenshots data/raw --labels data/labeled
-
-# Dry run (check VRAM usage)
-python scripts/train_grpo.py --dry-run
-
-# Custom settings
-python scripts/train_grpo.py \
-    --epochs 5 \
-    --lr 1e-5 \
-    --reward-weights 0.05 0.5 0.1 0.2 0.15 \
-    --lora-r 32
-
-# Resume from checkpoint
-python scripts/train_grpo.py --resume outputs/grpo/checkpoint-500
-```
+Start a session by reading this pipeline checklist. Each step lists its inputs, outputs, and validation criteria. Validate the last completed step before starting the next.
 
 ## Output Format
 
-All analysis outputs follow this JSON structure:
+All models produce structured JSON with three sections:
 
 ```json
 {
@@ -223,6 +86,108 @@ All analysis outputs follow this JSON structure:
 }
 ```
 
+## Project Structure
+
+```
+chimera/
+├── paper/                      # NeurIPS 2026 submission
+│   ├── main.tex                # Main paper
+│   ├── references.bib          # Bibliography
+│   └── figures/                # Paper figures
+├── config/config.yaml          # Configuration settings
+├── data/
+│   ├── manifest.jsonl          # Data provenance tracking
+│   ├── raw/                    # Raw screenshots
+│   ├── labeled/                # Claude-labeled ground truth
+│   ├── processed/              # Processed data
+│   └── predictions/            # VLM predictions
+├── src/
+│   ├── data/                   # Data loading + manifest utilities
+│   ├── inference/              # VLM inference (Qwen3-VL-8B)
+│   ├── labeling/               # Claude API labeling
+│   ├── training/               # SFT + GRPO training modules
+│   └── prompts.py              # Shared prompts for all models
+├── scripts/
+│   ├── collect_youtube.py      # Download CS2 gameplay from YouTube
+│   ├── collect_with_transcript.py  # Collect with transcript context
+│   ├── label_screenshots.py    # Generate labels with Claude
+│   ├── run_inference.py        # Run VLM inference
+│   ├── evaluate.py             # Evaluate predictions
+│   ├── train_sft.py            # Phase 1: SFT fine-tuning
+│   ├── train_grpo.py           # Phase 2: GRPO fine-tuning
+│   ├── upload_to_hub.py        # Upload datasets/models to HF Hub
+│   └── generate_review.py      # Generate HTML viewer for review
+├── site/                       # Project website
+└── notebooks/                  # Jupyter notebooks
+```
+
+## Setup
+
+```bash
+git clone https://github.com/skkwowee/chimera.git
+cd chimera
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env
+# Edit .env with your ANTHROPIC_API_KEY
+```
+
+## Usage
+
+### Collect Data
+
+```bash
+# YouTube screenshots (extracts frame every 5 seconds)
+python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID"
+
+# With transcript context (writes to manifest)
+python scripts/collect_with_transcript.py "https://youtube.com/watch?v=VIDEO_ID"
+```
+
+### Label with Claude
+
+```bash
+python scripts/label_screenshots.py --single path/to/screenshot.png
+python scripts/label_screenshots.py --input data/raw --output data/labeled
+```
+
+### Run Inference
+
+```bash
+python scripts/run_inference.py --single screenshot.png
+python scripts/run_inference.py --input data/raw --output data/predictions
+python scripts/run_inference.py --labeled-only --input data/raw --output data/predictions
+```
+
+### Evaluate
+
+```bash
+python scripts/evaluate.py --predictions data/predictions --labels data/labeled
+```
+
+### Train
+
+```bash
+# Phase 1: SFT (run first)
+python scripts/train_sft.py --screenshots data/raw --labels data/labeled
+python scripts/train_sft.py --dry-run  # check VRAM
+
+# Phase 2: GRPO (uses SFT output)
+python scripts/train_grpo.py \
+    --model-name outputs/sft/final_model/merged_16bit \
+    --screenshots data/raw --labels data/labeled
+python scripts/train_grpo.py --dry-run  # check VRAM
+```
+
+### Review
+
+```bash
+python scripts/generate_review.py --images data/raw --labels data/labeled --embed
+python scripts/generate_review.py --compare --embed
+```
+
 ## Hardware Requirements
 
 | Task | VRAM | Recommended GPU |
@@ -232,51 +197,9 @@ All analysis outputs follow this JSON structure:
 | SFT Training | ~18 GB | RTX 4090 (24GB) |
 | GRPO Training | ~20 GB | RTX 4090 (24GB) |
 
-## Configuration
-
-Edit `config/config.yaml` to customize:
-
-- Model parameters
-- Training hyperparameters
-- Reward function weights
-- Data paths
-
-## Research: Strategy-First Visual Grounding
-
-**Hypothesis:** A VLM pretrained on structured game replay data (strategy) before visual fine-tuning (perception) needs fewer labeled screenshots to achieve the same accuracy — and produces better strategic reasoning — than one trained on screenshots alone.
-
-Like humans: learn the game from replays and theory, then apply that knowledge when watching live.
-
-### The experiment
-
-| Model | Description |
-|-------|-------------|
-| A | Qwen3-VL zero-shot (no training) |
-| B | Qwen3-VL + SFT on 100 screenshots (vision only) |
-| C | Qwen3-VL + demo pretraining + SFT on 100 screenshots (strategy + vision) |
-| D | Qwen3-VL + demo pretraining + SFT on 20 screenshots (data efficiency test) |
-
-If C > B, pretraining helps. If D ≈ B, pretraining reduces data requirements.
-
-### Pipeline
-
-Each step is isolated: it reads from defined inputs, writes to defined outputs, and validates its own results. Intermediate artifacts are cleaned up. See `experiment-state.json` for current progress and machine-readable state.
-
-- [x] **Step 1 — Data schema & manifest.** Unified data manifest (`src/data/manifest.py`, JSONL append-only) for tracking screenshot provenance, source, timestamps, and transcript context. Collection scripts write to `data/manifest.jsonl`, `ScreenshotDataset` loads/filters by manifest fields, training utils accept manifest filtering.
-- [ ] **Step 2 — Demo data pipeline.** Download pro demos, parse with awpy, extract key-moment snapshots (pre-round, first contact, post-plant) into structured JSON with full game state + round outcome.
-- [ ] **Step 3 — Strategy pretraining dataset.** Convert snapshots into text-based SFT format. Game state as input, analysis + outcome as target. Train/val split with balance checks.
-- [ ] **Step 4 — Phase 1: Strategy pretraining.** SFT on Qwen3-VL language backbone (no vision layers). LoRA. Model learns XvX win rates, economy decisions, positional reasoning from real pro match outcomes.
-- [ ] **Step 5 — Screenshot labeling + baseline.** Label ~100 screenshots with Claude. Run zero-shot eval (Model A) to establish the floor.
-- [ ] **Step 6 — Phase 2: Visual grounding.** Train Models B, C, D. Compare strategy-pretrained vs vision-only vs few-shot.
-- [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
-
-### Why this matters beyond games
+## Why This Matters Beyond Games
 
 The general principle — *learn reasoning from cheap structured data, then ground in vision with minimal labels* — applies to robotics (sim logs → real-world), medical imaging (patient records → radiology), and autonomous driving (telemetry → camera perception). Games are the controlled environment to prove the paradigm.
-
-### Resuming work
-
-Read `experiment-state.json` for current step, what's done, and what's next. Each step lists its inputs, outputs, and validation criteria. Start a session by checking the state file and running validation on the last completed step to confirm nothing is broken.
 
 ## License
 
