@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import DemoSelector from "@/components/DemoSelector";
-import MapCanvas, { type MapInfo, type PlayerFrame } from "@/components/MapCanvas";
+import MapCanvas, { type MapInfo, type PlayerFrame, type KillLine } from "@/components/MapCanvas";
 import TimelineSlider, { type KillEvent } from "@/components/TimelineSlider";
 
 interface RoundData {
@@ -89,6 +89,31 @@ export default function ViewerPage() {
     (r: { round_num: number }) => r.round_num === selectedRound
   );
 
+  // Kill lines: show kills whose tick is <= current frame tick (within a small window)
+  const currentTick = currentFrame?.tick ?? 0;
+  const killLineWindow = 128; // show kill line for ~2 seconds worth of ticks
+  const activeKillLines: KillLine[] = roundKills
+    .filter((k: KillEvent & { attacker_X?: number; victim_X?: number }) => {
+      if (!k.tick || !currentTick) return false;
+      const diff = currentTick - k.tick;
+      return diff >= 0 && diff < killLineWindow;
+    })
+    .map((k) => {
+      const ke = k as KillEvent & {
+        attacker_X?: number; attacker_Y?: number;
+        victim_X?: number; victim_Y?: number;
+        attacker_side?: string;
+      };
+      return {
+        attackerX: ke.attacker_X ?? 0,
+        attackerY: ke.attacker_Y ?? 0,
+        victimX: ke.victim_X ?? 0,
+        victimY: ke.victim_Y ?? 0,
+        attackerSide: ke.attacker_side ?? "T",
+      };
+    })
+    .filter((kl) => kl.attackerX !== 0 || kl.victimX !== 0);
+
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       {/* Header */}
@@ -120,6 +145,7 @@ export default function ViewerPage() {
             mapName={mapName}
             players={players}
             mapData={mapData}
+            killLines={activeKillLines}
           />
         </div>
 

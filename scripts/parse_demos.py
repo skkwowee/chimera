@@ -43,6 +43,7 @@ PLAYER_PROPS = [
     "inventory",
     "current_equip_value",
     "balance",
+    "yaw", "pitch",
 ]
 
 # Columns to keep in parquet (rename armor_value -> armor at write time)
@@ -51,6 +52,7 @@ TICK_COLUMNS = [
     "X", "Y", "Z", "health", "armor",
     "has_helmet", "has_defuser", "inventory",
     "current_equip_value", "balance",
+    "yaw", "pitch",
 ]
 
 

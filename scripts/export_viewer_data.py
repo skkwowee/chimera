@@ -123,12 +123,14 @@ def export_demo(
                 if side not in ("T", "CT"):
                     continue
                 hp = row.get("health", 0) or 0
+                yaw_raw = row.get("yaw", 0) or 0
                 players.append({
                     "name": row.get("name", ""),
                     "side": side,
                     "x": round(float(row.get("X", 0) or 0), 1),
                     "y": round(float(row.get("Y", 0) or 0), 1),
                     "z": round(float(row.get("Z", 0) or 0), 1),
+                    "yaw": round(float(yaw_raw), 1),
                     "hp": int(hp),
                     "alive": hp > 0,
                 })

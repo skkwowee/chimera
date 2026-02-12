@@ -8,6 +8,7 @@ export interface PlayerFrame {
   x: number;
   y: number;
   z: number;
+  yaw?: number;
   hp: number;
   alive: boolean;
 }
@@ -19,10 +20,19 @@ export interface MapInfo {
   lower_level_max_units: number;
 }
 
+export interface KillLine {
+  attackerX: number;
+  attackerY: number;
+  victimX: number;
+  victimY: number;
+  attackerSide: string;
+}
+
 interface Props {
   mapName: string;
   players: PlayerFrame[];
   mapData: Record<string, MapInfo> | null;
+  killLines?: KillLine[];
 }
 
 const CANVAS_SIZE = 1024;
@@ -30,8 +40,11 @@ const DOT_RADIUS = 8;
 const T_COLOR = "#f59e0b"; // amber-500
 const CT_COLOR = "#3b82f6"; // blue-500
 const DEAD_ALPHA = 0.3;
+const CONE_RADIUS = 60; // pixels
+const CONE_FOV = Math.PI / 2; // 90 degrees
+const CONE_ALPHA = 0.15;
 
-export default function MapCanvas({ mapName, players, mapData }: Props) {
+export default function MapCanvas({ mapName, players, mapData, killLines }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [imgLoaded, setImgLoaded] = useState(false);
@@ -71,6 +84,17 @@ export default function MapCanvas({ mapName, players, mapData }: Props) {
     [info]
   );
 
+  // Convert CS2 yaw (degrees) to canvas angle (radians).
+  // CS2 yaw: 0 = +X axis, 90 = +Y axis (counter-clockwise in world).
+  // Canvas: 0 = right, positive = clockwise.
+  // Since pixel_y is flipped (pos_y - world_Y), we negate the Y component.
+  const yawToCanvasAngle = useCallback((yawDeg: number): number => {
+    // CS2 yaw in radians (counter-clockwise from +X in world space)
+    const yawRad = (yawDeg * Math.PI) / 180;
+    // In canvas coords, Y is inverted, so angle becomes clockwise
+    return -yawRad;
+  }, []);
+
   // Draw
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -94,6 +118,35 @@ export default function MapCanvas({ mapName, players, mapData }: Props) {
 
     if (!info) return;
 
+    // Draw kill lines
+    if (killLines && killLines.length > 0) {
+      for (const kl of killLines) {
+        const [ax, ay] = worldToPixel(kl.attackerX, kl.attackerY);
+        const [vx, vy] = worldToPixel(kl.victimX, kl.victimY);
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(ax, ay);
+        ctx.lineTo(vx, vy);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // X at victim
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 2.5;
+        const s = 6;
+        ctx.beginPath();
+        ctx.moveTo(vx - s, vy - s);
+        ctx.lineTo(vx + s, vy + s);
+        ctx.moveTo(vx + s, vy - s);
+        ctx.lineTo(vx - s, vy + s);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // Draw players
     for (const p of players) {
       const [px, py] = worldToPixel(p.x, p.y);
@@ -109,6 +162,21 @@ export default function MapCanvas({ mapName, players, mapData }: Props) {
       const color = p.side === "CT" ? CT_COLOR : T_COLOR;
 
       ctx.globalAlpha = alpha;
+
+      // Vision cone (alive players with yaw data only)
+      if (p.alive && p.yaw != null) {
+        const angle = yawToCanvasAngle(p.yaw);
+        ctx.save();
+        ctx.globalAlpha = CONE_ALPHA * levelAlpha;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(px, py);
+        ctx.arc(px, py, CONE_RADIUS, angle - CONE_FOV / 2, angle + CONE_FOV / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        ctx.globalAlpha = alpha;
+      }
 
       // Player dot
       ctx.beginPath();
@@ -148,7 +216,7 @@ export default function MapCanvas({ mapName, players, mapData }: Props) {
 
       ctx.globalAlpha = 1;
     }
-  }, [players, mapName, info, imgLoaded, worldToPixel, hasLower]);
+  }, [players, mapName, info, imgLoaded, worldToPixel, hasLower, yawToCanvasAngle, killLines]);
 
   // Mouse hover for tooltip
   const handleMouseMove = useCallback(
@@ -219,6 +287,7 @@ export default function MapCanvas({ mapName, players, mapData }: Props) {
           </div>
           <div className="text-muted">
             {tooltip.player.alive ? "Alive" : "Dead"}
+            {tooltip.player.yaw != null && ` | Yaw: ${tooltip.player.yaw.toFixed(0)}\u00B0`}
           </div>
         </div>
       )}

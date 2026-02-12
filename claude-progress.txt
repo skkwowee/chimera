@@ -1,7 +1,7 @@
 # Chimera — Full Tick Parquet + React Viewer Progress
 
 ## Current status
-F1-F8 COMPLETE. F9 (vision cones) and F10 (kill lines) are next.
+ALL FEATURES COMPLETE (F1-F10).
 
 ## What's done
 - F1: scripts/parse_demos.py — saves *_ticks.parquet + *_rounds.json + *_kills.json + *_bomb.json + *_header.json per demo. Legacy --snapshots flag preserved. All 4 demos parsed (6.15M ticks, 83 rounds, 563 kills).
@@ -11,15 +11,9 @@ F1-F8 COMPLETE. F9 (vision cones) and F10 (kill lines) are next.
 - F7: Viewer page at site/src/app/viewer/page.tsx. Added "Viewer" link to homepage nav.
 - F8: postcss.config.mjs — required for Tailwind v4 production builds.
 
-## What's next (F9-F10)
-- F9: Vision cones. awpy provides `yaw` and `pitch` per tick (confirmed working). Steps:
-  1. Add "yaw", "pitch" to PLAYER_PROPS in parse_demos.py
-  2. Add yaw/pitch to TICK_COLUMNS in parse_demos.py
-  3. Re-parse all 4 demos: python scripts/parse_demos.py data/demos/
-  4. Add yaw to per-player frame in export_viewer_data.py
-  5. Re-export: python scripts/export_viewer_data.py
-  6. Draw FOV cone (90 deg, ±45 from yaw) in MapCanvas.tsx
-- F10: Kill lines. Draw attacker→victim line at kill ticks on the canvas.
+## Session 2 completed
+- F9: Vision cones — yaw/pitch added to parquet, yaw exported per player frame, 90-degree FOV cone drawn on MapCanvas.
+- F10: Kill lines — dashed red attacker→victim lines shown for 128 ticks (~2 sec) after each kill. X marker at victim position.
 
 ## Key technical notes
 - awpy Demo attrs: bomb, kills, rounds, ticks (all polars DataFrames), header (dict)

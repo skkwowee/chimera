@@ -71,7 +71,7 @@
       "description": "Add yaw/pitch to parse_demos.py PLAYER_PROPS and parquet output. Add yaw to export_viewer_data.py per-player frame data. Draw semi-transparent FOV cone (90 deg) from each alive player in MapCanvas. Requires: re-parse all 4 demos, re-export viewer data, update MapCanvas rendering.",
       "files": ["scripts/parse_demos.py", "scripts/export_viewer_data.py", "site/src/components/MapCanvas.tsx"],
       "verify": "Check viewer shows triangular vision cones extending from player dots in correct yaw direction",
-      "passes": false
+      "passes": true
     },
     {
       "id": "F10",
@@ -79,7 +79,7 @@
       "description": "Draw attacker→victim lines at the tick a kill occurs. Use kill data from meta.json. Highlight on timeline and flash briefly on canvas when scrubbing past a kill tick.",
       "files": ["site/src/components/MapCanvas.tsx", "site/src/app/viewer/page.tsx"],
       "verify": "Scrub to a kill tick and see a line drawn between attacker and victim positions",
-      "passes": false
+      "passes": true
     }
   ]
 }
