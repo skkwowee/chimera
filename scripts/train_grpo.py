@@ -178,15 +178,15 @@ def parse_args():
         help="Sampling temperature for generation",
     )
 
-    # Reward weights: [format_gate, hard_accuracy, soft_accuracy, consistency, reasoning]
+    # Reward weights: [format, hard_acc, soft_acc, decision, outcome, consistency, reasoning]
     reward_group = parser.add_argument_group("Reward weights")
     reward_group.add_argument(
         "--reward-weights",
         type=float,
-        nargs=5,
-        default=[0.05, 0.40, 0.15, 0.25, 0.15],
-        metavar=("FORMAT", "HARD_ACC", "SOFT_ACC", "CONSISTENCY", "REASONING"),
-        help="Weights for the 5 reward signals",
+        nargs=7,
+        default=[0.05, 0.15, 0.05, 0.15, 0.30, 0.20, 0.10],
+        metavar=("FORMAT", "HARD_ACC", "SOFT_ACC", "DECISION", "OUTCOME", "CONSISTENCY", "REASONING"),
+        help="Weights for the 7 reward signals",
     )
 
     # Checkpointing
@@ -361,6 +361,7 @@ def main():
     print(f"Model saved to: {output_path}")
     print(f"Final mean weighted total: {results.get('mean_weighted_total', 'N/A'):.4f}")
     for signal in ("format_gate", "hard_field_accuracy", "soft_field_accuracy",
+                    "decision_alignment", "outcome",
                     "consistency", "reasoning_quality"):
         val = results.get(f"mean_{signal}", "N/A")
         label = signal.replace("_", " ").title()

@@ -1,0 +1,52 @@
+# Chimera — Session Progress
+
+## Project
+CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen3-VL-8B.
+- SFT: teach model to read the HUD — synchronize perceived game state with demo ground truth
+- GRPO: teach model strategic reasoning — decisions scored against pro play + round outcomes
+
+## Pipeline Status
+- [x] F01 — Data schema & manifest
+- [x] F02 — Demo data pipeline & viewer (4 demos, 83 rounds, 563 kills)
+- [ ] F03 — Screenshot-demo synchronization (NEXT)
+- [ ] F04 — SFT training — visual grounding
+- [ ] F05 — GRPO dataset from demos
+- [ ] F06 — GRPO training — strategic reasoning
+- [ ] F07 — Evaluation & analysis
+
+## What changed this session (2026-02-15)
+- Rewrote reward functions: added decision_alignment_reward and outcome_reward
+  for GRPO phase. Now 7 reward signals (was 5). Vision rewards kept to prevent
+  SFT regression during RL. Outcome reward gets highest weight (0.30).
+- Updated grpo_trainer.py, train_grpo.py, config.yaml, __init__.py to match.
+- Clarified pipeline: old "strategy pre-training on text" phase is cut.
+  SFT is on screenshots (vision), GRPO is on demo data (reasoning).
+- Ground truth for SFT comes from demo data synced to video frames, NOT from
+  Claude labeling. Demo data = engine truth (exact health, armor, weapons, etc.).
+
+## Key design decisions
+- SFT ground truth: demo-to-VOD synchronization, not model labeling
+- GRPO reward asymmetry: deviating from a winning pro play is NOT penalized
+  hard (model's alternative might work), but endorsing a losing play is
+- Reward weights (provisional): format=0.05, hard_acc=0.15, soft_acc=0.05,
+  decision=0.15, outcome=0.30, consistency=0.20, reasoning=0.10
+- Additional RL on video/screenshot data: TBD, user is contemplating
+
+## Next step: F03 — Screenshot-demo synchronization
+Challenge: match VOD timestamps to demo ticks. Need to figure out time offset
+between broadcast and demo file. Once synced, extract frames at intervals and
+pair with exact game state from Parquet data.
+
+## Data available
+- 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
+- Parquet files in data/processed/demos/ with full-tick player state
+- Viewer data in site/public/viewer-data/
+
+## Files modified this session
+- src/training/rewards.py — added ACTION_TAXONOMY, decision_alignment_reward, outcome_reward
+- src/training/__init__.py — updated exports
+- src/training/grpo_trainer.py — 7 signals, updated docstring + evaluate()
+- scripts/train_grpo.py — 7 reward weights in CLI
+- config/config.yaml — updated reward_weights
+- feature-list.json — created (new harness)
+- claude-progress.txt — created (this file)

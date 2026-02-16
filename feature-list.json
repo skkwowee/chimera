@@ -1,0 +1,44 @@
+[
+  {
+    "id": "F01",
+    "name": "Data schema & manifest",
+    "description": "Unified data manifest (src/data/manifest.py, JSONL) for tracking screenshot provenance, source, timestamps. Collection scripts write to data/manifest.jsonl.",
+    "passes": true
+  },
+  {
+    "id": "F02",
+    "name": "Demo data pipeline & viewer",
+    "description": "Parse pro demos with awpy into full-tick Parquet + metadata JSONs. Interactive demo viewer at /viewer with radar, vision cones, kill lines, timeline scrubbing. 4 demos parsed (Furia vs Vitality: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).",
+    "passes": true
+  },
+  {
+    "id": "F03",
+    "name": "Screenshot-demo synchronization",
+    "description": "Sync VOD frames (YouTube/Twitch) to demo ticks to produce (screenshot, exact_game_state) pairs for SFT. Figure out time offset between broadcast and demo. Extract frames at intervals, look up corresponding tick, pair with ground truth game state from Parquet data. Output: dataset of (image, game_state_json) ready for SFT.",
+    "passes": false
+  },
+  {
+    "id": "F04",
+    "name": "SFT training — visual grounding",
+    "description": "SFT on Qwen3-VL to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA on vision + language layers. Validates that model can accurately extract health, armor, weapons, player counts, etc.",
+    "passes": false
+  },
+  {
+    "id": "F05",
+    "name": "GRPO dataset from demos",
+    "description": "Convert demo snapshots into decision training format. Each sample: game state snapshot → pro_action (categorized via ACTION_TAXONOMY) + round_won outcome. Ground truth includes what the pro actually did in the next N ticks and whether the round was won.",
+    "passes": false
+  },
+  {
+    "id": "F06",
+    "name": "GRPO training — strategic reasoning",
+    "description": "GRPO on demo-derived decision data. Model proposes advice, reward signal from 7 functions: format gate, hard/soft field accuracy (prevent SFT regression), decision alignment, outcome reward, consistency, reasoning quality. Weights emphasize outcome (0.30) as primary signal.",
+    "passes": false
+  },
+  {
+    "id": "F07",
+    "name": "Evaluation & analysis",
+    "description": "Per-field accuracy, decision quality, consistency scores across models. Compare SFT-only vs SFT+GRPO. Write up findings.",
+    "passes": false
+  }
+]

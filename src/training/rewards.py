@@ -1,16 +1,30 @@
 """
-CS2-specific reward functions for GRPO training.
+CS2 reward functions for GRPO training.
 
-Designed as separate reward functions for TRL's GRPOTrainer (passed as a list
-to reward_funcs). Each function provides an independent signal so GRPO can
-compute per-signal advantages instead of muddying them into one ranking.
+Two-stage training: SFT teaches visual grounding (reading the HUD), then GRPO
+teaches strategic reasoning using pro demo outcomes as the gradient signal.
 
-Reward functions:
-1. Format gate       — binary 0/1, invalid JSON gets nothing
-2. Hard field accuracy — verifiable HUD-readable fields (health, armor, weapons)
-3. Soft field accuracy — inferential fields (money, bomb status, map)
-4. Consistency        — does reasoning follow from perceived game state
-5. Reasoning quality  — structural quality of analysis and advice
+Rewards split into two groups:
+
+  Vision (prevent SFT regression during RL):
+    1. Format gate        — binary 0/1, invalid JSON gets nothing
+    2. Hard field accuracy — verifiable HUD-readable fields (health, armor, weapons)
+    3. Soft field accuracy — inferential fields (money, bomb status, map)
+
+  Reasoning (the RL training signal):
+    4. Decision alignment — model's advice vs what the pro actually did
+    5. Outcome reward     — alignment modulated by round result
+    6. Consistency        — does reasoning follow from perceived game state
+    7. Reasoning quality  — structural quality of analysis and advice
+
+Decision reward ground truth schema (from demo data):
+    pro_action: {
+        "categories": list[str]   — action types from ACTION_TAXONOMY
+        "description": str        — what the pro actually did
+    }
+    round_won: bool               — did the pro's team win this round?
+
+Additional criteria TBD — extend REWARD_FUNCTIONS and adjust weights.
 """
 
 import json
@@ -174,6 +188,78 @@ def _score_list_field(predicted: dict, gt_state: dict, field: str) -> float | No
     intersection = len(gt_set & pred_set)
     union = len(gt_set | pred_set)
     return intersection / union
+
+
+# ---------------------------------------------------------------------------
+# Action taxonomy — categorizes both model output and pro actions
+# ---------------------------------------------------------------------------
+
+ACTION_TAXONOMY = {
+    "aggressive": [
+        "push", "entry", "rush", "execute", "take", "aggress", "peek",
+        "wide peek", "dry peek", "swing", "w key",
+    ],
+    "hold": [
+        "hold", "anchor", "wait", "passive", "camp", "stay", "setup",
+        "play time", "hold angle", "default",
+    ],
+    "rotate": [
+        "rotate", "flank", "lurk", "reposition", "move to", "shift",
+        "wrap", "backstab",
+    ],
+    "fall_back": [
+        "fall back", "retreat", "save", "disengage", "safe", "avoid",
+        "give up", "play retake", "pull back",
+    ],
+    "utility": [
+        "smoke", "flash", "molly", "molotov", "incendiary", "nade",
+        "grenade", "he grenade", "utility", "throw",
+    ],
+    "engage": [
+        "fight", "duel", "trade", "engage", "shoot", "fire", "contact",
+        "take fight", "challenge",
+    ],
+}
+
+
+def _categorize_action(text: str) -> set[str]:
+    """Map free-text action description to taxonomy categories."""
+    if not text:
+        return set()
+    text_lower = text.lower()
+    categories = set()
+    for category, keywords in ACTION_TAXONOMY.items():
+        if any(kw in text_lower for kw in keywords):
+            categories.add(category)
+    return categories
+
+
+def _action_similarity(model_cats: set[str], pro_cats: set[str]) -> float:
+    """Jaccard similarity between two sets of action categories."""
+    if not model_cats and not pro_cats:
+        return 1.0
+    if not model_cats or not pro_cats:
+        return 0.0
+    return len(model_cats & pro_cats) / len(model_cats | pro_cats)
+
+
+def _get_model_action_text(parsed: dict) -> str:
+    """Extract combined action text from parsed model output."""
+    advice = parsed.get("advice", {})
+    if not isinstance(advice, dict):
+        return ""
+    return f"{advice.get('primary_action', '')} {advice.get('fallback', '')}"
+
+
+def _get_pro_categories(ground_truth: dict) -> set[str] | None:
+    """Extract pro action categories from ground truth."""
+    pro_action = ground_truth.get("pro_action", {})
+    if not isinstance(pro_action, dict):
+        return None
+    cats = set(pro_action.get("categories", []))
+    if not cats:
+        cats = _categorize_action(pro_action.get("description", ""))
+    return cats if cats else None
 
 
 # ---------------------------------------------------------------------------
@@ -523,15 +609,103 @@ def reasoning_quality_reward(response: str, **kwargs) -> float:
 
 
 # ---------------------------------------------------------------------------
+# 6. Decision alignment — model advice vs pro action
+# ---------------------------------------------------------------------------
+
+def decision_alignment_reward(
+    response: str,
+    ground_truth: dict[str, Any] | None = None,
+    **kwargs,
+) -> float:
+    """
+    How well the model's advised action aligns with what the pro actually did.
+
+    Compares action categories from the model's advice.primary_action against
+    the pro's categorized action from demo data. Pure alignment — no outcome
+    weighting (that's outcome_reward's job).
+    """
+    if ground_truth is None:
+        return 0.0
+
+    parsed = _extract_json_from_response(response)
+    if parsed is None:
+        return 0.0
+
+    model_text = _get_model_action_text(parsed)
+    model_cats = _categorize_action(model_text)
+
+    pro_cats = _get_pro_categories(ground_truth)
+    if pro_cats is None:
+        return 0.0
+
+    return _action_similarity(model_cats, pro_cats)
+
+
+# ---------------------------------------------------------------------------
+# 7. Outcome-weighted reward
+# ---------------------------------------------------------------------------
+
+def outcome_reward(
+    response: str,
+    ground_truth: dict[str, Any] | None = None,
+    **kwargs,
+) -> float:
+    """
+    Decision alignment modulated by round outcome.
+
+    Signal matrix:
+        Model agrees + pro wins  → 1.0  (learn from winning play)
+        Model agrees + pro loses → 0.2  (endorsed a losing play)
+        Model deviates + pro wins → 0.4 (alternative might also work)
+        Model deviates + pro loses → 0.6 (model may have seen something)
+
+    The asymmetry is deliberate: deviating from a winning play isn't punished
+    hard (the model's plan might work too), but endorsing a losing play is
+    mildly penalized.
+    """
+    if ground_truth is None:
+        return 0.0
+
+    parsed = _extract_json_from_response(response)
+    if parsed is None:
+        return 0.0
+
+    model_text = _get_model_action_text(parsed)
+    model_cats = _categorize_action(model_text)
+
+    pro_cats = _get_pro_categories(ground_truth)
+    if pro_cats is None:
+        return 0.0
+
+    alignment = _action_similarity(model_cats, pro_cats)
+    round_won = ground_truth.get("round_won")
+
+    if round_won is None:
+        return alignment
+
+    if round_won:
+        # Pro won. Agreeing is good. Deviating isn't penalized.
+        return 0.4 + 0.6 * alignment
+    else:
+        # Pro lost. Agreeing is mildly bad. Deviating might be good.
+        return 0.6 - 0.4 * alignment
+
+
+# ---------------------------------------------------------------------------
 # All reward functions in order (for trainer consumption)
 # ---------------------------------------------------------------------------
 
 REWARD_FUNCTIONS = [
+    # Vision (prevent SFT regression)
     format_gate_reward,
     hard_field_accuracy_reward,
     soft_field_accuracy_reward,
+    # Reasoning (RL training signal)
+    decision_alignment_reward,
+    outcome_reward,
     consistency_reward,
     reasoning_quality_reward,
 ]
 
-DEFAULT_REWARD_WEIGHTS = [0.05, 0.40, 0.15, 0.25, 0.15]
+# Weights: format, hard_acc, soft_acc, decision, outcome, consistency, reasoning
+DEFAULT_REWARD_WEIGHTS = [0.05, 0.15, 0.05, 0.15, 0.30, 0.20, 0.10]

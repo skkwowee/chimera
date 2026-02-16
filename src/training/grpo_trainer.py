@@ -25,6 +25,8 @@ from .rewards import (
     format_gate_reward,
     hard_field_accuracy_reward,
     soft_field_accuracy_reward,
+    decision_alignment_reward,
+    outcome_reward,
     consistency_reward,
     reasoning_quality_reward,
 )
@@ -68,7 +70,7 @@ class CS2GRPOConfig:
     temperature: float = 0.7
     importance_sampling_level: str = "sequence"  # GSPO variant for stability
 
-    # Reward weights: [format_gate, hard_accuracy, soft_accuracy, consistency, reasoning]
+    # Reward weights: [format, hard_acc, soft_acc, decision, outcome, consistency, reasoning]
     reward_weights: list[float] = field(
         default_factory=lambda: list(DEFAULT_REWARD_WEIGHTS)
     )
@@ -91,13 +93,17 @@ class CS2GRPOTrainer:
     GRPO trainer for CS2 screenshot analysis using Unsloth.
 
     Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
-    Passes 5 separate reward functions to TRL so GRPO computes independent
+    Passes 7 separate reward functions to TRL so GRPO computes independent
     advantages per signal:
-      1. Format gate (binary)
-      2. Hard field accuracy (HUD-readable, verifiable)
-      3. Soft field accuracy (inferential)
-      4. Consistency (perception → reasoning coherence)
-      5. Reasoning quality (structural)
+      Vision (prevent SFT regression):
+        1. Format gate (binary)
+        2. Hard field accuracy (HUD-readable)
+        3. Soft field accuracy (inferential)
+      Reasoning (RL training signal):
+        4. Decision alignment (model vs pro action)
+        5. Outcome reward (alignment × round result)
+        6. Consistency (perception → reasoning coherence)
+        7. Reasoning quality (structural)
     """
 
     def __init__(self, config: CS2GRPOConfig | None = None):
@@ -401,6 +407,8 @@ class CS2GRPOTrainer:
             "format_gate",
             "hard_field_accuracy",
             "soft_field_accuracy",
+            "decision_alignment",
+            "outcome",
             "consistency",
             "reasoning_quality",
         ]
@@ -448,6 +456,8 @@ class CS2GRPOTrainer:
                 format_gate_reward(response),
                 hard_field_accuracy_reward(response, ground_truth=ground_truth),
                 soft_field_accuracy_reward(response, ground_truth=ground_truth),
+                decision_alignment_reward(response, ground_truth=ground_truth),
+                outcome_reward(response, ground_truth=ground_truth),
                 consistency_reward(response),
                 reasoning_quality_reward(response),
             ]
