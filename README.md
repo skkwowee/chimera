@@ -1,35 +1,35 @@
 # Chimera
 
-**Think Before You See: VLMs as Game Agents Without Reinforcement Learning from Scratch**
+**See, Then Think: Two-Phase VLM Training for Game Understanding**
 
-Vision-language models struggle with domain-specific visual grounding in competitive gaming, where rapid scene understanding is critical for strategic decision-making. Chimera is a two-phase training paradigm that performs supervised fine-tuning on structured game replay data *before* visual fine-tuning, enabling the model to learn strategic reasoning independently from visual perception. We evaluate on Counter-Strike 2 screenshot analysis, demonstrating improved performance over vision-only fine-tuning.
+Vision-language models struggle with domain-specific visual grounding in competitive gaming, where rapid scene understanding is critical for strategic decision-making. Chimera is a two-phase training paradigm: first, supervised fine-tuning on screenshot–game state pairs teaches the model to read the HUD accurately (visual grounding); then, Group Relative Policy Optimization with demo-derived rewards teaches strategic reasoning scored against pro play and round outcomes. We evaluate on Counter-Strike 2, demonstrating improved performance over single-phase approaches.
 
 ## Motivation
 
-Frontier VLMs fail at basic CS2 visual grounding (e.g., weapon identification), yet the strategic knowledge they need already exists in structured replay data. The key insight: humans learn game strategy from replays and theory first, then apply that knowledge when watching live. We test whether VLMs benefit from the same curriculum.
+Frontier VLMs fail at basic CS2 visual grounding (e.g., weapon identification, player counts), and they lack the strategic knowledge to advise on play. Both problems have cheap data sources: demo files provide engine-accurate game state for grounding, and pro match outcomes provide a reward signal for reasoning. The key insight: perception and reasoning are separable training objectives — teach them in sequence rather than asking RL to learn both at once.
 
-**Hypothesis:** A VLM fine-tuned on structured game replay data (strategy) before visual fine-tuning (perception) needs fewer labeled screenshots to achieve the same accuracy — and produces better strategic reasoning — than one trained on screenshots alone.
+**Hypothesis:** A VLM that first learns accurate visual grounding via SFT on screenshot–demo pairs, then learns strategic reasoning via GRPO scored against pro decisions and round outcomes, produces better tactical advice than either phase alone — and the two-phase approach is more data-efficient than end-to-end training.
 
 ## Method
 
-### Phase 1: Strategy Pre-training (SFT on Structured Data)
+### Phase 1: Visual Grounding (SFT on Screenshots)
 
-Train on text-only structured game state data parsed from pro match demos. The model learns XvX win rates, economy decisions, and positional reasoning from real pro match outcomes — no vision layers involved. LoRA on the language backbone only.
+Supervised fine-tuning on screenshot–game state pairs. Ground truth comes from demo data synchronized to VOD frames (engine-accurate health, armor, weapons, player counts, etc. — not model-labeled). The model learns to read the HUD correctly. LoRA on both vision and language layers.
 
-### Phase 2: Visual Grounding (GRPO on Screenshots)
+### Phase 2: Strategic Reasoning (GRPO on Demo-Derived Rewards)
 
-Refine with Group Relative Policy Optimization on screenshot-advice pairs. Multi-signal reward function evaluates format correctness, tactical accuracy, and reasoning quality. The strategy knowledge from Phase 1 transfers to visual scene understanding.
+Refine with Group Relative Policy Optimization using 7 reward signals. Vision rewards (format, hard/soft field accuracy) prevent SFT regression. Reasoning rewards (decision alignment vs pro play, outcome weighting by round result, consistency, reasoning quality) are the RL training signal. Vision layers are frozen; only language layers train. Outcome reward gets the highest weight (0.30).
 
 ## Experiment
 
 | Model | Description |
 |-------|-------------|
 | A | Qwen3-VL zero-shot (no training) |
-| B | Qwen3-VL + SFT on 100 screenshots (vision only) |
-| C | Qwen3-VL + demo pre-training + SFT on 100 screenshots (strategy + vision) |
-| D | Qwen3-VL + demo pre-training + SFT on 20 screenshots (data efficiency test) |
+| B | Qwen3-VL + SFT only (visual grounding, no GRPO) |
+| C | Qwen3-VL + SFT + GRPO (visual grounding + strategic reasoning) |
+| D | Qwen3-VL + GRPO only (no SFT, tests whether SFT phase is necessary) |
 
-If C > B, pre-training helps. If D ≈ B, pre-training reduces data requirements.
+If C > B, GRPO improves reasoning beyond what SFT alone provides. If C > D, SFT visual grounding is a necessary foundation for effective GRPO.
 
 ### Pipeline
 
@@ -37,10 +37,10 @@ Each step is isolated: it reads from defined inputs, writes to defined outputs, 
 
 - [x] **Step 1 — Data schema & manifest.** Unified data manifest (`src/data/manifest.py`, JSONL append-only) for tracking screenshot provenance, source, timestamps, and transcript context. Collection scripts write to `data/manifest.jsonl`, `ScreenshotDataset` loads/filters by manifest fields, training utils accept manifest filtering.
 - [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs (`scripts/parse_demos.py`). Export downsampled viewer data (`scripts/export_viewer_data.py`). Interactive demo viewer at `/viewer` with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
-- [ ] **Step 3 — Strategy pre-training dataset.** Convert snapshots into text-based SFT format. Game state as input, analysis + outcome as target. Train/val split with balance checks.
-- [ ] **Step 4 — Phase 1: Strategy pre-training.** SFT on Qwen3-VL language backbone (no vision layers). LoRA. Model learns XvX win rates, economy decisions, positional reasoning from real pro match outcomes.
-- [ ] **Step 5 — Screenshot labeling + baseline.** Label ~100 screenshots with Claude. Run zero-shot eval (Model A) to establish the floor.
-- [ ] **Step 6 — Phase 2: Visual grounding.** Train Models B, C, D. Compare strategy-pretrained vs vision-only vs few-shot.
+- [ ] **Step 3 — Screenshot-demo synchronization.** Sync VOD frames to demo ticks to produce (screenshot, exact_game_state) pairs. Figure out time offset between broadcast and demo file. Extract frames at intervals, pair with ground truth game state from Parquet data.
+- [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3-VL with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
+- [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro_action (categorized via ACTION_TAXONOMY) + round_won outcome.
+- [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 7 reward signals. Compare SFT-only vs SFT+GRPO vs GRPO-only.
 - [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
 
 ### Resuming work

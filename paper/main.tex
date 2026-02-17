@@ -9,7 +9,7 @@
 \usepackage{algorithm}
 \usepackage{algorithmic}
 
-\title{Think Before You See: VLMs as Game Agents Without Reinforcement Learning from Scratch}
+\title{See, Then Think: Two-Phase VLM Training for Game Understanding}
 
 \author{
   David Zeng \\
@@ -22,7 +22,7 @@
 \maketitle
 
 \begin{abstract}
-Vision-language models (VLMs) struggle with domain-specific visual grounding tasks in competitive gaming environments, where rapid and accurate scene understanding is critical for strategic decision-making. We propose a novel training paradigm that performs supervised fine-tuning on structured game replay data before visual fine-tuning, enabling the model to learn strategic reasoning patterns independently from visual perception. We evaluate our approach on Counter-Strike 2 (CS2) screenshot analysis tasks, demonstrating improved performance over standard vision-only fine-tuning approaches.
+Vision-language models (VLMs) struggle with domain-specific visual grounding tasks in competitive gaming environments, where rapid and accurate scene understanding is critical for strategic decision-making. We propose a two-phase training paradigm: first, supervised fine-tuning on screenshot--game state pairs teaches the model accurate visual grounding (reading the HUD); then, Group Relative Policy Optimization with demo-derived rewards teaches strategic reasoning scored against professional play and round outcomes. We evaluate our approach on Counter-Strike 2 (CS2) screenshot analysis tasks, demonstrating that separating perception and reasoning into distinct training phases outperforms single-phase approaches.
 \end{abstract}
 
 \section{Introduction}
@@ -31,7 +31,7 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 % TODO: Introduce the problem of building AI gaming copilots
 % TODO: Motivate why VLMs are a natural fit for this domain
 % TODO: Explain the challenge: VLMs trained on general data struggle with domain-specific visual grounding
-% TODO: Present the key hypothesis: strategy-first training (SFT on structured data) before visual grounding
+% TODO: Present the key hypothesis: separating perception (SFT on screenshots) from reasoning (GRPO on demo rewards) is more effective than training both jointly
 % TODO: Summarize contributions and results
 
 \section{Related Work}
@@ -56,32 +56,36 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 % TODO: Define input/output spaces (screenshots -> strategic advice)
 % TODO: Describe the structured replay data format
 
-\subsection{SFT on Structured Data}
+\subsection{Phase 1: Visual Grounding via SFT}
 \label{sec:sft}
 
-% TODO: Explain Phase 1: training on text-only structured game state data
-% TODO: Describe the dataset composition and preprocessing
-% TODO: Detail the LoRA configuration for efficient fine-tuning
-% TODO: Discuss how this enables learning strategic reasoning without visual noise
+% TODO: Explain Phase 1: SFT on screenshot--game state pairs from demo-synchronized VOD frames
+% TODO: Describe the dataset: screenshots paired with engine-accurate ground truth from demo files
+% TODO: Detail the LoRA configuration — vision + language layers both trainable
+% TODO: Discuss how demo data provides exact game state (health, armor, weapons, player counts) without model labeling
 
-\subsection{GRPO Refinement}
+\subsection{Phase 2: Strategic Reasoning via GRPO}
 \label{sec:grpo}
 
-% TODO: Explain Phase 2: visual grounding with Group Relative Policy Optimization
-% TODO: Describe how GRPO enables learning from preferences without a separate reward model
-% TODO: Detail the visual fine-tuning process on screenshots
+% TODO: Explain Phase 2: GRPO with 7 reward signals derived from pro demo data
+% TODO: Vision rewards (format gate, hard/soft field accuracy) prevent SFT regression; vision layers frozen
+% TODO: Reasoning rewards (decision alignment vs pro play, outcome weighting, consistency, reasoning quality) are the RL training signal
+% TODO: Describe outcome reward asymmetry: deviating from winning play not penalized hard, endorsing losing play is
 
 \subsection{Reward Design}
 \label{sec:reward}
 
-% TODO: Explain the reward function design for strategic advice quality
-% TODO: Discuss how we incorporate domain knowledge (e.g., tactical correctness, utility prioritization)
+% TODO: Detail the 7 reward functions and their weights
+%   Vision (prevent SFT regression): format gate (0.05), hard field accuracy (0.15), soft field accuracy (0.05)
+%   Reasoning (RL signal): decision alignment (0.15), outcome reward (0.30), consistency (0.20), reasoning quality (0.10)
+% TODO: Explain action taxonomy for categorizing model advice vs pro play
+% TODO: Describe outcome reward signal matrix (agree+win, agree+lose, deviate+win, deviate+lose)
 % TODO: Address the challenge of evaluating open-ended strategic suggestions
 
 \begin{figure}[t]
 \centering
 \fbox{\parbox{0.9\linewidth}{\centering\vspace{2in}[Placeholder: System Architecture Diagram]}}
-\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on structured replay data to learn strategic reasoning. Phase 2 applies GRPO for visual grounding on screenshot-advice pairs.}
+\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on screenshot--game state pairs to learn visual grounding (reading the HUD). Phase 2 applies GRPO with demo-derived rewards to learn strategic reasoning (decision alignment with pro play, outcome weighting). Vision layers are frozen in Phase 2.}
 \label{fig:architecture}
 \end{figure}
 
@@ -102,29 +106,31 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 \label{sec:baselines}
 
 % TODO: Describe baseline approaches:
-%   - Zero-shot VLM
-%   - Vision-only SFT (no structured data pretraining)
-%   - Full fine-tuning (no LoRA)
+%   - Model A: Zero-shot VLM (no training)
+%   - Model B: SFT only (visual grounding, no GRPO)
+%   - Model C: SFT + GRPO (full two-phase pipeline)
+%   - Model D: GRPO only (no SFT, tests whether SFT phase is necessary)
 % TODO: Explain comparison methodology
 
 \subsection{Results}
 \label{sec:results}
 
-% TODO: Present quantitative results comparing strategy-first vs. vision-only training
-% TODO: Show ablation studies (effect of structured data scale, LoRA rank, etc.)
+% TODO: Present quantitative results comparing two-phase (SFT+GRPO) vs single-phase
+% TODO: Show ablation studies (SFT-only vs GRPO-only vs both, reward weight sensitivity)
 % TODO: Include qualitative examples of generated advice
 
 \begin{table}[t]
 \centering
-\caption{Performance comparison on CS2 screenshot analysis. Strategy-first training (ours) outperforms vision-only baselines across all metrics.}
+\caption{Performance comparison on CS2 screenshot analysis. Two-phase training (SFT + GRPO) outperforms single-phase approaches across all metrics.}
 \label{tab:results}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-\textbf{Method} & \textbf{Tactical Acc.} & \textbf{Utility Score} & \textbf{Win Rate} \\
+\textbf{Method} & \textbf{Field Acc.} & \textbf{Decision Align.} & \textbf{Consistency} & \textbf{Weighted Total} \\
 \midrule
-Zero-shot VLM & -- & -- & -- \\
-Vision-only SFT & -- & -- & -- \\
-Strategy-first (Ours) & -- & -- & -- \\
+Zero-shot (A) & -- & -- & -- & -- \\
+SFT only (B) & -- & -- & -- & -- \\
+SFT + GRPO (C, Ours) & -- & -- & -- & -- \\
+GRPO only (D) & -- & -- & -- & -- \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -132,17 +138,17 @@ Strategy-first (Ours) & -- & -- & -- \\
 \section{Analysis}
 \label{sec:analysis}
 
-% TODO: Analyze why strategy-first training works
-% TODO: Investigate what the model learns in each phase
+% TODO: Analyze why separating perception and reasoning into two phases works
+% TODO: Investigate what the model learns in each phase (SFT: HUD reading; GRPO: decision-making)
 % TODO: Discuss failure cases and limitations
-% TODO: Explore computational efficiency gains from the two-stage approach
+% TODO: Explore computational efficiency gains from freezing vision layers during GRPO
 
 \section{Conclusion}
 \label{sec:conclusion}
 
 % TODO: Summarize the key findings
-% TODO: Reiterate the benefits of strategy-first visual grounding
-% TODO: Discuss broader implications for domain-specific VLM adaptation
+% TODO: Reiterate the benefits of two-phase training (perception then reasoning)
+% TODO: Discuss broader implications: the paradigm applies wherever cheap structured data exists alongside expensive visual data (robotics, medical imaging, autonomous driving)
 % TODO: Suggest future directions (other games, multimodal reasoning tasks)
 
 \bibliographystyle{plain}
