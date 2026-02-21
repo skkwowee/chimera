@@ -14,7 +14,20 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
 
-## What changed this session (2026-02-15)
+## What changed this session (2026-02-20)
+- Planned F03: screenshot-demo synchronization via CS2 demo playback
+- Key decision: tournament VODs have custom overlays that don't generalize.
+  Instead, play back .dem files in CS2's built-in demo player → standard HUD.
+- Approach: CS2 netcon (TCP console via -netconport) driven from WSL Python.
+  Jump to specific ticks, control spectator POV, capture JPEGs automatically.
+- Match identified: IEM Kraków 2026 Grand Final, Vitality 3-1 FURIA
+  (Mirage 13-11, Inferno 13-8, Nuke 13-2, Overpass 13-10)
+- Tickrate confirmed ~90Hz (SourceTV). 17 columns in Parquet per tick.
+- Expected yield: ~3,500-5,000 labeled screenshots across 4 maps.
+- Scripts to write: src/netcon.py, scripts/plan_captures.py,
+  scripts/capture_screenshots.py, scripts/generate_sft_labels.py
+
+## What changed last session (2026-02-15)
 - Rewrote reward functions: added decision_alignment_reward and outcome_reward
   for GRPO phase. Now 7 reward signals (was 5). Vision rewards kept to prevent
   SFT regression during RL. Outcome reward gets highest weight (0.30).
@@ -32,10 +45,12 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
   decision=0.15, outcome=0.30, consistency=0.20, reasoning=0.10
 - Additional RL on video/screenshot data: TBD, user is contemplating
 
-## Next step: F03 — Screenshot-demo synchronization
-Challenge: match VOD timestamps to demo ticks. Need to figure out time offset
-between broadcast and demo file. Once synced, extract frames at intervals and
-pair with exact game state from Parquet data.
+## Next step: F03 — Screenshot capture via CS2 demo playback
+Approach: netcon TCP automation from WSL → CS2 on Windows.
+1. plan_captures.py — select ticks + POV players from Parquet (offline)
+2. capture_screenshots.py — drive CS2 via netcon: goto_tick, spec_player, jpeg
+3. generate_sft_labels.py — build game_state JSON labels from Parquet (offline)
+User must: set CS2 launch option -netconport 2121, copy .dem files to Windows path.
 
 ## Data available
 - 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
@@ -43,10 +58,4 @@ pair with exact game state from Parquet data.
 - Viewer data in site/public/viewer-data/
 
 ## Files modified this session
-- src/training/rewards.py — added ACTION_TAXONOMY, decision_alignment_reward, outcome_reward
-- src/training/__init__.py — updated exports
-- src/training/grpo_trainer.py — 7 signals, updated docstring + evaluate()
-- scripts/train_grpo.py — 7 reward weights in CLI
-- config/config.yaml — updated reward_weights
-- feature-list.json — created (new harness)
-- claude-progress.txt — created (this file)
+- claude-progress.txt — updated with F03 plan
