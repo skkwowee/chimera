@@ -239,3 +239,17 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 - Put extraction features into the root feature-list.json. Rejected: that file tracks the training pipeline (F01–F07), which is a different concern with different lifecycle.
 
 **Status:** Decided. Harness restructured.
+
+---
+
+## D011: Conditional manifest import in parse_demos.py (2026-02-26)
+
+**Decision:** Wrap `from src.data.manifest import append_to_manifest` in a `try/except ImportError`, setting it to `None` when unavailable. Guard the call site with `if append_to_manifest is not None`.
+
+**Why:** `parse_demos.py` is being extracted into cs2-tools where `src.data.manifest` won't exist. The manifest is only used in the legacy `--snapshots` write path — the default parquet mode never calls it. Making it conditional lets the script work identically in chimera (manifest available) and standalone (manifest absent, snapshots just skip manifest logging).
+
+**Alternatives considered:**
+- Remove the manifest call entirely. Rejected: chimera's snapshot workflow still uses it.
+- Pass a flag like `--no-manifest`. Rejected: more complex, and the try/except is invisible to callers who have the module.
+
+**Status:** Done. Harness confirms conditional import detected.

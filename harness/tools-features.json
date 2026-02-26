@@ -9,7 +9,7 @@
       "Make manifest import conditional with try/except or optional flag",
       "Verify parse_demos.py still runs with and without manifest"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "T02",

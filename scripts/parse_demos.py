@@ -21,9 +21,12 @@ from pathlib import Path
 
 import polars as pl
 
-# Allow imports from project root
+# Allow imports from project root (chimera-specific, optional for standalone use)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.data.manifest import append_to_manifest
+try:
+    from src.data.manifest import append_to_manifest
+except ImportError:
+    append_to_manifest = None
 
 VALID_ROUND_PHASES = {"buy", "playing", "freezetime", "post-plant", "warmup"}
 VALID_BOMB_STATUSES = {"carried", "planted", "dropped", "defused", "exploded", None}
@@ -499,15 +502,16 @@ def main():
             snapshot_id = snap["metadata"]["snapshot_id"]
             out_path = output_dir / f"{snapshot_id}.json"
             out_path.write_text(json.dumps(snap, indent=2, ensure_ascii=False))
-            append_to_manifest(manifest_path, {
-                "id": snapshot_id, "source": "demo",
-                "demo_file": snap["metadata"]["demo_file"],
-                "map_name": snap["metadata"]["map_name"],
-                "round_num": snap["metadata"]["round_num"],
-                "moment_type": snap["metadata"]["moment_type"],
-                "tick": snap["metadata"]["tick"],
-                "round_winner": snap["round_outcome"]["winner"],
-            })
+            if append_to_manifest is not None:
+                append_to_manifest(manifest_path, {
+                    "id": snapshot_id, "source": "demo",
+                    "demo_file": snap["metadata"]["demo_file"],
+                    "map_name": snap["metadata"]["map_name"],
+                    "round_num": snap["metadata"]["round_num"],
+                    "moment_type": snap["metadata"]["moment_type"],
+                    "tick": snap["metadata"]["tick"],
+                    "round_winner": snap["round_outcome"]["winner"],
+                })
             written += 1
         print(f"\nWrote {written} snapshot files to {output_dir}/")
         return
