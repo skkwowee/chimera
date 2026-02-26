@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 16,
+    "round_phase": "playing",
+    "player_name": "FalleN",
+    "player_side": "CT",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 200,
+    "weapon_primary": "M4A1-S",
+    "weapon_secondary": "Tec-9",
+    "utility": [
+      "High Explosive Grenade"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 2,
+    "alive_enemies": 3,
+    "bomb_status": "carried",
+    "score_t": 3,
+    "score_ct": 12
+  },
+  "teammates": [
+    {
+      "name": "molodoy",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "KSCERATO",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "yuurih",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": true,
+      "health": 73
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 125922,
+    "round_num": 16,
+    "screenshot_id": "mirage_r16_t125922_FalleN",
+    "pov_player": "FalleN",
+    "pov_side": "ct",
+    "capture_reason": "sample"
+  }
+}

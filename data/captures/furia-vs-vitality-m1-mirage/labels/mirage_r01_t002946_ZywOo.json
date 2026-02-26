@@ -1,0 +1,53 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 1,
+    "round_phase": "playing",
+    "player_name": "ZywOo",
+    "player_side": "CT",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": false,
+    "player_money": 150,
+    "weapon_primary": null,
+    "weapon_secondary": "Dual Berettas",
+    "utility": [],
+    "has_defuser": false,
+    "alive_teammates": 0,
+    "alive_enemies": 3,
+    "bomb_status": "dropped",
+    "score_t": 0,
+    "score_ct": 0
+  },
+  "teammates": [
+    {
+      "name": "mezii",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "ropz",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "apEX",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "flameZ",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 2946,
+    "round_num": 1,
+    "screenshot_id": "mirage_r01_t002946_ZywOo",
+    "pov_player": "ZywOo",
+    "pov_side": "ct",
+    "capture_reason": "sample"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 4,
+    "round_phase": "playing",
+    "player_name": "molodoy",
+    "player_side": "T",
+    "player_health": 18,
+    "player_armor": 0,
+    "player_has_helmet": false,
+    "player_money": 1950,
+    "weapon_primary": null,
+    "weapon_secondary": "Glock-18",
+    "utility": [],
+    "has_defuser": false,
+    "alive_teammates": 0,
+    "alive_enemies": 5,
+    "bomb_status": "dropped",
+    "score_t": 1,
+    "score_ct": 2
+  },
+  "teammates": [
+    {
+      "name": "FalleN",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "KSCERATO",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "yuurih",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 22311,
+    "round_num": 4,
+    "screenshot_id": "mirage_r04_t022311_molodoy",
+    "pov_player": "molodoy",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

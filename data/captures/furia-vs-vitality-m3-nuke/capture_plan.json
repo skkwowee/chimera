@@ -1,0 +1,6341 @@
+{
+  "demo_stem": "furia-vs-vitality-m3-nuke",
+  "demo_file": "furia-vs-vitality-m3-nuke.dem",
+  "map_name": "de_nuke",
+  "map_short": "nuke",
+  "tickrate": 64,
+  "interval_s": 3.0,
+  "interval_ticks": 192,
+  "total_rounds": 15,
+  "total_captures": 791,
+  "captures": [
+    {
+      "tick": 1275,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001275_FalleN"
+    },
+    {
+      "tick": 1275,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001275_ropz"
+    },
+    {
+      "tick": 1467,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001467_FalleN"
+    },
+    {
+      "tick": 1467,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001467_ropz"
+    },
+    {
+      "tick": 1659,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001659_FalleN"
+    },
+    {
+      "tick": 1659,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001659_ropz"
+    },
+    {
+      "tick": 1851,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001851_FalleN"
+    },
+    {
+      "tick": 1851,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t001851_ropz"
+    },
+    {
+      "tick": 2043,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002043_FalleN"
+    },
+    {
+      "tick": 2043,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002043_ropz"
+    },
+    {
+      "tick": 2235,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002235_FalleN"
+    },
+    {
+      "tick": 2235,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002235_ropz"
+    },
+    {
+      "tick": 2427,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002427_FalleN"
+    },
+    {
+      "tick": 2427,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002427_ropz"
+    },
+    {
+      "tick": 2619,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002619_FalleN"
+    },
+    {
+      "tick": 2619,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002619_ropz"
+    },
+    {
+      "tick": 2811,
+      "round_num": 1,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002811_FalleN"
+    },
+    {
+      "tick": 2811,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t002811_ropz"
+    },
+    {
+      "tick": 2865,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r01_t002865_KSCERATO"
+    },
+    {
+      "tick": 2865,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r01_t002865_ropz"
+    },
+    {
+      "tick": 3003,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003003_KSCERATO"
+    },
+    {
+      "tick": 3003,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003003_ropz"
+    },
+    {
+      "tick": 3195,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003195_molodoy"
+    },
+    {
+      "tick": 3195,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003195_ropz"
+    },
+    {
+      "tick": 3387,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003387_molodoy"
+    },
+    {
+      "tick": 3387,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003387_ropz"
+    },
+    {
+      "tick": 3579,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003579_molodoy"
+    },
+    {
+      "tick": 3579,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003579_ropz"
+    },
+    {
+      "tick": 3771,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003771_molodoy"
+    },
+    {
+      "tick": 3771,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003771_ropz"
+    },
+    {
+      "tick": 3963,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003963_molodoy"
+    },
+    {
+      "tick": 3963,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t003963_ropz"
+    },
+    {
+      "tick": 4155,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004155_molodoy"
+    },
+    {
+      "tick": 4155,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004155_ropz"
+    },
+    {
+      "tick": 4347,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004347_molodoy"
+    },
+    {
+      "tick": 4347,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004347_ropz"
+    },
+    {
+      "tick": 4539,
+      "round_num": 1,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004539_molodoy"
+    },
+    {
+      "tick": 4539,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004539_ropz"
+    },
+    {
+      "tick": 4731,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004731_KSCERATO"
+    },
+    {
+      "tick": 4731,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004731_ropz"
+    },
+    {
+      "tick": 4923,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004923_KSCERATO"
+    },
+    {
+      "tick": 4923,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t004923_ropz"
+    },
+    {
+      "tick": 5115,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005115_KSCERATO"
+    },
+    {
+      "tick": 5115,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005115_ropz"
+    },
+    {
+      "tick": 5307,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005307_KSCERATO"
+    },
+    {
+      "tick": 5307,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005307_ropz"
+    },
+    {
+      "tick": 5499,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005499_KSCERATO"
+    },
+    {
+      "tick": 5499,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005499_ropz"
+    },
+    {
+      "tick": 5691,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005691_KSCERATO"
+    },
+    {
+      "tick": 5691,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005691_ropz"
+    },
+    {
+      "tick": 5883,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005883_KSCERATO"
+    },
+    {
+      "tick": 5883,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t005883_ropz"
+    },
+    {
+      "tick": 6075,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t006075_KSCERATO"
+    },
+    {
+      "tick": 6075,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t006075_ropz"
+    },
+    {
+      "tick": 6267,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t006267_KSCERATO"
+    },
+    {
+      "tick": 6267,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t006267_ropz"
+    },
+    {
+      "tick": 6459,
+      "round_num": 1,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t006459_KSCERATO"
+    },
+    {
+      "tick": 6459,
+      "round_num": 1,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r01_t006459_ropz"
+    },
+    {
+      "tick": 8141,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008141_yuurih"
+    },
+    {
+      "tick": 8141,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008141_ropz"
+    },
+    {
+      "tick": 8333,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008333_yuurih"
+    },
+    {
+      "tick": 8333,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008333_ropz"
+    },
+    {
+      "tick": 8525,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008525_yuurih"
+    },
+    {
+      "tick": 8525,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008525_ropz"
+    },
+    {
+      "tick": 8717,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008717_yuurih"
+    },
+    {
+      "tick": 8717,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008717_ropz"
+    },
+    {
+      "tick": 8909,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008909_yuurih"
+    },
+    {
+      "tick": 8909,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t008909_ropz"
+    },
+    {
+      "tick": 9099,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r02_t009099_yuurih"
+    },
+    {
+      "tick": 9099,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r02_t009099_ropz"
+    },
+    {
+      "tick": 9101,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t009101_yuurih"
+    },
+    {
+      "tick": 9101,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t009101_ropz"
+    },
+    {
+      "tick": 9293,
+      "round_num": 2,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t009293_yuurih"
+    },
+    {
+      "tick": 9293,
+      "round_num": 2,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r02_t009293_ropz"
+    },
+    {
+      "tick": 11002,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011002_KSCERATO"
+    },
+    {
+      "tick": 11002,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011002_ropz"
+    },
+    {
+      "tick": 11194,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011194_KSCERATO"
+    },
+    {
+      "tick": 11194,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011194_ropz"
+    },
+    {
+      "tick": 11386,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011386_KSCERATO"
+    },
+    {
+      "tick": 11386,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011386_ropz"
+    },
+    {
+      "tick": 11578,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011578_KSCERATO"
+    },
+    {
+      "tick": 11578,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011578_ropz"
+    },
+    {
+      "tick": 11770,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011770_KSCERATO"
+    },
+    {
+      "tick": 11770,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011770_ropz"
+    },
+    {
+      "tick": 11962,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011962_KSCERATO"
+    },
+    {
+      "tick": 11962,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t011962_ropz"
+    },
+    {
+      "tick": 12154,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012154_KSCERATO"
+    },
+    {
+      "tick": 12154,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012154_ropz"
+    },
+    {
+      "tick": 12346,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012346_KSCERATO"
+    },
+    {
+      "tick": 12346,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012346_ropz"
+    },
+    {
+      "tick": 12538,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012538_KSCERATO"
+    },
+    {
+      "tick": 12538,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012538_ropz"
+    },
+    {
+      "tick": 12730,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012730_KSCERATO"
+    },
+    {
+      "tick": 12730,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012730_ropz"
+    },
+    {
+      "tick": 12844,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r03_t012844_KSCERATO"
+    },
+    {
+      "tick": 12844,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r03_t012844_ropz"
+    },
+    {
+      "tick": 12922,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012922_KSCERATO"
+    },
+    {
+      "tick": 12922,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t012922_ropz"
+    },
+    {
+      "tick": 13114,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013114_KSCERATO"
+    },
+    {
+      "tick": 13114,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013114_ropz"
+    },
+    {
+      "tick": 13306,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013306_KSCERATO"
+    },
+    {
+      "tick": 13306,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013306_ropz"
+    },
+    {
+      "tick": 13498,
+      "round_num": 3,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013498_KSCERATO"
+    },
+    {
+      "tick": 13498,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013498_ropz"
+    },
+    {
+      "tick": 13690,
+      "round_num": 3,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013690_yuurih"
+    },
+    {
+      "tick": 13690,
+      "round_num": 3,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r03_t013690_ropz"
+    },
+    {
+      "tick": 15361,
+      "round_num": 4,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015361_FalleN"
+    },
+    {
+      "tick": 15361,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015361_ropz"
+    },
+    {
+      "tick": 15553,
+      "round_num": 4,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015553_FalleN"
+    },
+    {
+      "tick": 15553,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015553_ropz"
+    },
+    {
+      "tick": 15745,
+      "round_num": 4,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015745_FalleN"
+    },
+    {
+      "tick": 15745,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015745_ropz"
+    },
+    {
+      "tick": 15937,
+      "round_num": 4,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015937_FalleN"
+    },
+    {
+      "tick": 15937,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t015937_ropz"
+    },
+    {
+      "tick": 16129,
+      "round_num": 4,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016129_FalleN"
+    },
+    {
+      "tick": 16129,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016129_ropz"
+    },
+    {
+      "tick": 16321,
+      "round_num": 4,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016321_FalleN"
+    },
+    {
+      "tick": 16321,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016321_ropz"
+    },
+    {
+      "tick": 16362,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r04_t016362_KSCERATO"
+    },
+    {
+      "tick": 16362,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r04_t016362_ropz"
+    },
+    {
+      "tick": 16513,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016513_YEKINDAR"
+    },
+    {
+      "tick": 16513,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016513_ropz"
+    },
+    {
+      "tick": 16705,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016705_YEKINDAR"
+    },
+    {
+      "tick": 16705,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016705_ropz"
+    },
+    {
+      "tick": 16897,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016897_YEKINDAR"
+    },
+    {
+      "tick": 16897,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t016897_ropz"
+    },
+    {
+      "tick": 17089,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017089_YEKINDAR"
+    },
+    {
+      "tick": 17089,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017089_ropz"
+    },
+    {
+      "tick": 17281,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017281_YEKINDAR"
+    },
+    {
+      "tick": 17281,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017281_ropz"
+    },
+    {
+      "tick": 17473,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017473_YEKINDAR"
+    },
+    {
+      "tick": 17473,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017473_ropz"
+    },
+    {
+      "tick": 17665,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017665_YEKINDAR"
+    },
+    {
+      "tick": 17665,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017665_ropz"
+    },
+    {
+      "tick": 17857,
+      "round_num": 4,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017857_YEKINDAR"
+    },
+    {
+      "tick": 17857,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t017857_ropz"
+    },
+    {
+      "tick": 18049,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018049_KSCERATO"
+    },
+    {
+      "tick": 18049,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018049_ropz"
+    },
+    {
+      "tick": 18241,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018241_KSCERATO"
+    },
+    {
+      "tick": 18241,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018241_ropz"
+    },
+    {
+      "tick": 18433,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018433_KSCERATO"
+    },
+    {
+      "tick": 18433,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018433_ropz"
+    },
+    {
+      "tick": 18625,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018625_KSCERATO"
+    },
+    {
+      "tick": 18625,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018625_ropz"
+    },
+    {
+      "tick": 18817,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018817_KSCERATO"
+    },
+    {
+      "tick": 18817,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t018817_ropz"
+    },
+    {
+      "tick": 19009,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019009_KSCERATO"
+    },
+    {
+      "tick": 19009,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019009_ropz"
+    },
+    {
+      "tick": 19201,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019201_KSCERATO"
+    },
+    {
+      "tick": 19201,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019201_ropz"
+    },
+    {
+      "tick": 19393,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019393_KSCERATO"
+    },
+    {
+      "tick": 19393,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019393_ropz"
+    },
+    {
+      "tick": 19585,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019585_KSCERATO"
+    },
+    {
+      "tick": 19585,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019585_ropz"
+    },
+    {
+      "tick": 19777,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019777_KSCERATO"
+    },
+    {
+      "tick": 19777,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019777_ropz"
+    },
+    {
+      "tick": 19969,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019969_KSCERATO"
+    },
+    {
+      "tick": 19969,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t019969_ropz"
+    },
+    {
+      "tick": 20161,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020161_KSCERATO"
+    },
+    {
+      "tick": 20161,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020161_ropz"
+    },
+    {
+      "tick": 20353,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020353_KSCERATO"
+    },
+    {
+      "tick": 20353,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020353_ropz"
+    },
+    {
+      "tick": 20545,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020545_KSCERATO"
+    },
+    {
+      "tick": 20545,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020545_ropz"
+    },
+    {
+      "tick": 20737,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020737_KSCERATO"
+    },
+    {
+      "tick": 20737,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020737_ropz"
+    },
+    {
+      "tick": 20929,
+      "round_num": 4,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020929_KSCERATO"
+    },
+    {
+      "tick": 20929,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t020929_ropz"
+    },
+    {
+      "tick": 21121,
+      "round_num": 4,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t021121_yuurih"
+    },
+    {
+      "tick": 21121,
+      "round_num": 4,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r04_t021121_ropz"
+    },
+    {
+      "tick": 22889,
+      "round_num": 5,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t022889_molodoy"
+    },
+    {
+      "tick": 22889,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t022889_ropz"
+    },
+    {
+      "tick": 23081,
+      "round_num": 5,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023081_molodoy"
+    },
+    {
+      "tick": 23081,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023081_ropz"
+    },
+    {
+      "tick": 23273,
+      "round_num": 5,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023273_KSCERATO"
+    },
+    {
+      "tick": 23273,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023273_ropz"
+    },
+    {
+      "tick": 23465,
+      "round_num": 5,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023465_KSCERATO"
+    },
+    {
+      "tick": 23465,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023465_ropz"
+    },
+    {
+      "tick": 23537,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r05_t023537_FalleN"
+    },
+    {
+      "tick": 23537,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r05_t023537_ropz"
+    },
+    {
+      "tick": 23657,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023657_FalleN"
+    },
+    {
+      "tick": 23657,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023657_ropz"
+    },
+    {
+      "tick": 23849,
+      "round_num": 5,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023849_KSCERATO"
+    },
+    {
+      "tick": 23849,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t023849_ropz"
+    },
+    {
+      "tick": 24041,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024041_FalleN"
+    },
+    {
+      "tick": 24041,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024041_ropz"
+    },
+    {
+      "tick": 24233,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024233_FalleN"
+    },
+    {
+      "tick": 24233,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024233_ropz"
+    },
+    {
+      "tick": 24425,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024425_FalleN"
+    },
+    {
+      "tick": 24425,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024425_ropz"
+    },
+    {
+      "tick": 24617,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024617_FalleN"
+    },
+    {
+      "tick": 24617,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024617_ropz"
+    },
+    {
+      "tick": 24809,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024809_FalleN"
+    },
+    {
+      "tick": 24809,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t024809_ropz"
+    },
+    {
+      "tick": 25001,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025001_FalleN"
+    },
+    {
+      "tick": 25001,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025001_ropz"
+    },
+    {
+      "tick": 25193,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025193_FalleN"
+    },
+    {
+      "tick": 25193,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025193_ropz"
+    },
+    {
+      "tick": 25385,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025385_FalleN"
+    },
+    {
+      "tick": 25385,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025385_ropz"
+    },
+    {
+      "tick": 25577,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025577_FalleN"
+    },
+    {
+      "tick": 25577,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025577_ropz"
+    },
+    {
+      "tick": 25769,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025769_FalleN"
+    },
+    {
+      "tick": 25769,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025769_ropz"
+    },
+    {
+      "tick": 25961,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025961_FalleN"
+    },
+    {
+      "tick": 25961,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t025961_ropz"
+    },
+    {
+      "tick": 26153,
+      "round_num": 5,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t026153_FalleN"
+    },
+    {
+      "tick": 26153,
+      "round_num": 5,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r05_t026153_ropz"
+    },
+    {
+      "tick": 27866,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t027866_molodoy"
+    },
+    {
+      "tick": 27866,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t027866_ropz"
+    },
+    {
+      "tick": 28058,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028058_molodoy"
+    },
+    {
+      "tick": 28058,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028058_ropz"
+    },
+    {
+      "tick": 28250,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028250_molodoy"
+    },
+    {
+      "tick": 28250,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028250_ropz"
+    },
+    {
+      "tick": 28442,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028442_molodoy"
+    },
+    {
+      "tick": 28442,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028442_ropz"
+    },
+    {
+      "tick": 28634,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028634_molodoy"
+    },
+    {
+      "tick": 28634,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028634_ropz"
+    },
+    {
+      "tick": 28826,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028826_molodoy"
+    },
+    {
+      "tick": 28826,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t028826_ropz"
+    },
+    {
+      "tick": 29018,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029018_molodoy"
+    },
+    {
+      "tick": 29018,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029018_ropz"
+    },
+    {
+      "tick": 29071,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r06_t029071_molodoy"
+    },
+    {
+      "tick": 29071,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r06_t029071_ropz"
+    },
+    {
+      "tick": 29210,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029210_molodoy"
+    },
+    {
+      "tick": 29210,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029210_ropz"
+    },
+    {
+      "tick": 29402,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029402_molodoy"
+    },
+    {
+      "tick": 29402,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029402_ropz"
+    },
+    {
+      "tick": 29594,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029594_molodoy"
+    },
+    {
+      "tick": 29594,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029594_ropz"
+    },
+    {
+      "tick": 29786,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029786_molodoy"
+    },
+    {
+      "tick": 29786,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029786_ropz"
+    },
+    {
+      "tick": 29978,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029978_molodoy"
+    },
+    {
+      "tick": 29978,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t029978_ropz"
+    },
+    {
+      "tick": 30170,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030170_molodoy"
+    },
+    {
+      "tick": 30170,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030170_ropz"
+    },
+    {
+      "tick": 30362,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030362_molodoy"
+    },
+    {
+      "tick": 30362,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030362_ropz"
+    },
+    {
+      "tick": 30554,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030554_molodoy"
+    },
+    {
+      "tick": 30554,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030554_ropz"
+    },
+    {
+      "tick": 30746,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030746_molodoy"
+    },
+    {
+      "tick": 30746,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030746_ropz"
+    },
+    {
+      "tick": 30938,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030938_molodoy"
+    },
+    {
+      "tick": 30938,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t030938_ropz"
+    },
+    {
+      "tick": 31130,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031130_molodoy"
+    },
+    {
+      "tick": 31130,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031130_ropz"
+    },
+    {
+      "tick": 31322,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031322_molodoy"
+    },
+    {
+      "tick": 31322,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031322_ropz"
+    },
+    {
+      "tick": 31514,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031514_molodoy"
+    },
+    {
+      "tick": 31514,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031514_ropz"
+    },
+    {
+      "tick": 31706,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031706_molodoy"
+    },
+    {
+      "tick": 31706,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031706_ropz"
+    },
+    {
+      "tick": 31898,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031898_molodoy"
+    },
+    {
+      "tick": 31898,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t031898_ropz"
+    },
+    {
+      "tick": 32090,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032090_molodoy"
+    },
+    {
+      "tick": 32090,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032090_ropz"
+    },
+    {
+      "tick": 32282,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032282_molodoy"
+    },
+    {
+      "tick": 32282,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032282_ropz"
+    },
+    {
+      "tick": 32474,
+      "round_num": 6,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032474_molodoy"
+    },
+    {
+      "tick": 32474,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032474_ropz"
+    },
+    {
+      "tick": 32666,
+      "round_num": 6,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032666_KSCERATO"
+    },
+    {
+      "tick": 32666,
+      "round_num": 6,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r06_t032666_ropz"
+    },
+    {
+      "tick": 36504,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t036504_yuurih"
+    },
+    {
+      "tick": 36504,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t036504_ropz"
+    },
+    {
+      "tick": 36696,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t036696_yuurih"
+    },
+    {
+      "tick": 36696,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t036696_ropz"
+    },
+    {
+      "tick": 36888,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t036888_yuurih"
+    },
+    {
+      "tick": 36888,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t036888_ropz"
+    },
+    {
+      "tick": 37080,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037080_yuurih"
+    },
+    {
+      "tick": 37080,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037080_ropz"
+    },
+    {
+      "tick": 37272,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037272_yuurih"
+    },
+    {
+      "tick": 37272,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037272_ropz"
+    },
+    {
+      "tick": 37464,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037464_yuurih"
+    },
+    {
+      "tick": 37464,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037464_ropz"
+    },
+    {
+      "tick": 37656,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037656_yuurih"
+    },
+    {
+      "tick": 37656,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037656_ropz"
+    },
+    {
+      "tick": 37848,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037848_yuurih"
+    },
+    {
+      "tick": 37848,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t037848_ropz"
+    },
+    {
+      "tick": 38040,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038040_yuurih"
+    },
+    {
+      "tick": 38040,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038040_ropz"
+    },
+    {
+      "tick": 38232,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038232_yuurih"
+    },
+    {
+      "tick": 38232,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038232_ropz"
+    },
+    {
+      "tick": 38424,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038424_yuurih"
+    },
+    {
+      "tick": 38424,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038424_ropz"
+    },
+    {
+      "tick": 38616,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038616_yuurih"
+    },
+    {
+      "tick": 38616,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038616_ropz"
+    },
+    {
+      "tick": 38808,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038808_yuurih"
+    },
+    {
+      "tick": 38808,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t038808_ropz"
+    },
+    {
+      "tick": 39000,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039000_yuurih"
+    },
+    {
+      "tick": 39000,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039000_ropz"
+    },
+    {
+      "tick": 39192,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039192_yuurih"
+    },
+    {
+      "tick": 39192,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039192_ropz"
+    },
+    {
+      "tick": 39384,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039384_yuurih"
+    },
+    {
+      "tick": 39384,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039384_ropz"
+    },
+    {
+      "tick": 39576,
+      "round_num": 7,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039576_yuurih"
+    },
+    {
+      "tick": 39576,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039576_ropz"
+    },
+    {
+      "tick": 39768,
+      "round_num": 7,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039768_YEKINDAR"
+    },
+    {
+      "tick": 39768,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039768_ropz"
+    },
+    {
+      "tick": 39960,
+      "round_num": 7,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039960_YEKINDAR"
+    },
+    {
+      "tick": 39960,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t039960_ropz"
+    },
+    {
+      "tick": 40152,
+      "round_num": 7,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040152_YEKINDAR"
+    },
+    {
+      "tick": 40152,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040152_ropz"
+    },
+    {
+      "tick": 40301,
+      "round_num": 7,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r07_t040301_YEKINDAR"
+    },
+    {
+      "tick": 40301,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r07_t040301_ropz"
+    },
+    {
+      "tick": 40344,
+      "round_num": 7,
+      "player_name": "YEKINDAR",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040344_YEKINDAR"
+    },
+    {
+      "tick": 40344,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040344_ropz"
+    },
+    {
+      "tick": 40536,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040536_KSCERATO"
+    },
+    {
+      "tick": 40536,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040536_ropz"
+    },
+    {
+      "tick": 40728,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040728_KSCERATO"
+    },
+    {
+      "tick": 40728,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040728_ropz"
+    },
+    {
+      "tick": 40920,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040920_KSCERATO"
+    },
+    {
+      "tick": 40920,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t040920_ropz"
+    },
+    {
+      "tick": 41112,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041112_KSCERATO"
+    },
+    {
+      "tick": 41112,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041112_ropz"
+    },
+    {
+      "tick": 41304,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041304_KSCERATO"
+    },
+    {
+      "tick": 41304,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041304_ropz"
+    },
+    {
+      "tick": 41496,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041496_KSCERATO"
+    },
+    {
+      "tick": 41496,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041496_ropz"
+    },
+    {
+      "tick": 41688,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041688_KSCERATO"
+    },
+    {
+      "tick": 41688,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041688_ropz"
+    },
+    {
+      "tick": 41880,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041880_KSCERATO"
+    },
+    {
+      "tick": 41880,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t041880_ropz"
+    },
+    {
+      "tick": 42072,
+      "round_num": 7,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t042072_KSCERATO"
+    },
+    {
+      "tick": 42072,
+      "round_num": 7,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r07_t042072_ropz"
+    },
+    {
+      "tick": 43730,
+      "round_num": 8,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t043730_molodoy"
+    },
+    {
+      "tick": 43730,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t043730_ropz"
+    },
+    {
+      "tick": 43922,
+      "round_num": 8,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t043922_molodoy"
+    },
+    {
+      "tick": 43922,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t043922_ropz"
+    },
+    {
+      "tick": 44114,
+      "round_num": 8,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044114_molodoy"
+    },
+    {
+      "tick": 44114,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044114_ropz"
+    },
+    {
+      "tick": 44306,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044306_FalleN"
+    },
+    {
+      "tick": 44306,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044306_ropz"
+    },
+    {
+      "tick": 44498,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044498_FalleN"
+    },
+    {
+      "tick": 44498,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044498_ropz"
+    },
+    {
+      "tick": 44690,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044690_FalleN"
+    },
+    {
+      "tick": 44690,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044690_ropz"
+    },
+    {
+      "tick": 44882,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044882_FalleN"
+    },
+    {
+      "tick": 44882,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t044882_ropz"
+    },
+    {
+      "tick": 45074,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045074_FalleN"
+    },
+    {
+      "tick": 45074,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045074_ropz"
+    },
+    {
+      "tick": 45179,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r08_t045179_FalleN"
+    },
+    {
+      "tick": 45179,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r08_t045179_ropz"
+    },
+    {
+      "tick": 45266,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045266_FalleN"
+    },
+    {
+      "tick": 45266,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045266_ropz"
+    },
+    {
+      "tick": 45458,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045458_FalleN"
+    },
+    {
+      "tick": 45458,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045458_ropz"
+    },
+    {
+      "tick": 45650,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045650_FalleN"
+    },
+    {
+      "tick": 45650,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045650_ropz"
+    },
+    {
+      "tick": 45842,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045842_FalleN"
+    },
+    {
+      "tick": 45842,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t045842_ropz"
+    },
+    {
+      "tick": 46034,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046034_FalleN"
+    },
+    {
+      "tick": 46034,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046034_ropz"
+    },
+    {
+      "tick": 46226,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046226_FalleN"
+    },
+    {
+      "tick": 46226,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046226_ropz"
+    },
+    {
+      "tick": 46418,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046418_FalleN"
+    },
+    {
+      "tick": 46418,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046418_ropz"
+    },
+    {
+      "tick": 46610,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046610_FalleN"
+    },
+    {
+      "tick": 46610,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046610_ropz"
+    },
+    {
+      "tick": 46802,
+      "round_num": 8,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046802_FalleN"
+    },
+    {
+      "tick": 46802,
+      "round_num": 8,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r08_t046802_ropz"
+    },
+    {
+      "tick": 48439,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t048439_FalleN"
+    },
+    {
+      "tick": 48439,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t048439_ropz"
+    },
+    {
+      "tick": 48631,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t048631_FalleN"
+    },
+    {
+      "tick": 48631,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t048631_ropz"
+    },
+    {
+      "tick": 48823,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t048823_FalleN"
+    },
+    {
+      "tick": 48823,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t048823_ropz"
+    },
+    {
+      "tick": 49015,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049015_FalleN"
+    },
+    {
+      "tick": 49015,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049015_ropz"
+    },
+    {
+      "tick": 49207,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049207_FalleN"
+    },
+    {
+      "tick": 49207,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049207_ropz"
+    },
+    {
+      "tick": 49399,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049399_FalleN"
+    },
+    {
+      "tick": 49399,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049399_ropz"
+    },
+    {
+      "tick": 49591,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049591_FalleN"
+    },
+    {
+      "tick": 49591,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049591_ropz"
+    },
+    {
+      "tick": 49783,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049783_FalleN"
+    },
+    {
+      "tick": 49783,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049783_ropz"
+    },
+    {
+      "tick": 49975,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049975_FalleN"
+    },
+    {
+      "tick": 49975,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t049975_ropz"
+    },
+    {
+      "tick": 50096,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r09_t050096_FalleN"
+    },
+    {
+      "tick": 50096,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r09_t050096_ropz"
+    },
+    {
+      "tick": 50167,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050167_FalleN"
+    },
+    {
+      "tick": 50167,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050167_ropz"
+    },
+    {
+      "tick": 50359,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050359_FalleN"
+    },
+    {
+      "tick": 50359,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050359_ropz"
+    },
+    {
+      "tick": 50551,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050551_FalleN"
+    },
+    {
+      "tick": 50551,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050551_ropz"
+    },
+    {
+      "tick": 50743,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050743_FalleN"
+    },
+    {
+      "tick": 50743,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050743_ropz"
+    },
+    {
+      "tick": 50935,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050935_FalleN"
+    },
+    {
+      "tick": 50935,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t050935_ropz"
+    },
+    {
+      "tick": 51127,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051127_FalleN"
+    },
+    {
+      "tick": 51127,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051127_ropz"
+    },
+    {
+      "tick": 51319,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051319_FalleN"
+    },
+    {
+      "tick": 51319,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051319_ropz"
+    },
+    {
+      "tick": 51511,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051511_FalleN"
+    },
+    {
+      "tick": 51511,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051511_ropz"
+    },
+    {
+      "tick": 51703,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051703_FalleN"
+    },
+    {
+      "tick": 51703,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051703_ropz"
+    },
+    {
+      "tick": 51895,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051895_FalleN"
+    },
+    {
+      "tick": 51895,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t051895_ropz"
+    },
+    {
+      "tick": 52087,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052087_FalleN"
+    },
+    {
+      "tick": 52087,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052087_ropz"
+    },
+    {
+      "tick": 52279,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052279_FalleN"
+    },
+    {
+      "tick": 52279,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052279_ropz"
+    },
+    {
+      "tick": 52471,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052471_FalleN"
+    },
+    {
+      "tick": 52471,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052471_ropz"
+    },
+    {
+      "tick": 52663,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052663_FalleN"
+    },
+    {
+      "tick": 52663,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052663_ropz"
+    },
+    {
+      "tick": 52855,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052855_FalleN"
+    },
+    {
+      "tick": 52855,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t052855_ropz"
+    },
+    {
+      "tick": 53047,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053047_FalleN"
+    },
+    {
+      "tick": 53047,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053047_ropz"
+    },
+    {
+      "tick": 53239,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053239_FalleN"
+    },
+    {
+      "tick": 53239,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053239_ropz"
+    },
+    {
+      "tick": 53431,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053431_FalleN"
+    },
+    {
+      "tick": 53431,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053431_ropz"
+    },
+    {
+      "tick": 53623,
+      "round_num": 9,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053623_FalleN"
+    },
+    {
+      "tick": 53623,
+      "round_num": 9,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r09_t053623_ropz"
+    },
+    {
+      "tick": 55364,
+      "round_num": 10,
+      "player_name": "yuurih",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055364_yuurih"
+    },
+    {
+      "tick": 55364,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055364_ropz"
+    },
+    {
+      "tick": 55556,
+      "round_num": 10,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055556_molodoy"
+    },
+    {
+      "tick": 55556,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055556_ropz"
+    },
+    {
+      "tick": 55748,
+      "round_num": 10,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055748_molodoy"
+    },
+    {
+      "tick": 55748,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055748_ropz"
+    },
+    {
+      "tick": 55940,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055940_KSCERATO"
+    },
+    {
+      "tick": 55940,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t055940_ropz"
+    },
+    {
+      "tick": 56132,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056132_KSCERATO"
+    },
+    {
+      "tick": 56132,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056132_ropz"
+    },
+    {
+      "tick": 56324,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056324_KSCERATO"
+    },
+    {
+      "tick": 56324,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056324_ropz"
+    },
+    {
+      "tick": 56516,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056516_KSCERATO"
+    },
+    {
+      "tick": 56516,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056516_ropz"
+    },
+    {
+      "tick": 56708,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056708_KSCERATO"
+    },
+    {
+      "tick": 56708,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056708_ropz"
+    },
+    {
+      "tick": 56900,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056900_KSCERATO"
+    },
+    {
+      "tick": 56900,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t056900_ropz"
+    },
+    {
+      "tick": 57092,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057092_KSCERATO"
+    },
+    {
+      "tick": 57092,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057092_ropz"
+    },
+    {
+      "tick": 57158,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r10_t057158_KSCERATO"
+    },
+    {
+      "tick": 57158,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r10_t057158_ropz"
+    },
+    {
+      "tick": 57284,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057284_KSCERATO"
+    },
+    {
+      "tick": 57284,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057284_ropz"
+    },
+    {
+      "tick": 57476,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057476_KSCERATO"
+    },
+    {
+      "tick": 57476,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057476_ropz"
+    },
+    {
+      "tick": 57478,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r10_t057478_KSCERATO"
+    },
+    {
+      "tick": 57478,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r10_t057478_ropz"
+    },
+    {
+      "tick": 57668,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057668_KSCERATO"
+    },
+    {
+      "tick": 57668,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057668_ropz"
+    },
+    {
+      "tick": 57820,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r10_t057820_KSCERATO"
+    },
+    {
+      "tick": 57820,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r10_t057820_ropz"
+    },
+    {
+      "tick": 57860,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057860_KSCERATO"
+    },
+    {
+      "tick": 57860,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t057860_ropz"
+    },
+    {
+      "tick": 58052,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058052_KSCERATO"
+    },
+    {
+      "tick": 58052,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058052_ropz"
+    },
+    {
+      "tick": 58244,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058244_KSCERATO"
+    },
+    {
+      "tick": 58244,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058244_ropz"
+    },
+    {
+      "tick": 58436,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058436_KSCERATO"
+    },
+    {
+      "tick": 58436,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058436_ropz"
+    },
+    {
+      "tick": 58628,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058628_KSCERATO"
+    },
+    {
+      "tick": 58628,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058628_ropz"
+    },
+    {
+      "tick": 58820,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058820_KSCERATO"
+    },
+    {
+      "tick": 58820,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t058820_ropz"
+    },
+    {
+      "tick": 59012,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059012_KSCERATO"
+    },
+    {
+      "tick": 59012,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059012_ropz"
+    },
+    {
+      "tick": 59204,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059204_KSCERATO"
+    },
+    {
+      "tick": 59204,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059204_ropz"
+    },
+    {
+      "tick": 59396,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059396_KSCERATO"
+    },
+    {
+      "tick": 59396,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059396_ropz"
+    },
+    {
+      "tick": 59588,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059588_KSCERATO"
+    },
+    {
+      "tick": 59588,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059588_ropz"
+    },
+    {
+      "tick": 59780,
+      "round_num": 10,
+      "player_name": "KSCERATO",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059780_KSCERATO"
+    },
+    {
+      "tick": 59780,
+      "round_num": 10,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r10_t059780_ropz"
+    },
+    {
+      "tick": 61382,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061382_FalleN"
+    },
+    {
+      "tick": 61382,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061382_ropz"
+    },
+    {
+      "tick": 61574,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061574_FalleN"
+    },
+    {
+      "tick": 61574,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061574_ropz"
+    },
+    {
+      "tick": 61766,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061766_FalleN"
+    },
+    {
+      "tick": 61766,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061766_ropz"
+    },
+    {
+      "tick": 61958,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061958_FalleN"
+    },
+    {
+      "tick": 61958,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t061958_ropz"
+    },
+    {
+      "tick": 62150,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062150_FalleN"
+    },
+    {
+      "tick": 62150,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062150_ropz"
+    },
+    {
+      "tick": 62342,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062342_FalleN"
+    },
+    {
+      "tick": 62342,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062342_ropz"
+    },
+    {
+      "tick": 62534,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062534_FalleN"
+    },
+    {
+      "tick": 62534,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062534_ropz"
+    },
+    {
+      "tick": 62726,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062726_FalleN"
+    },
+    {
+      "tick": 62726,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062726_ropz"
+    },
+    {
+      "tick": 62918,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062918_FalleN"
+    },
+    {
+      "tick": 62918,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t062918_ropz"
+    },
+    {
+      "tick": 63110,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063110_FalleN"
+    },
+    {
+      "tick": 63110,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063110_ropz"
+    },
+    {
+      "tick": 63302,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063302_FalleN"
+    },
+    {
+      "tick": 63302,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063302_ropz"
+    },
+    {
+      "tick": 63494,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063494_FalleN"
+    },
+    {
+      "tick": 63494,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063494_ropz"
+    },
+    {
+      "tick": 63686,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063686_FalleN"
+    },
+    {
+      "tick": 63686,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063686_ropz"
+    },
+    {
+      "tick": 63878,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063878_FalleN"
+    },
+    {
+      "tick": 63878,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t063878_ropz"
+    },
+    {
+      "tick": 63960,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r11_t063960_FalleN"
+    },
+    {
+      "tick": 63960,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r11_t063960_ropz"
+    },
+    {
+      "tick": 64070,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064070_FalleN"
+    },
+    {
+      "tick": 64070,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064070_ropz"
+    },
+    {
+      "tick": 64262,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064262_FalleN"
+    },
+    {
+      "tick": 64262,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064262_ropz"
+    },
+    {
+      "tick": 64454,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064454_FalleN"
+    },
+    {
+      "tick": 64454,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064454_ropz"
+    },
+    {
+      "tick": 64646,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064646_FalleN"
+    },
+    {
+      "tick": 64646,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064646_ropz"
+    },
+    {
+      "tick": 64838,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064838_FalleN"
+    },
+    {
+      "tick": 64838,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t064838_ropz"
+    },
+    {
+      "tick": 65030,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065030_FalleN"
+    },
+    {
+      "tick": 65030,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065030_ropz"
+    },
+    {
+      "tick": 65222,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065222_FalleN"
+    },
+    {
+      "tick": 65222,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065222_ropz"
+    },
+    {
+      "tick": 65414,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065414_FalleN"
+    },
+    {
+      "tick": 65414,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065414_ropz"
+    },
+    {
+      "tick": 65606,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065606_FalleN"
+    },
+    {
+      "tick": 65606,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065606_ropz"
+    },
+    {
+      "tick": 65798,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065798_FalleN"
+    },
+    {
+      "tick": 65798,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065798_ropz"
+    },
+    {
+      "tick": 65990,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065990_FalleN"
+    },
+    {
+      "tick": 65990,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t065990_ropz"
+    },
+    {
+      "tick": 66182,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066182_FalleN"
+    },
+    {
+      "tick": 66182,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066182_ropz"
+    },
+    {
+      "tick": 66374,
+      "round_num": 11,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066374_FalleN"
+    },
+    {
+      "tick": 66374,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066374_ropz"
+    },
+    {
+      "tick": 66566,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066566_molodoy"
+    },
+    {
+      "tick": 66566,
+      "round_num": 11,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066566_ropz"
+    },
+    {
+      "tick": 66758,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066758_molodoy"
+    },
+    {
+      "tick": 66758,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066758_ZywOo"
+    },
+    {
+      "tick": 66950,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066950_molodoy"
+    },
+    {
+      "tick": 66950,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t066950_ZywOo"
+    },
+    {
+      "tick": 67142,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067142_molodoy"
+    },
+    {
+      "tick": 67142,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067142_ZywOo"
+    },
+    {
+      "tick": 67321,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r11_t067321_molodoy"
+    },
+    {
+      "tick": 67321,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r11_t067321_ZywOo"
+    },
+    {
+      "tick": 67334,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067334_molodoy"
+    },
+    {
+      "tick": 67334,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067334_ZywOo"
+    },
+    {
+      "tick": 67526,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067526_molodoy"
+    },
+    {
+      "tick": 67526,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067526_ZywOo"
+    },
+    {
+      "tick": 67641,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r11_t067641_molodoy"
+    },
+    {
+      "tick": 67641,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r11_t067641_ZywOo"
+    },
+    {
+      "tick": 67718,
+      "round_num": 11,
+      "player_name": "molodoy",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067718_molodoy"
+    },
+    {
+      "tick": 67718,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067718_ZywOo"
+    },
+    {
+      "tick": 67910,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t067910_ZywOo"
+    },
+    {
+      "tick": 68102,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t068102_ZywOo"
+    },
+    {
+      "tick": 68294,
+      "round_num": 11,
+      "player_name": "ZywOo",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r11_t068294_ZywOo"
+    },
+    {
+      "tick": 71927,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t071927_FalleN"
+    },
+    {
+      "tick": 71927,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t071927_ropz"
+    },
+    {
+      "tick": 72119,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072119_FalleN"
+    },
+    {
+      "tick": 72119,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072119_ropz"
+    },
+    {
+      "tick": 72311,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072311_FalleN"
+    },
+    {
+      "tick": 72311,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072311_ropz"
+    },
+    {
+      "tick": 72503,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072503_FalleN"
+    },
+    {
+      "tick": 72503,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072503_ropz"
+    },
+    {
+      "tick": 72695,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072695_FalleN"
+    },
+    {
+      "tick": 72695,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072695_ropz"
+    },
+    {
+      "tick": 72887,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072887_FalleN"
+    },
+    {
+      "tick": 72887,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t072887_ropz"
+    },
+    {
+      "tick": 73079,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073079_FalleN"
+    },
+    {
+      "tick": 73079,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073079_ropz"
+    },
+    {
+      "tick": 73271,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073271_FalleN"
+    },
+    {
+      "tick": 73271,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073271_ropz"
+    },
+    {
+      "tick": 73463,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073463_FalleN"
+    },
+    {
+      "tick": 73463,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073463_ropz"
+    },
+    {
+      "tick": 73655,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073655_FalleN"
+    },
+    {
+      "tick": 73655,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073655_ropz"
+    },
+    {
+      "tick": 73847,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073847_FalleN"
+    },
+    {
+      "tick": 73847,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t073847_ropz"
+    },
+    {
+      "tick": 74039,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074039_FalleN"
+    },
+    {
+      "tick": 74039,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074039_ropz"
+    },
+    {
+      "tick": 74231,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074231_FalleN"
+    },
+    {
+      "tick": 74231,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074231_ropz"
+    },
+    {
+      "tick": 74423,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074423_FalleN"
+    },
+    {
+      "tick": 74423,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074423_ropz"
+    },
+    {
+      "tick": 74615,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074615_FalleN"
+    },
+    {
+      "tick": 74615,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074615_ropz"
+    },
+    {
+      "tick": 74807,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074807_FalleN"
+    },
+    {
+      "tick": 74807,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074807_ropz"
+    },
+    {
+      "tick": 74999,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074999_FalleN"
+    },
+    {
+      "tick": 74999,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t074999_ropz"
+    },
+    {
+      "tick": 75191,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075191_FalleN"
+    },
+    {
+      "tick": 75191,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075191_ropz"
+    },
+    {
+      "tick": 75383,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075383_FalleN"
+    },
+    {
+      "tick": 75383,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075383_ropz"
+    },
+    {
+      "tick": 75575,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075575_FalleN"
+    },
+    {
+      "tick": 75575,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075575_ropz"
+    },
+    {
+      "tick": 75767,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075767_FalleN"
+    },
+    {
+      "tick": 75767,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075767_ropz"
+    },
+    {
+      "tick": 75959,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075959_FalleN"
+    },
+    {
+      "tick": 75959,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t075959_ropz"
+    },
+    {
+      "tick": 76151,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076151_FalleN"
+    },
+    {
+      "tick": 76151,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076151_ropz"
+    },
+    {
+      "tick": 76343,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076343_FalleN"
+    },
+    {
+      "tick": 76343,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076343_ropz"
+    },
+    {
+      "tick": 76535,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076535_FalleN"
+    },
+    {
+      "tick": 76535,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076535_ropz"
+    },
+    {
+      "tick": 76727,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076727_FalleN"
+    },
+    {
+      "tick": 76727,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076727_ropz"
+    },
+    {
+      "tick": 76919,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076919_FalleN"
+    },
+    {
+      "tick": 76919,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t076919_ropz"
+    },
+    {
+      "tick": 77111,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077111_FalleN"
+    },
+    {
+      "tick": 77111,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077111_ropz"
+    },
+    {
+      "tick": 77232,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r12_t077232_FalleN"
+    },
+    {
+      "tick": 77232,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r12_t077232_ropz"
+    },
+    {
+      "tick": 77303,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077303_FalleN"
+    },
+    {
+      "tick": 77303,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077303_ropz"
+    },
+    {
+      "tick": 77495,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077495_FalleN"
+    },
+    {
+      "tick": 77495,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077495_ropz"
+    },
+    {
+      "tick": 77687,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077687_FalleN"
+    },
+    {
+      "tick": 77687,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077687_ropz"
+    },
+    {
+      "tick": 77879,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077879_FalleN"
+    },
+    {
+      "tick": 77879,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t077879_ropz"
+    },
+    {
+      "tick": 78071,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078071_FalleN"
+    },
+    {
+      "tick": 78071,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078071_ropz"
+    },
+    {
+      "tick": 78263,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078263_FalleN"
+    },
+    {
+      "tick": 78263,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078263_ropz"
+    },
+    {
+      "tick": 78270,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r12_t078270_FalleN"
+    },
+    {
+      "tick": 78270,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r12_t078270_ropz"
+    },
+    {
+      "tick": 78455,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078455_FalleN"
+    },
+    {
+      "tick": 78455,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078455_ropz"
+    },
+    {
+      "tick": 78590,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r12_t078590_FalleN"
+    },
+    {
+      "tick": 78590,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r12_t078590_ropz"
+    },
+    {
+      "tick": 78647,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078647_FalleN"
+    },
+    {
+      "tick": 78647,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078647_ropz"
+    },
+    {
+      "tick": 78839,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078839_FalleN"
+    },
+    {
+      "tick": 78839,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t078839_ropz"
+    },
+    {
+      "tick": 79031,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079031_FalleN"
+    },
+    {
+      "tick": 79031,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079031_ropz"
+    },
+    {
+      "tick": 79223,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079223_FalleN"
+    },
+    {
+      "tick": 79223,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079223_ropz"
+    },
+    {
+      "tick": 79415,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079415_FalleN"
+    },
+    {
+      "tick": 79415,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079415_ropz"
+    },
+    {
+      "tick": 79607,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079607_FalleN"
+    },
+    {
+      "tick": 79607,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079607_ropz"
+    },
+    {
+      "tick": 79799,
+      "round_num": 12,
+      "player_name": "FalleN",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079799_FalleN"
+    },
+    {
+      "tick": 79799,
+      "round_num": 12,
+      "player_name": "ropz",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r12_t079799_ropz"
+    },
+    {
+      "tick": 98677,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t098677_ZywOo"
+    },
+    {
+      "tick": 98677,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t098677_KSCERATO"
+    },
+    {
+      "tick": 98869,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t098869_ZywOo"
+    },
+    {
+      "tick": 98869,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t098869_KSCERATO"
+    },
+    {
+      "tick": 99061,
+      "round_num": 13,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099061_ropz"
+    },
+    {
+      "tick": 99061,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099061_KSCERATO"
+    },
+    {
+      "tick": 99253,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099253_flameZ"
+    },
+    {
+      "tick": 99253,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099253_KSCERATO"
+    },
+    {
+      "tick": 99445,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099445_flameZ"
+    },
+    {
+      "tick": 99445,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099445_KSCERATO"
+    },
+    {
+      "tick": 99637,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099637_flameZ"
+    },
+    {
+      "tick": 99637,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099637_KSCERATO"
+    },
+    {
+      "tick": 99829,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099829_flameZ"
+    },
+    {
+      "tick": 99829,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t099829_KSCERATO"
+    },
+    {
+      "tick": 100021,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100021_flameZ"
+    },
+    {
+      "tick": 100021,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100021_KSCERATO"
+    },
+    {
+      "tick": 100213,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100213_flameZ"
+    },
+    {
+      "tick": 100213,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100213_KSCERATO"
+    },
+    {
+      "tick": 100405,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100405_flameZ"
+    },
+    {
+      "tick": 100405,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100405_KSCERATO"
+    },
+    {
+      "tick": 100597,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100597_flameZ"
+    },
+    {
+      "tick": 100597,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100597_KSCERATO"
+    },
+    {
+      "tick": 100789,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100789_flameZ"
+    },
+    {
+      "tick": 100789,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100789_KSCERATO"
+    },
+    {
+      "tick": 100976,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r13_t100976_flameZ"
+    },
+    {
+      "tick": 100976,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r13_t100976_KSCERATO"
+    },
+    {
+      "tick": 100981,
+      "round_num": 13,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100981_flameZ"
+    },
+    {
+      "tick": 100981,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t100981_KSCERATO"
+    },
+    {
+      "tick": 101173,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101173_ZywOo"
+    },
+    {
+      "tick": 101173,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101173_KSCERATO"
+    },
+    {
+      "tick": 101365,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101365_ZywOo"
+    },
+    {
+      "tick": 101365,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101365_KSCERATO"
+    },
+    {
+      "tick": 101557,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101557_ZywOo"
+    },
+    {
+      "tick": 101557,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101557_KSCERATO"
+    },
+    {
+      "tick": 101749,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101749_ZywOo"
+    },
+    {
+      "tick": 101749,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101749_KSCERATO"
+    },
+    {
+      "tick": 101941,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101941_ZywOo"
+    },
+    {
+      "tick": 101941,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t101941_KSCERATO"
+    },
+    {
+      "tick": 102133,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102133_ZywOo"
+    },
+    {
+      "tick": 102133,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102133_KSCERATO"
+    },
+    {
+      "tick": 102325,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102325_ZywOo"
+    },
+    {
+      "tick": 102325,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102325_KSCERATO"
+    },
+    {
+      "tick": 102517,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102517_ZywOo"
+    },
+    {
+      "tick": 102517,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102517_KSCERATO"
+    },
+    {
+      "tick": 102709,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102709_ZywOo"
+    },
+    {
+      "tick": 102709,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102709_KSCERATO"
+    },
+    {
+      "tick": 102856,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r13_t102856_ZywOo"
+    },
+    {
+      "tick": 102856,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "bomb_plant",
+      "screenshot_id": "nuke_r13_t102856_KSCERATO"
+    },
+    {
+      "tick": 102901,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102901_ZywOo"
+    },
+    {
+      "tick": 102901,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t102901_KSCERATO"
+    },
+    {
+      "tick": 103093,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103093_ZywOo"
+    },
+    {
+      "tick": 103093,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103093_KSCERATO"
+    },
+    {
+      "tick": 103176,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r13_t103176_ZywOo"
+    },
+    {
+      "tick": 103176,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "post_plant",
+      "screenshot_id": "nuke_r13_t103176_KSCERATO"
+    },
+    {
+      "tick": 103285,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103285_ZywOo"
+    },
+    {
+      "tick": 103285,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103285_KSCERATO"
+    },
+    {
+      "tick": 103477,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103477_ZywOo"
+    },
+    {
+      "tick": 103477,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103477_KSCERATO"
+    },
+    {
+      "tick": 103669,
+      "round_num": 13,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103669_ZywOo"
+    },
+    {
+      "tick": 103669,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103669_KSCERATO"
+    },
+    {
+      "tick": 103861,
+      "round_num": 13,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103861_mezii"
+    },
+    {
+      "tick": 103861,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t103861_KSCERATO"
+    },
+    {
+      "tick": 104053,
+      "round_num": 13,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t104053_mezii"
+    },
+    {
+      "tick": 104053,
+      "round_num": 13,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r13_t104053_KSCERATO"
+    },
+    {
+      "tick": 105761,
+      "round_num": 14,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t105761_ropz"
+    },
+    {
+      "tick": 105761,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t105761_KSCERATO"
+    },
+    {
+      "tick": 105953,
+      "round_num": 14,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t105953_ropz"
+    },
+    {
+      "tick": 105953,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t105953_KSCERATO"
+    },
+    {
+      "tick": 106145,
+      "round_num": 14,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106145_ropz"
+    },
+    {
+      "tick": 106145,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106145_KSCERATO"
+    },
+    {
+      "tick": 106337,
+      "round_num": 14,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106337_ropz"
+    },
+    {
+      "tick": 106337,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106337_KSCERATO"
+    },
+    {
+      "tick": 106529,
+      "round_num": 14,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106529_ropz"
+    },
+    {
+      "tick": 106529,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106529_KSCERATO"
+    },
+    {
+      "tick": 106646,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r14_t106646_ZywOo"
+    },
+    {
+      "tick": 106646,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r14_t106646_KSCERATO"
+    },
+    {
+      "tick": 106721,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106721_ZywOo"
+    },
+    {
+      "tick": 106721,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106721_KSCERATO"
+    },
+    {
+      "tick": 106913,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106913_ZywOo"
+    },
+    {
+      "tick": 106913,
+      "round_num": 14,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t106913_KSCERATO"
+    },
+    {
+      "tick": 107105,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107105_ZywOo"
+    },
+    {
+      "tick": 107105,
+      "round_num": 14,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107105_FalleN"
+    },
+    {
+      "tick": 107297,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107297_ZywOo"
+    },
+    {
+      "tick": 107297,
+      "round_num": 14,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107297_FalleN"
+    },
+    {
+      "tick": 107489,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107489_ZywOo"
+    },
+    {
+      "tick": 107489,
+      "round_num": 14,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107489_FalleN"
+    },
+    {
+      "tick": 107681,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107681_ZywOo"
+    },
+    {
+      "tick": 107681,
+      "round_num": 14,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107681_FalleN"
+    },
+    {
+      "tick": 107873,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107873_ZywOo"
+    },
+    {
+      "tick": 107873,
+      "round_num": 14,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t107873_FalleN"
+    },
+    {
+      "tick": 108065,
+      "round_num": 14,
+      "player_name": "flameZ",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108065_flameZ"
+    },
+    {
+      "tick": 108065,
+      "round_num": 14,
+      "player_name": "molodoy",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108065_molodoy"
+    },
+    {
+      "tick": 108257,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108257_ZywOo"
+    },
+    {
+      "tick": 108257,
+      "round_num": 14,
+      "player_name": "molodoy",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108257_molodoy"
+    },
+    {
+      "tick": 108449,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108449_ZywOo"
+    },
+    {
+      "tick": 108449,
+      "round_num": 14,
+      "player_name": "molodoy",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108449_molodoy"
+    },
+    {
+      "tick": 108641,
+      "round_num": 14,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108641_ZywOo"
+    },
+    {
+      "tick": 108641,
+      "round_num": 14,
+      "player_name": "molodoy",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r14_t108641_molodoy"
+    },
+    {
+      "tick": 110284,
+      "round_num": 15,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110284_ZywOo"
+    },
+    {
+      "tick": 110284,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110284_KSCERATO"
+    },
+    {
+      "tick": 110476,
+      "round_num": 15,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110476_ZywOo"
+    },
+    {
+      "tick": 110476,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110476_KSCERATO"
+    },
+    {
+      "tick": 110668,
+      "round_num": 15,
+      "player_name": "ZywOo",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110668_ZywOo"
+    },
+    {
+      "tick": 110668,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110668_KSCERATO"
+    },
+    {
+      "tick": 110860,
+      "round_num": 15,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110860_ropz"
+    },
+    {
+      "tick": 110860,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t110860_KSCERATO"
+    },
+    {
+      "tick": 111052,
+      "round_num": 15,
+      "player_name": "ropz",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111052_ropz"
+    },
+    {
+      "tick": 111052,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111052_KSCERATO"
+    },
+    {
+      "tick": 111244,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111244_mezii"
+    },
+    {
+      "tick": 111244,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111244_KSCERATO"
+    },
+    {
+      "tick": 111436,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111436_mezii"
+    },
+    {
+      "tick": 111436,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111436_KSCERATO"
+    },
+    {
+      "tick": 111628,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111628_mezii"
+    },
+    {
+      "tick": 111628,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111628_KSCERATO"
+    },
+    {
+      "tick": 111819,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r15_t111819_mezii"
+    },
+    {
+      "tick": 111819,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "first_kill",
+      "screenshot_id": "nuke_r15_t111819_KSCERATO"
+    },
+    {
+      "tick": 111820,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111820_mezii"
+    },
+    {
+      "tick": 111820,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t111820_KSCERATO"
+    },
+    {
+      "tick": 112012,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112012_mezii"
+    },
+    {
+      "tick": 112012,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112012_KSCERATO"
+    },
+    {
+      "tick": 112204,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112204_mezii"
+    },
+    {
+      "tick": 112204,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112204_KSCERATO"
+    },
+    {
+      "tick": 112396,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112396_mezii"
+    },
+    {
+      "tick": 112396,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112396_KSCERATO"
+    },
+    {
+      "tick": 112588,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112588_mezii"
+    },
+    {
+      "tick": 112588,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112588_KSCERATO"
+    },
+    {
+      "tick": 112780,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112780_mezii"
+    },
+    {
+      "tick": 112780,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112780_KSCERATO"
+    },
+    {
+      "tick": 112972,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112972_mezii"
+    },
+    {
+      "tick": 112972,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t112972_KSCERATO"
+    },
+    {
+      "tick": 113164,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113164_mezii"
+    },
+    {
+      "tick": 113164,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113164_KSCERATO"
+    },
+    {
+      "tick": 113356,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113356_mezii"
+    },
+    {
+      "tick": 113356,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113356_KSCERATO"
+    },
+    {
+      "tick": 113548,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113548_mezii"
+    },
+    {
+      "tick": 113548,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113548_KSCERATO"
+    },
+    {
+      "tick": 113740,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113740_mezii"
+    },
+    {
+      "tick": 113740,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113740_KSCERATO"
+    },
+    {
+      "tick": 113932,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113932_mezii"
+    },
+    {
+      "tick": 113932,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t113932_KSCERATO"
+    },
+    {
+      "tick": 114124,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114124_mezii"
+    },
+    {
+      "tick": 114124,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114124_KSCERATO"
+    },
+    {
+      "tick": 114316,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114316_mezii"
+    },
+    {
+      "tick": 114316,
+      "round_num": 15,
+      "player_name": "KSCERATO",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114316_KSCERATO"
+    },
+    {
+      "tick": 114508,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114508_mezii"
+    },
+    {
+      "tick": 114508,
+      "round_num": 15,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114508_FalleN"
+    },
+    {
+      "tick": 114700,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114700_mezii"
+    },
+    {
+      "tick": 114700,
+      "round_num": 15,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114700_FalleN"
+    },
+    {
+      "tick": 114892,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114892_mezii"
+    },
+    {
+      "tick": 114892,
+      "round_num": 15,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t114892_FalleN"
+    },
+    {
+      "tick": 115084,
+      "round_num": 15,
+      "player_name": "mezii",
+      "player_side": "t",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t115084_mezii"
+    },
+    {
+      "tick": 115084,
+      "round_num": 15,
+      "player_name": "FalleN",
+      "player_side": "ct",
+      "reason": "sample",
+      "screenshot_id": "nuke_r15_t115084_FalleN"
+    }
+  ]
+}

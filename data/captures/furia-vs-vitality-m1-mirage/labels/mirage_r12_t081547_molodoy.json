@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 12,
+    "round_phase": "playing",
+    "player_name": "molodoy",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 50,
+    "weapon_primary": "Galil AR",
+    "weapon_secondary": "Glock-18",
+    "utility": [
+      "Flashbang"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 3,
+    "alive_enemies": 5,
+    "bomb_status": "carried",
+    "score_t": 2,
+    "score_ct": 9
+  },
+  "teammates": [
+    {
+      "name": "FalleN",
+      "alive": true,
+      "health": 29
+    },
+    {
+      "name": "KSCERATO",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "yuurih",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 81547,
+    "round_num": 12,
+    "screenshot_id": "mirage_r12_t081547_molodoy",
+    "pov_player": "molodoy",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

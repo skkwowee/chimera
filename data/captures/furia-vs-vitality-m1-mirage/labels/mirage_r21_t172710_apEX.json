@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 21,
+    "round_phase": "playing",
+    "player_name": "apEX",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": false,
+    "player_money": 1600,
+    "weapon_primary": null,
+    "weapon_secondary": "P250",
+    "utility": [
+      "Flashbang"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 4,
+    "alive_enemies": 5,
+    "bomb_status": "carried",
+    "score_t": 5,
+    "score_ct": 15
+  },
+  "teammates": [
+    {
+      "name": "mezii",
+      "alive": true,
+      "health": 72
+    },
+    {
+      "name": "ropz",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "flameZ",
+      "alive": true,
+      "health": 18
+    },
+    {
+      "name": "ZywOo",
+      "alive": true,
+      "health": 100
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 172710,
+    "round_num": 21,
+    "screenshot_id": "mirage_r21_t172710_apEX",
+    "pov_player": "apEX",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

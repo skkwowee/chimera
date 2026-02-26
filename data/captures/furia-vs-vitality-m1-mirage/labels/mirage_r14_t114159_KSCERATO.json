@@ -1,0 +1,53 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 14,
+    "round_phase": "post-plant",
+    "player_name": "KSCERATO",
+    "player_side": "CT",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 300,
+    "weapon_primary": "AWP",
+    "weapon_secondary": "Dual Berettas",
+    "utility": [],
+    "has_defuser": false,
+    "alive_teammates": 1,
+    "alive_enemies": 0,
+    "bomb_status": "planted",
+    "score_t": 3,
+    "score_ct": 10
+  },
+  "teammates": [
+    {
+      "name": "molodoy",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "FalleN",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "yuurih",
+      "alive": true,
+      "health": 8
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 114159,
+    "round_num": 14,
+    "screenshot_id": "mirage_r14_t114159_KSCERATO",
+    "pov_player": "KSCERATO",
+    "pov_side": "ct",
+    "capture_reason": "sample"
+  }
+}

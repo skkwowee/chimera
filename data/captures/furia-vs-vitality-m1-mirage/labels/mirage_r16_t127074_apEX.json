@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 16,
+    "round_phase": "post-plant",
+    "player_name": "apEX",
+    "player_side": "T",
+    "player_health": 76,
+    "player_armor": 95,
+    "player_has_helmet": true,
+    "player_money": 1250,
+    "weapon_primary": "AK-47",
+    "weapon_secondary": "Glock-18",
+    "utility": [
+      "High Explosive Grenade"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 0,
+    "alive_enemies": 2,
+    "bomb_status": "planted",
+    "score_t": 3,
+    "score_ct": 12
+  },
+  "teammates": [
+    {
+      "name": "mezii",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "ropz",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "flameZ",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "ZywOo",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 127074,
+    "round_num": 16,
+    "screenshot_id": "mirage_r16_t127074_apEX",
+    "pov_player": "apEX",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

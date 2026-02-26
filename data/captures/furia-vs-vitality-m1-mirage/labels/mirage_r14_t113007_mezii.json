@@ -1,0 +1,53 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 14,
+    "round_phase": "post-plant",
+    "player_name": "mezii",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 0,
+    "player_has_helmet": false,
+    "player_money": 300,
+    "weapon_primary": "Galil AR",
+    "weapon_secondary": "Desert Eagle",
+    "utility": [],
+    "has_defuser": false,
+    "alive_teammates": 2,
+    "alive_enemies": 5,
+    "bomb_status": "planted",
+    "score_t": 3,
+    "score_ct": 10
+  },
+  "teammates": [
+    {
+      "name": "ropz",
+      "alive": true,
+      "health": 33
+    },
+    {
+      "name": "apEX",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "flameZ",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "ZywOo",
+      "alive": true,
+      "health": 100
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 113007,
+    "round_num": 14,
+    "screenshot_id": "mirage_r14_t113007_mezii",
+    "pov_player": "mezii",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

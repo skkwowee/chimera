@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 23,
+    "round_phase": "playing",
+    "player_name": "mezii",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 200,
+    "weapon_primary": "AK-47",
+    "weapon_secondary": "Glock-18",
+    "utility": [
+      "Molotov"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 1,
+    "alive_enemies": 3,
+    "bomb_status": "carried",
+    "score_t": 5,
+    "score_ct": 17
+  },
+  "teammates": [
+    {
+      "name": "ropz",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "apEX",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "flameZ",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "ZywOo",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 191851,
+    "round_num": 23,
+    "screenshot_id": "mirage_r23_t191851_mezii",
+    "pov_player": "mezii",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

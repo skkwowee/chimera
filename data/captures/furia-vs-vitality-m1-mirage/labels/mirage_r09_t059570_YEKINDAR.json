@@ -1,0 +1,56 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 9,
+    "round_phase": "playing",
+    "player_name": "YEKINDAR",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 1200,
+    "weapon_primary": "AK-47",
+    "weapon_secondary": "Glock-18",
+    "utility": [
+      "Smoke Grenade",
+      "High Explosive Grenade"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 3,
+    "alive_enemies": 3,
+    "bomb_status": "carried",
+    "score_t": 2,
+    "score_ct": 6
+  },
+  "teammates": [
+    {
+      "name": "molodoy",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "FalleN",
+      "alive": true,
+      "health": 73
+    },
+    {
+      "name": "KSCERATO",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "yuurih",
+      "alive": true,
+      "health": 100
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 59570,
+    "round_num": 9,
+    "screenshot_id": "mirage_r09_t059570_YEKINDAR",
+    "pov_player": "YEKINDAR",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

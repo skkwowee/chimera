@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 15,
+    "round_phase": "playing",
+    "player_name": "ropz",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": false,
+    "player_money": 1700,
+    "weapon_primary": null,
+    "weapon_secondary": "Desert Eagle",
+    "utility": [
+      "Smoke Grenade"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 1,
+    "alive_enemies": 4,
+    "bomb_status": "dropped",
+    "score_t": 3,
+    "score_ct": 11
+  },
+  "teammates": [
+    {
+      "name": "mezii",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "apEX",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "flameZ",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "ZywOo",
+      "alive": true,
+      "health": 1
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 119146,
+    "round_num": 15,
+    "screenshot_id": "mirage_r15_t119146_ropz",
+    "pov_player": "ropz",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

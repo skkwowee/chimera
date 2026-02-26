@@ -1,0 +1,53 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 22,
+    "round_phase": "post-plant",
+    "player_name": "molodoy",
+    "player_side": "CT",
+    "player_health": 17,
+    "player_armor": 90,
+    "player_has_helmet": true,
+    "player_money": 6800,
+    "weapon_primary": "AWP",
+    "weapon_secondary": "USP-S",
+    "utility": [],
+    "has_defuser": true,
+    "alive_teammates": 0,
+    "alive_enemies": 0,
+    "bomb_status": "planted",
+    "score_t": 5,
+    "score_ct": 16
+  },
+  "teammates": [
+    {
+      "name": "FalleN",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "KSCERATO",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "yuurih",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 185780,
+    "round_num": 22,
+    "screenshot_id": "mirage_r22_t185780_molodoy",
+    "pov_player": "molodoy",
+    "pov_side": "ct",
+    "capture_reason": "sample"
+  }
+}

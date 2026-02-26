@@ -1,0 +1,53 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 10,
+    "round_phase": "playing",
+    "player_name": "yuurih",
+    "player_side": "T",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 350,
+    "weapon_primary": "Galil AR",
+    "weapon_secondary": "Glock-18",
+    "utility": [],
+    "has_defuser": false,
+    "alive_teammates": 0,
+    "alive_enemies": 3,
+    "bomb_status": "dropped",
+    "score_t": 2,
+    "score_ct": 7
+  },
+  "teammates": [
+    {
+      "name": "molodoy",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "FalleN",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "KSCERATO",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 67769,
+    "round_num": 10,
+    "screenshot_id": "mirage_r10_t067769_yuurih",
+    "pov_player": "yuurih",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

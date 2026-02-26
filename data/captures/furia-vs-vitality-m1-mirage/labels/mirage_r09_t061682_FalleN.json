@@ -1,0 +1,55 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 9,
+    "round_phase": "playing",
+    "player_name": "FalleN",
+    "player_side": "T",
+    "player_health": 73,
+    "player_armor": 97,
+    "player_has_helmet": true,
+    "player_money": 200,
+    "weapon_primary": "AK-47",
+    "weapon_secondary": "Glock-18",
+    "utility": [
+      "Flashbang"
+    ],
+    "has_defuser": false,
+    "alive_teammates": 1,
+    "alive_enemies": 3,
+    "bomb_status": "dropped",
+    "score_t": 2,
+    "score_ct": 6
+  },
+  "teammates": [
+    {
+      "name": "molodoy",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "KSCERATO",
+      "alive": false,
+      "health": 0
+    },
+    {
+      "name": "yuurih",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "YEKINDAR",
+      "alive": false,
+      "health": 0
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 61682,
+    "round_num": 9,
+    "screenshot_id": "mirage_r09_t061682_FalleN",
+    "pov_player": "FalleN",
+    "pov_side": "t",
+    "capture_reason": "sample"
+  }
+}

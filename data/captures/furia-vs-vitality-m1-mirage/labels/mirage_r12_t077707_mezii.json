@@ -1,0 +1,58 @@
+{
+  "game_state": {
+    "map_name": "de_mirage",
+    "round_num": 12,
+    "round_phase": "playing",
+    "player_name": "mezii",
+    "player_side": "CT",
+    "player_health": 100,
+    "player_armor": 100,
+    "player_has_helmet": true,
+    "player_money": 9050,
+    "weapon_primary": "M4A1-S",
+    "weapon_secondary": "Five-SeveN",
+    "utility": [
+      "High Explosive Grenade",
+      "Smoke Grenade",
+      "Incendiary Grenade",
+      "Flashbang"
+    ],
+    "has_defuser": true,
+    "alive_teammates": 4,
+    "alive_enemies": 5,
+    "bomb_status": "carried",
+    "score_t": 2,
+    "score_ct": 9
+  },
+  "teammates": [
+    {
+      "name": "ropz",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "apEX",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "flameZ",
+      "alive": true,
+      "health": 100
+    },
+    {
+      "name": "ZywOo",
+      "alive": true,
+      "health": 100
+    }
+  ],
+  "metadata": {
+    "demo_file": "furia-vs-vitality-m1-mirage.dem",
+    "tick": 77707,
+    "round_num": 12,
+    "screenshot_id": "mirage_r12_t077707_mezii",
+    "pov_player": "mezii",
+    "pov_side": "ct",
+    "capture_reason": "sample"
+  }
+}
