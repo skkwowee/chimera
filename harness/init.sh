@@ -57,9 +57,11 @@ else
   echo "  ~/cs2-tools/: not yet created"
 fi
 
-# parse_demos.py import status
+# parse_demos.py import status — check if manifest import is wrapped in try/except
 if grep -q "from src.data.manifest" "$ROOT/scripts/parse_demos.py" 2>/dev/null; then
-  if grep -q "try:" "$ROOT/scripts/parse_demos.py" 2>/dev/null && grep -q "except ImportError" "$ROOT/scripts/parse_demos.py" 2>/dev/null; then
+  MANIFEST_LINE=$(grep -n "from src.data.manifest" "$ROOT/scripts/parse_demos.py" | head -1 | cut -d: -f1)
+  PREV_LINE=$((MANIFEST_LINE - 1))
+  if sed -n "${PREV_LINE}p" "$ROOT/scripts/parse_demos.py" | grep -q "try:"; then
     echo "  parse_demos.py manifest import: conditional (ready for extraction)"
   else
     echo "  parse_demos.py manifest import: hard import (needs T01)"
