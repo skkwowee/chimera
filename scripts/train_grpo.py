@@ -4,12 +4,22 @@ GRPO training script for CS2 VLM fine-tuning.
 
 Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
 
-Usage:
-    # Basic training
-    python scripts/train_grpo.py --screenshots data/raw --labels data/labeled
+Revised reward architecture (D011):
+  - Multiplicative format gate (invalid JSON → zero total reward)
+  - 3 weighted signals: R_percept (0.20), R_decision (0.30), R_outcome (0.50)
+  - KL regularization (λ=0.02) prevents mode collapse
 
-    # Custom settings
-    python scripts/train_grpo.py --epochs 5 --lr 1e-5 --reward-weights 0.05 0.5 0.1 0.2 0.15
+Usage:
+    # Basic training (SFT→GRPO handoff)
+    python scripts/train_grpo.py \\
+        --model-name outputs/sft/final_model/merged_16bit \\
+        --screenshots data/raw --labels data/labeled
+
+    # Custom reward weights
+    python scripts/train_grpo.py --reward-weights 0.20 0.30 0.50
+
+    # Adjust KL penalty
+    python scripts/train_grpo.py --kl-coef 0.05
 
     # Resume from checkpoint
     python scripts/train_grpo.py --resume outputs/grpo/checkpoint-500
@@ -177,16 +187,23 @@ def parse_args():
         default=0.7,
         help="Sampling temperature for generation",
     )
+    grpo_group.add_argument(
+        "--kl-coef",
+        type=float,
+        default=0.02,
+        help="KL divergence penalty coefficient (prevents mode collapse)",
+    )
 
-    # Reward weights: [format, hard_acc, soft_acc, decision, outcome, consistency, reasoning]
+    # Reward weights: [R_percept, R_decision, R_outcome]
+    # Format gate is multiplicative (not a weighted signal)
     reward_group = parser.add_argument_group("Reward weights")
     reward_group.add_argument(
         "--reward-weights",
         type=float,
-        nargs=7,
-        default=[0.05, 0.15, 0.05, 0.15, 0.30, 0.20, 0.10],
-        metavar=("FORMAT", "HARD_ACC", "SOFT_ACC", "DECISION", "OUTCOME", "CONSISTENCY", "REASONING"),
-        help="Weights for the 7 reward signals",
+        nargs=3,
+        default=[0.20, 0.30, 0.50],
+        metavar=("PERCEPT", "DECISION", "OUTCOME"),
+        help="Weights for the 3 reward signals (format gate is multiplicative)",
     )
 
     # Checkpointing
@@ -265,6 +282,7 @@ def main():
         num_generations=args.num_generations,
         max_new_tokens=args.max_tokens,
         temperature=args.temperature,
+        kl_coef=args.kl_coef,
         reward_weights=args.reward_weights,
         output_dir=args.output,
         save_steps=args.save_steps,
@@ -280,6 +298,10 @@ def main():
     if config.use_lora:
         print(f"  - rank: {config.lora_r}")
         print(f"  - alpha: {config.lora_alpha}")
+    print(f"KL coefficient: {config.kl_coef}")
+    print(f"Reward weights: percept={config.reward_weights[0]}, "
+          f"decision={config.reward_weights[1]}, "
+          f"outcome={config.reward_weights[2]}")
     print(f"Output: {config.output_dir}")
     print()
 
@@ -360,9 +382,8 @@ def main():
     print("=" * 60)
     print(f"Model saved to: {output_path}")
     print(f"Final mean weighted total: {results.get('mean_weighted_total', 'N/A'):.4f}")
-    for signal in ("format_gate", "hard_field_accuracy", "soft_field_accuracy",
-                    "decision_alignment", "outcome",
-                    "consistency", "reasoning_quality"):
+    print(f"  Format gate pass rate: {results.get('mean_format_gate', 'N/A'):.4f}")
+    for signal in ("perceptual_accuracy", "decision_alignment", "outcome"):
         val = results.get(f"mean_{signal}", "N/A")
         label = signal.replace("_", " ").title()
         if isinstance(val, float):

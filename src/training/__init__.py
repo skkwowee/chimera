@@ -1,13 +1,19 @@
 from .rewards import (
+    # Active reward functions (D011 revised architecture)
     format_gate_reward,
-    hard_field_accuracy_reward,
-    soft_field_accuracy_reward,
+    perceptual_accuracy_reward,
     decision_alignment_reward,
     outcome_reward,
-    consistency_reward,
-    reasoning_quality_reward,
     REWARD_FUNCTIONS,
     DEFAULT_REWARD_WEIGHTS,
+    # Reward math components (exposed for testing / paper figures)
+    compute_player_contribution,
+    compute_outcome_modulation,
+    # Legacy (backward compat — these are thin wrappers or no-ops)
+    hard_field_accuracy_reward,
+    soft_field_accuracy_reward,
+    consistency_reward,
+    reasoning_quality_reward,
 )
 from .data_utils import (
     GRPODataItem,
@@ -23,16 +29,21 @@ from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
 from .sft_trainer import CS2SFTConfig, CS2SFTTrainer
 
 __all__ = [
-    # Rewards
+    # Active rewards (D011)
     "format_gate_reward",
-    "hard_field_accuracy_reward",
-    "soft_field_accuracy_reward",
+    "perceptual_accuracy_reward",
     "decision_alignment_reward",
     "outcome_reward",
-    "consistency_reward",
-    "reasoning_quality_reward",
     "REWARD_FUNCTIONS",
     "DEFAULT_REWARD_WEIGHTS",
+    # Reward math components
+    "compute_player_contribution",
+    "compute_outcome_modulation",
+    # Legacy rewards (backward compat)
+    "hard_field_accuracy_reward",
+    "soft_field_accuracy_reward",
+    "consistency_reward",
+    "reasoning_quality_reward",
     # Data utilities
     "GRPODataItem",
     "convert_labeled_to_grpo_format",

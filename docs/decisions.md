@@ -239,3 +239,180 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 - Put extraction features into the root feature-list.json. Rejected: that file tracks the training pipeline (F01–F07), which is a different concern with different lifecycle.
 
 **Status:** Decided. Harness restructured.
+
+---
+
+## D011: Revised reward architecture — 3 signals + multiplicative gate (2026-02-26)
+
+**Decision:** Replace the 7 additive reward signals with a cleaner 3-signal architecture plus a multiplicative format gate. Drop consistency and reasoning quality entirely. Introduce behavioral feature vectors for decision alignment, continuous outcome modulation with player contribution weighting, and KL regularization.
+
+**Why:** The original 7-signal design (D005/D006) had several problems identified through detailed analysis:
+
+1. **Format gate was toothless.** At 0.05 additive weight, invalid JSON still collected 0.95 of reward. The gate didn't gate.
+2. **Decision alignment was redundant with outcome.** Outcome already contains alignment (`0.4 + 0.6*a`). A separate pure-alignment signal at 0.15 double-counted "agree with pro," overweighting imitation.
+3. **Consistency was gameable.** The 6 keyword-matching heuristics (low health → "caution words") taught pattern matching, not reasoning. At 0.20 weight, the model would learn to sprinkle trigger words. This is exactly the "rigid reasoning" that VLAA-Thinker (2025) found SFT produces.
+4. **No KL constraint.** Nothing prevented mode collapse onto generic "safe" advice.
+5. **Action taxonomy was too coarse.** 6 categories missed tactical nuance — "push with flash" vs "push dry" both mapped to "aggressive."
+6. **Too many objectives for the data scale.** 7 signals with ~3000 samples and G=16 asks the model to satisfy 7 different objectives simultaneously. Cleaner gradient with fewer signals.
+
+### Revised reward function
+
+Total reward with multiplicative format gate:
+
+```
+r(y, o_t) = 𝟙[valid_json(y)] · (α·R_percept + β·R_decision + γ·R_outcome)
+```
+
+where α = 0.20, β = 0.30, γ = 0.50.
+
+Invalid JSON → zero total reward, regardless of other signal quality.
+
+### Component 1: Perceptual accuracy R_percept (α = 0.20)
+
+Merged hard + soft field accuracy. Prevents SFT regression.
+
+```
+R_percept(y, s_t) = (1/|F|) Σ_{f∈F} match(y_f, s_{t,f})
+```
+
+F is the union of hard fields (health, armor, weapons, player counts) and soft fields (money, map, bomb status). `match(·)` is exact for categoricals, ±10% tolerance for numerics, Jaccard for lists.
+
+### Component 2: Decision alignment R_decision (β = 0.30)
+
+Compares model's advised action against the pro's behavioral signature extracted from the next Δ ≈ 10–15 seconds of tick data (~900–1350 ticks at 90Hz).
+
+**Behavioral feature vector** from tick data:
+
+```
+b_t^{pro} = (d_move, d_obj, u_type, e_timing, δ_engage)
+```
+
+| Feature | Domain | Description |
+|---------|--------|-------------|
+| d_move | {-1, 0, 1} | Movement relative to enemies (retreat, hold, advance) |
+| d_obj | {-1, 0, 1} | Movement relative to bomb/site (away, neutral, toward) |
+| u_type | {0,1}^k | Binary vector of utility types used (smoke, flash, HE, molly) |
+| e_timing | {0, 1} | Whether player initiated engagement (fired first) |
+| δ_engage | [0, 1] | Normalized time to first damage (0=immediate, 1=none) |
+
+Model text is mapped to the same feature space via keyword extraction (Approach A):
+
+```
+R_decision(y, τ^{pro}) = (1/|b|) Σ_j 𝟙[b_{t,j}^{model} = b_{t,j}^{pro}]
+```
+
+Exact match for binary/categorical features, ±0.2 tolerance for δ_engage, Jaccard for u_type.
+
+Falls back to Jaccard over coarse action categories when behavioral features are unavailable (pre-F05).
+
+### Component 3: Outcome-modulated decision reward R_outcome (γ = 0.50)
+
+The core learning signal. Modulates decision alignment by round outcome, weighted by the spectated player's causal contribution to the result:
+
+```
+R_outcome = R_decision · Ω(W, φ, a)
+```
+
+where a = R_decision, W ∈ {0,1} is round outcome, and:
+
+```
+Ω(W, φ, a) = W·φ·(0.5 + 0.5·a) + (1−W)·φ·(0.5 − 0.3·a)
+```
+
+**Player contribution** φ ∈ [0, 1]:
+
+```
+φ = 0.4·(damage_dealt / max_damage_in_round)
+  + 0.3·(survival_time / round_duration)
+  + 0.3·𝟙[objective_action]
+```
+
+where objective_action ∈ {plant, defuse, last_alive}.
+
+**Signal matrix at φ = 1:**
+
+| | Pro wins | Pro loses |
+|---|---------|-----------|
+| Model agrees (a=1) | 1.0 | 0.2 |
+| Model deviates (a=0) | 0.5 | 0.5 |
+
+**Why φ matters (credit assignment):** If the spectated player died in 5 seconds without dealing damage, φ ≈ 0 and the outcome signal is nearly zeroed out — the round result tells us nothing about advice quality at that moment. Without φ, noisy outcome labels on low-contribution snapshots inject high-variance gradients that destabilize training.
+
+**Why the asymmetry matters (strategy discovery):** Deviating from a losing play gets moderate reward (0.5), while endorsing a losing play gets low reward (0.2). Over many GRPO groups, this pushes the policy away from losing strategies even when they matched the pro's choice. This is how the model can potentially exceed pro play — the strongest result for the paper.
+
+### KL regularization
+
+```
+L_total = L_GRPO + λ_KL · KL(π_θ || π_ref)
+```
+
+λ_KL = 0.02 (via TRL's `kl_coef` parameter). Reference model is the SFT checkpoint. Prevents the reasoning distribution from diverging arbitrarily — the model shouldn't mode-collapse onto narrow "safe" advice that scores well across all game states.
+
+### GRPO dynamics
+
+For each prompt x, GRPO samples G=16 completions and normalizes advantages within the group:
+
+```
+Â_i = (r_i − mean({r_j})) / (std({r_j}) + ε)
+```
+
+Key property: GRPO only needs correct relative ordering within the group, not calibrated absolute rewards. This means:
+
+- **Low within-group variance → no gradient.** Format gate and perceptual accuracy saturate early (same screenshot = same HUD reading for all completions). After early training, ~95% of the gradient comes from R_decision and R_outcome. This is by design — perception is a floor, not a training signal.
+- **φ reduces variance on noisy samples.** Outcome labels where the spectated player had minimal impact are automatically downweighted, preventing high-variance gradients from destabilizing training.
+- **3 signals give a cleaner optimization landscape.** With 7 signals, the model had to balance conflicting objectives. With 3, the gradient direction is clearer.
+
+### Weight summary
+
+| Signal | Type | Weight | Purpose |
+|--------|------|--------|---------|
+| Format gate | Multiplicative mask | — | Invalid JSON → zero reward |
+| R_percept | Additive | 0.20 | Prevent SFT perception regression |
+| R_decision | Additive | 0.30 | Learn behavioral alignment with pro |
+| R_outcome | Additive | 0.50 | Core: outcome-weighted strategy learning |
+| KL penalty | Regularizer | λ=0.02 | Prevent mode collapse |
+
+### What was dropped and why
+
+| Old signal | Old weight | Why dropped |
+|------------|------------|-------------|
+| Soft field accuracy | 0.05 | Merged into R_percept |
+| Consistency | 0.20 | Gameable keyword matching, caps out fast, teaches rigid patterns. Let GRPO discover coherent reasoning through outcome signal instead. |
+| Reasoning quality | 0.10 | Structural quality saturates early (all completions learn valid JSON structure fast). Dead gradient weight. |
+| Decision alignment (separate) | 0.15 | Redundant with outcome, which already contains alignment. Merged into single R_decision + R_outcome architecture. |
+
+### Relationship to prior work
+
+- **PeBR-R1** (2025): Also separates perception and reasoning into RL phases, but uses CLIP scores for perception. Our R_percept uses engine-accurate demo data — a stronger supervision signal.
+- **Game-RL** (Fudan, 2025): GRPO on games with verifiable rewards. Their games have provable answers; CS2 has noisy outcomes. Our Ω function handles this noise via φ-weighting.
+- **VLAA-Thinker** (2025): Found SFT locks models into "rigid reasoning modes." Our architecture explicitly addresses this: SFT only teaches perception, GRPO teaches reasoning from scratch.
+- **Praxis-VLM** (2025): Found GRPO models internalize deeper decision-making than SFT baselines. Supports our hypothesis that C > B.
+
+### Ground truth schema (for F05 implementation)
+
+```json
+{
+    "game_state": { ... },
+    "pro_action": {
+        "categories": ["aggressive", "utility"],
+        "description": "Pushed A site with flash",
+        "behavior": {
+            "movement_direction": 1,
+            "objective_direction": 1,
+            "utility_used": ["flash"],
+            "initiated_engagement": true,
+            "engagement_delay": 0.15
+        }
+    },
+    "round_won": true,
+    "player_contribution": {
+        "damage_dealt": 120,
+        "max_round_damage": 300,
+        "survival_time": 45.0,
+        "round_duration": 90.0,
+        "objective_action": false
+    }
+}
+```
+
+**Status:** Implemented. Supersedes D005 and D006 reward designs. Files changed: `src/training/rewards.py`, `src/training/grpo_trainer.py`, `src/training/__init__.py`, `scripts/train_grpo.py`.
