@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "cs2-tools"
+version = "0.1.0"
+description = "Python utilities for CS2 demo parsing, viewer data export, and automated screenshot capture"
+requires-python = ">=3.11"
+license = "MIT"
+readme = "README.md"
+
+dependencies = []
+
+[project.optional-dependencies]
+parse = [
+    "awpy>=2.0.0",
+    "polars>=1.0.0",
+    "pyarrow>=14.0.0",
+]
+
+[project.scripts]
+cs2-parse-demos = "cs2_tools.parse_demos:main"
+cs2-export-viewer = "cs2_tools.export_viewer_data:main"
+cs2-plan-captures = "cs2_tools.plan_captures:main"
+cs2-capture = "cs2_tools.capture_screenshots:main"
+
+[tool.setuptools.packages.find]
+include = ["cs2_tools*"]

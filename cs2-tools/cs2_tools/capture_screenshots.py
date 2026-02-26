@@ -13,9 +13,9 @@ Prerequisites:
          spec_mode 4; spec_autodirector 0; jpeg_quality 95
 
 Usage:
-    python scripts/capture_screenshots.py data/captures/furia-vs-vitality-m1-mirage/capture_plan.json
-    python scripts/capture_screenshots.py data/captures/furia-vs-vitality-m1-mirage/capture_plan.json --resume
-    python scripts/capture_screenshots.py data/captures/furia-vs-vitality-m1-mirage/capture_plan.json --limit 10
+    python -m cs2_tools.capture_screenshots capture_plan.json
+    python -m cs2_tools.capture_screenshots capture_plan.json --resume
+    python -m cs2_tools.capture_screenshots capture_plan.json --limit 10
 """
 
 import argparse
@@ -25,13 +25,9 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-try:
-    from src.netcon import CS2Netcon
-except ImportError:
-    from cs2_tools.netcon import CS2Netcon
+from cs2_tools.netcon import CS2Netcon
 
-# Default timing (seconds). Conservative — decrease after testing.
+# Default timing (seconds). Conservative -- decrease after testing.
 SEEK_SETTLE = 1.0   # wait after demo_gototick for world to render
 POV_SETTLE = 0.5    # wait after spec_player for camera transition
 JPEG_SETTLE = 0.2   # wait after jpeg for file write
@@ -156,8 +152,8 @@ def capture_plan(
             # Progress
             if (i + 1) % 50 == 0 or i == len(captures) - 1:
                 pct = (i + 1) / len(captures) * 100
-                print(f"  [{i+1}/{len(captures)}] {pct:.0f}% — "
-                      f"tick={tick} {player} — "
+                print(f"  [{i+1}/{len(captures)}] {pct:.0f}% -- "
+                      f"tick={tick} {player} -- "
                       f"{captured} ok, {failed} failed")
 
     except KeyboardInterrupt:

@@ -21,7 +21,7 @@
       "Copy and adapt the 5 files into the package",
       "Update internal imports to use cs2_tools package paths"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "T03",
@@ -33,7 +33,7 @@
       "Define optional dependency groups: [parse] for awpy+polars+pyarrow",
       "Verify pip install -e . works with and without optional deps"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "T04",
@@ -45,7 +45,7 @@
       "Add install instructions with optional deps",
       "Add link to chimera project for context"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "T05",
@@ -56,6 +56,6 @@
       "Verify chimera scripts still work as-is",
       "Verify chimera init.sh still works"
     ],
-    "passes": false
+    "passes": true
   }
 ]

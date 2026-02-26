@@ -86,6 +86,15 @@ All models produce structured JSON with three sections:
 }
 ```
 
+## Standalone Repos
+
+Two components have been extracted as standalone repositories:
+
+- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays (extracted from `site/`)
+- **[cs2-tools](https://github.com/skkwowee/cs2-tools)** — Python utilities for demo parsing, viewer data export, and screenshot capture (extracted from `src/netcon.py` and `scripts/`)
+
+The original files remain in this repo and continue to work as part of the chimera pipeline. The standalone repos are for independent use without the training infrastructure.
+
 ## Project Structure
 
 ```

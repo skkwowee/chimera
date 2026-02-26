@@ -9,7 +9,7 @@
       "Push demo-viewer branch to new repo as main",
       "Verify commit history is preserved"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F02",
@@ -21,7 +21,7 @@
       "Clean up page.tsx if it references chimera project content",
       "Verify npm run build still works"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F03",
@@ -33,7 +33,7 @@
       "Add a minimal sample round JSON for testing",
       "Verify viewer loads sample data correctly"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F04",
@@ -46,7 +46,7 @@
       "Add tech stack section (Next.js 16, React 19, Tailwind v4)",
       "Add MIT license"
     ],
-    "passes": false
+    "passes": true
   },
   {
     "id": "F05",
@@ -57,6 +57,6 @@
       "Add note in chimera README linking to cs2-demo-viewer repo",
       "Verify chimera init.sh still works"
     ],
-    "passes": false
+    "passes": true
   }
 ]

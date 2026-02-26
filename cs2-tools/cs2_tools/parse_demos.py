@@ -8,10 +8,10 @@ for rounds, kills, bomb events, and header info.
 Legacy --snapshots flag generates the old 3-moment JSON snapshots.
 
 Usage:
-    python scripts/parse_demos.py data/demos/                          # full parse → parquet
-    python scripts/parse_demos.py data/demos/match.dem --dry-run       # just print stats
-    python scripts/parse_demos.py data/demos/ --output data/processed/demos
-    python scripts/parse_demos.py data/demos/ --snapshots              # legacy JSON snapshots
+    python -m cs2_tools.parse_demos data/demos/
+    python -m cs2_tools.parse_demos data/demos/match.dem --dry-run
+    python -m cs2_tools.parse_demos data/demos/ --output data/processed/demos
+    python -m cs2_tools.parse_demos data/demos/ --snapshots
 """
 
 import argparse
@@ -21,20 +21,13 @@ from pathlib import Path
 
 import polars as pl
 
-# Allow imports from project root (optional — not needed for standalone cs2-tools use)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-try:
-    from src.data.manifest import append_to_manifest
-except ImportError:
-    append_to_manifest = None
-
 VALID_ROUND_PHASES = {"buy", "playing", "freezetime", "post-plant", "warmup"}
 VALID_BOMB_STATUSES = {"carried", "planted", "dropped", "defused", "exploded", None}
 
 try:
     from awpy import Demo
 except ImportError:
-    print("awpy is required: pip install awpy>=2.0.0")
+    print("awpy is required: pip install cs2-tools[parse]")
     sys.exit(1)
 
 VALID_MOMENTS = {"pre_round", "first_contact", "post_plant"}
@@ -112,8 +105,6 @@ def parse_demo_parquet(dem_path: Path, output_dir: Path, dry_run: bool) -> dict:
 
     # --- Ticks parquet ---
     if ticks_df is not None and not ticks_df.is_empty():
-        # awpy returns 'armor' (from armor_value prop) — keep as-is
-        # Select and order columns that exist
         available = set(ticks_df.columns)
         select_cols = [c for c in TICK_COLUMNS if c in available]
         out_df = ticks_df.select(select_cols)
@@ -124,14 +115,12 @@ def parse_demo_parquet(dem_path: Path, output_dir: Path, dry_run: bool) -> dict:
     # --- Rounds JSON ---
     if rounds_df is not None and not rounds_df.is_empty():
         rounds_path = output_dir / f"{stem}_rounds.json"
-        # Convert polars df to list of dicts, handling special types
         rounds_data = json.loads(rounds_df.write_json())
         rounds_path.write_text(json.dumps(rounds_data, indent=2, ensure_ascii=False))
         print(f"    Wrote {rounds_path.name} ({round_count} rounds)")
 
     # --- Kills JSON ---
     if kills_df is not None and not kills_df.is_empty():
-        # Keep only the most useful kill columns
         kill_cols = [
             "tick", "round_num", "attacker_name", "attacker_steamid",
             "attacker_side", "attacker_X", "attacker_Y", "attacker_Z",
@@ -167,16 +156,13 @@ def parse_demo_parquet(dem_path: Path, output_dir: Path, dry_run: bool) -> dict:
 
     # --- Shots JSON ---
     if shots_df is not None and not shots_df.is_empty():
-        # Join with ticks to get yaw at the moment of each shot
         shot_cols = [c for c in shots_df.columns]
         shots_with_yaw = shots_df
         if ticks_df is not None and "yaw" in ticks_df.columns:
-            # Get yaw from ticks keyed on (tick, name/steamid)
             yaw_key = "name" if "name" in ticks_df.columns else "steamid"
             shot_key = "player_name" if "player_name" in shots_df.columns else "player_steamid"
             yaw_lookup = ticks_df.select(["tick", yaw_key, "yaw"]).rename({yaw_key: shot_key})
             shots_with_yaw = shots_df.join(yaw_lookup, on=["tick", shot_key], how="left")
-        # Select useful columns
         out_cols = [
             "tick", "round_num", "player_name", "player_side",
             "player_X", "player_Y", "player_Z",
@@ -496,22 +482,11 @@ def main():
             return
 
         output_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = Path("data/manifest.jsonl")
         written = 0
         for snap in all_snapshots:
             snapshot_id = snap["metadata"]["snapshot_id"]
             out_path = output_dir / f"{snapshot_id}.json"
             out_path.write_text(json.dumps(snap, indent=2, ensure_ascii=False))
-            if append_to_manifest is not None:
-                append_to_manifest(manifest_path, {
-                    "id": snapshot_id, "source": "demo",
-                    "demo_file": snap["metadata"]["demo_file"],
-                    "map_name": snap["metadata"]["map_name"],
-                    "round_num": snap["metadata"]["round_num"],
-                    "moment_type": snap["metadata"]["moment_type"],
-                    "tick": snap["metadata"]["tick"],
-                    "round_winner": snap["round_outcome"]["winner"],
-                })
             written += 1
         print(f"\nWrote {written} snapshot files to {output_dir}/")
         return
