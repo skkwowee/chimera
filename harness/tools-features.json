@@ -1,0 +1,61 @@
+[
+  {
+    "id": "T01",
+    "name": "Inventory tools and fix imports",
+    "description": "Audit src/netcon.py, scripts/parse_demos.py, scripts/export_viewer_data.py, scripts/plan_captures.py, scripts/capture_screenshots.py. Make parse_demos.py's manifest import conditional so the tools can run without chimera's src/data/manifest.py.",
+    "steps": [
+      "List all imports across the 5 files",
+      "Identify chimera-internal imports (src.data.manifest)",
+      "Make manifest import conditional with try/except or optional flag",
+      "Verify parse_demos.py still runs with and without manifest"
+    ],
+    "passes": false
+  },
+  {
+    "id": "T02",
+    "name": "Create cs2-tools repo and copy files",
+    "description": "Create a new cs2-tools repo with package structure: cs2_tools/netcon.py, cs2_tools/parse_demos.py, cs2_tools/export_viewer_data.py, cs2_tools/plan_captures.py, cs2_tools/capture_screenshots.py.",
+    "steps": [
+      "Create new GitHub repo (cs2-tools)",
+      "Set up cs2_tools/ package directory with __init__.py",
+      "Copy and adapt the 5 files into the package",
+      "Update internal imports to use cs2_tools package paths"
+    ],
+    "passes": false
+  },
+  {
+    "id": "T03",
+    "name": "Add pyproject.toml with optional deps",
+    "description": "Create pyproject.toml for cs2-tools. Core deps: minimal (just what netcon.py needs). Optional deps: awpy+polars only needed for parse_demos.py and export_viewer_data.py.",
+    "steps": [
+      "Create pyproject.toml with project metadata",
+      "Define core dependencies (minimal)",
+      "Define optional dependency groups: [parse] for awpy+polars+pyarrow",
+      "Verify pip install -e . works with and without optional deps"
+    ],
+    "passes": false
+  },
+  {
+    "id": "T04",
+    "name": "Write README for cs2-tools",
+    "description": "README with: what it is, list of tools with one-line descriptions, install instructions (pip install with optional deps), usage examples for each tool, link back to chimera for research context.",
+    "steps": [
+      "Write README.md with project description",
+      "Document each tool with usage example",
+      "Add install instructions with optional deps",
+      "Add link to chimera project for context"
+    ],
+    "passes": false
+  },
+  {
+    "id": "T05",
+    "name": "Clean up chimera repo references",
+    "description": "After extraction, update chimera to reference cs2-tools for the demo processing tools. Keep original files in chimera (they still work) but note the standalone repo exists.",
+    "steps": [
+      "Add note in chimera README linking to cs2-tools repo",
+      "Verify chimera scripts still work as-is",
+      "Verify chimera init.sh still works"
+    ],
+    "passes": false
+  }
+]

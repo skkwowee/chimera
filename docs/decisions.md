@@ -216,3 +216,26 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 **Event ticks:** First kill and bomb plant are inflection points where the optimal strategy changes sharply. Over-representing these moments means the model sees more diverse game states (pre/post contact, pre/post plant).
 
 **Status:** Implemented in `scripts/plan_captures.py`.
+
+---
+
+## D010: Unified extraction harness for two repos (2026-02-26)
+
+**Decision:** Merge `viewer-harness/` into a new `harness/` directory that covers both the cs2-demo-viewer extraction and a new cs2-tools extraction. Add cs2-tools scope (5 features: T01–T05) alongside the existing viewer features (F01–F05).
+
+**Why:** The chimera project has two independent pieces worth extracting as standalone repos: the Next.js demo viewer (`site/`) and the Python demo processing tools (`src/netcon.py`, `scripts/parse_demos.py`, `scripts/export_viewer_data.py`, `scripts/plan_captures.py`, `scripts/capture_screenshots.py`). Having a single harness directory with unified health checks and progress tracking keeps extraction work organized. The root-level `feature-list.json` and `init.sh` remain untouched — they track the training pipeline, which is a separate concern.
+
+**Scope of cs2-tools:**
+- `netcon.py` — TCP console driver for CS2 demo playback
+- `parse_demos.py` — Parse .dem files via awpy into Parquet + metadata
+- `export_viewer_data.py` — Export parsed data to viewer JSON format
+- `plan_captures.py` — Generate capture plans (tick + POV sampling)
+- `capture_screenshots.py` — Drive CS2 demo playback to capture JPEGs
+
+**Key issue:** `parse_demos.py` has a hard import of `src.data.manifest` which is chimera-internal. T01 makes this conditional so the tool works standalone.
+
+**Alternatives considered:**
+- Keep viewer-harness separate, add a tools-harness. Rejected: two harness directories for the same kind of work (extraction) is redundant.
+- Put extraction features into the root feature-list.json. Rejected: that file tracks the training pipeline (F01–F07), which is a different concern with different lifecycle.
+
+**Status:** Decided. Harness restructured.
