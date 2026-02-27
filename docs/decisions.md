@@ -253,3 +253,19 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 - Pass a flag like `--no-manifest`. Rejected: more complex, and the try/except is invisible to callers who have the module.
 
 **Status:** Done. Harness confirms conditional import detected.
+
+---
+
+## D012: Git subtree split for cs2-demo-viewer extraction (2026-02-26)
+
+**Decision:** Use `git subtree split --prefix=site -b demo-viewer` to extract `site/` into `~/cs2-demo-viewer/` as a standalone repo with `main` branch.
+
+**Why:** Preserves the 9-commit history of the viewer code. The new repo contains only the Next.js app — no chimera training code, no Python scripts. Users who want to visualize CS2 demo data don't need to clone the entire research repo.
+
+**Method:** Subtree split creates a branch with rewritten history where `site/` is the root. We `git pull` that branch into a fresh `~/cs2-demo-viewer/` repo and rename the branch to `main`. `site/` remains in chimera (subtree split is non-destructive).
+
+**Alternatives considered:**
+- Copy files without history. Rejected: losing git history makes it harder to understand why code is structured the way it is.
+- `git filter-branch`. Rejected: deprecated in favor of subtree split for this exact use case.
+
+**Status:** Done. `~/cs2-demo-viewer/` exists with 9 commits on `main`.

@@ -44,18 +44,9 @@ if [ $TOOLS_MISSING -eq 0 ]; then
   echo "  tools files: all present"
 fi
 
-# Extraction target repos
-if [ -d "$HOME/cs2-demo-viewer" ]; then
-  echo "  ~/cs2-demo-viewer/: exists"
-else
-  echo "  ~/cs2-demo-viewer/: not yet created"
-fi
-
-if [ -d "$HOME/cs2-tools" ]; then
-  echo "  ~/cs2-tools/: exists"
-else
-  echo "  ~/cs2-tools/: not yet created"
-fi
+# Published repos (check GitHub)
+echo "  cs2-demo-viewer: https://github.com/skkwowee/cs2-demo-viewer"
+echo "  cs2-tools: https://github.com/skkwowee/cs2-tools"
 
 # parse_demos.py import status — check if manifest import is wrapped in try/except
 if grep -q "from src.data.manifest" "$ROOT/scripts/parse_demos.py" 2>/dev/null; then
@@ -70,12 +61,6 @@ else
   echo "  parse_demos.py manifest import: not present or already removed"
 fi
 
-# demo-viewer branch
-if git rev-parse --verify demo-viewer >/dev/null 2>&1; then
-  echo "  demo-viewer branch: exists"
-else
-  echo "  demo-viewer branch: not yet created"
-fi
 
 # ─── Feature status ───
 
@@ -120,7 +105,6 @@ echo "  Next ID: $NEXT_ID"
 
 echo ""
 echo "=== Ready ==="
-echo "Read harness/progress.md for context."
-echo "Work on the first feature where passes=false."
+echo "Extraction complete — both repos published."
 echo "Log decisions in docs/decisions.md (next: $NEXT_ID)."
 echo ""
