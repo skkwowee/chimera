@@ -18,48 +18,12 @@ echo "=== Health checks ==="
 python3 -c "import polars" 2>/dev/null && echo "  polars: ok" || echo "  polars: NOT INSTALLED"
 python3 -c "import awpy" 2>/dev/null && echo "  awpy: ok" || echo "  awpy: NOT INSTALLED"
 
-# site/ exists
-if [ -d "$ROOT/site" ]; then
-  echo "  site/: exists"
-else
-  echo "  site/: MISSING"
-fi
+# cs2-tools installed
+python3 -c "import cs2_tools" 2>/dev/null && echo "  cs2-tools: installed" || echo "  cs2-tools: NOT INSTALLED (pip install cs2-tools[parse])"
 
-# Tools files exist
-TOOLS_FILES=(
-  "src/netcon.py"
-  "scripts/parse_demos.py"
-  "scripts/export_viewer_data.py"
-  "scripts/plan_captures.py"
-  "scripts/capture_screenshots.py"
-)
-TOOLS_MISSING=0
-for f in "${TOOLS_FILES[@]}"; do
-  if [ ! -f "$ROOT/$f" ]; then
-    echo "  $f: MISSING"
-    TOOLS_MISSING=1
-  fi
-done
-if [ $TOOLS_MISSING -eq 0 ]; then
-  echo "  tools files: all present"
-fi
-
-# Published repos (check GitHub)
+# Published repos
 echo "  cs2-demo-viewer: https://github.com/skkwowee/cs2-demo-viewer"
 echo "  cs2-tools: https://github.com/skkwowee/cs2-tools"
-
-# parse_demos.py import status — check if manifest import is wrapped in try/except
-if grep -q "from src.data.manifest" "$ROOT/scripts/parse_demos.py" 2>/dev/null; then
-  MANIFEST_LINE=$(grep -n "from src.data.manifest" "$ROOT/scripts/parse_demos.py" | head -1 | cut -d: -f1)
-  PREV_LINE=$((MANIFEST_LINE - 1))
-  if sed -n "${PREV_LINE}p" "$ROOT/scripts/parse_demos.py" | grep -q "try:"; then
-    echo "  parse_demos.py manifest import: conditional (ready for extraction)"
-  else
-    echo "  parse_demos.py manifest import: hard import (needs T01)"
-  fi
-else
-  echo "  parse_demos.py manifest import: not present or already removed"
-fi
 
 
 # ─── Feature status ───

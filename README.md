@@ -36,7 +36,7 @@ If C > B, GRPO improves reasoning beyond what SFT alone provides. If C > D, SFT 
 Each step is isolated: it reads from defined inputs, writes to defined outputs, and validates its own results. Intermediate artifacts are cleaned up.
 
 - [x] **Step 1 — Data schema & manifest.** Unified data manifest (`src/data/manifest.py`, JSONL append-only) for tracking screenshot provenance, source, timestamps, and transcript context. Collection scripts write to `data/manifest.jsonl`, `ScreenshotDataset` loads/filters by manifest fields, training utils accept manifest filtering.
-- [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs (`scripts/parse_demos.py`). Export downsampled viewer data (`scripts/export_viewer_data.py`). Interactive demo viewer at `/viewer` with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
+- [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs ([cs2-tools](https://github.com/skkwowee/cs2-tools)). Interactive demo viewer ([cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)) with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
 - [ ] **Step 3 — Screenshot-demo synchronization.** Sync VOD frames to demo ticks to produce (screenshot, exact_game_state) pairs. Figure out time offset between broadcast and demo file. Extract frames at intervals, pair with ground truth game state from Parquet data.
 - [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3-VL with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
 - [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro_action (categorized via ACTION_TAXONOMY) + round_won outcome.
@@ -88,12 +88,10 @@ All models produce structured JSON with three sections:
 
 ## Standalone Repos
 
-Two components have been extracted as standalone repositories:
+Two components live in their own repositories and are managed as dependencies:
 
-- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays (extracted from `site/`)
-- **[cs2-tools](https://github.com/skkwowee/cs2-tools)** — Python utilities for demo parsing, viewer data export, and screenshot capture (extracted from `src/netcon.py` and `scripts/`)
-
-The original files remain in this repo and continue to work as part of the chimera pipeline. The standalone repos are for independent use without the training infrastructure.
+- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays
+- **[cs2-tools](https://github.com/skkwowee/cs2-tools)** — Python utilities for demo parsing, viewer data export, and screenshot capture (`pip install cs2-tools[parse]`)
 
 ## Project Structure
 
@@ -126,7 +124,6 @@ chimera/
 │   ├── train_grpo.py           # Phase 2: GRPO fine-tuning
 │   ├── upload_to_hub.py        # Upload datasets/models to HF Hub
 │   └── generate_review.py      # Generate HTML viewer for review
-├── site/                       # Project website
 └── notebooks/                  # Jupyter notebooks
 ```
 

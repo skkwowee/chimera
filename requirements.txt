@@ -19,6 +19,9 @@ pyyaml>=6.0
 pandas>=2.0.0
 awpy>=2.0.0
 
+# CS2 demo tools (parsing, viewer export, screenshot capture)
+cs2-tools[parse] @ git+https://github.com/skkwowee/cs2-tools.git
+
 # Utilities
 tqdm>=4.66.0
 python-dotenv>=1.0.0
