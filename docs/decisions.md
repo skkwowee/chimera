@@ -446,3 +446,72 @@ Key property: GRPO only needs correct relative ordering within the group, not ca
 ```
 
 **Status:** Implemented. Supersedes D005 and D006 reward designs. Files changed: `src/training/rewards.py`, `src/training/grpo_trainer.py`, `src/training/__init__.py`, `scripts/train_grpo.py`.
+
+---
+
+## D014: Why the two-phase reward architecture works — design rationale (2026-02-26)
+
+This decision records the reasoning behind D013's design, tracing each component to the information structure of the problem and the failure modes it addresses.
+
+### Core insight: decompose along the supervised/RL boundary
+
+Perception has exact ground truth from engine data (health is 73 or it isn't). Strategy has no single correct answer — only noisy outcome signal from round results across 10 players over 90 seconds. These are fundamentally different learning problems:
+
+- **Exact supervision → SFT.** Phase 1 solves perception. Cheap, fast convergence, no ambiguity.
+- **Outcome-conditioned signal → RL.** Phase 2 solves reasoning. The model already knows what's on screen, so the RL search space is limited to "what to do about it" rather than "what am I looking at AND what to do about it."
+
+Skipping Phase 1 (Model D) forces RL to solve both simultaneously through one noisy channel. The search space is too large. This is the same decomposition as AlphaGo (supervised value network → self-play policy improvement) and InstructGPT (SFT → RLHF).
+
+### Why each reward signal exists
+
+**R_percept (0.20) is a constraint, not an objective.** It prevents catastrophic forgetting of Phase 1. In GRPO, same screenshot → same HUD reading → same score for all G=16 completions → zero within-group variance → zero gradient. After early training, R_percept contributes no gradient. It's a regularizer expressed as a reward signal, using the same GRPO machinery without needing a separate loss term.
+
+**R_decision (0.30) is the imitation anchor.** Pure RL from sparse outcomes would be too unstable with ~3000 samples. Behavioral feature alignment gives dense signal about what kind of action to recommend. But it's not SFT — the model isn't forced to match the pro. GRPO's group-relative normalization means the model only needs some completions that match and some that don't; the relative advantage does the rest.
+
+**R_outcome (0.50) is the strategy discovery signal.** The asymmetric Ω function creates an optimization landscape where imitating winning strategies is strongly rewarded, imitating losing strategies is penalized, and deviation gets moderate reward regardless. This is offline policy improvement: the pro's trajectory is the behavior policy, the model's output is the target policy, and Ω reweights the imitation signal by returns.
+
+### Why the outcome asymmetry enables learning beyond the expert
+
+In a symmetric design (penalize all deviation equally), the model converges to pure imitation — it can never exceed the expert because disagreeing is always punished. The asymmetry changes this:
+
+1. Model sees screenshot where pro rushed A and lost.
+2. 16 completions generated: some say "rush A" (matching), some say "hold" or "rotate."
+3. "Rush A" completions get low reward (agree + lose = 0.2 × φ).
+4. "Hold" completions get moderate reward (deviate + lose = 0.5 × φ).
+5. GRPO computes positive advantage for deviating completions.
+
+Over thousands of such examples, the model learns counterfactual reasoning: "when the game state looks like X and the pro rushed and lost, something else would have been better." This is learning from negative examples — inferring better strategies from observed failures. Not imitation, but reasoning about consequences.
+
+### Why φ solves credit assignment
+
+In a 5v5 game, round outcome is a team signal. If the spectated player died at second 5 and the team won at second 90, the outcome says nothing about what that player should have done at second 3. Without φ, these samples inject random gradients — high variance for zero information.
+
+φ acts as attention over the training data. High-φ samples (player dealt damage, survived, planted/defused) get strong outcome signal. Low-φ samples get attenuated signal. Mathematically equivalent to advantage-weighted regression with sample quality weighting — a standard technique in offline RL (Peng et al., 2019).
+
+### Why GRPO specifically
+
+GRPO's group-relative normalization sidesteps the need for absolute reward calibration. PPO would need a value function estimating expected reward of a CS2 screenshot — but expected reward depends on skill level, teammates, opponent tendencies. The value estimate would be terrible.
+
+GRPO only asks: "which of these 16 completions is relatively better?" Even noisy absolute rewards can produce informative relative orderings. φ ensures that when the absolute signal is truly uninformative, the relative ordering is damped rather than random.
+
+### The effective gradient structure
+
+The nominal weight split is R_percept 20% / R_decision 30% / R_outcome 50%. But GRPO advantages are `(r - mean) / std` within each group. Low within-group variance → no gradient. After early training:
+
+- R_percept variance ≈ 0 (perception converges) → ~0% of gradient
+- R_decision + R_outcome variance is high (different advice → different alignment) → ~100% of gradient
+
+The actual training signal is almost entirely "which strategic recommendations correlate with winning." The perception floor just keeps the model honest about what it sees. This is by design — each signal contributes gradient only during the training phase where it's informative, then gracefully drops out.
+
+### Intellectual lineage
+
+| Component | Draws from |
+|-----------|-----------|
+| Two-phase SFT → RL | InstructGPT pipeline; AlphaGo supervised → self-play |
+| Outcome-weighted imitation | Advantage-weighted regression (Peng 2019), Decision Transformer (Chen 2021) |
+| φ credit assignment | Per-trajectory importance weighting in offline RL |
+| Asymmetric deviation handling | Game theory: in imperfect info games, expert strategy is one equilibrium among many |
+| GRPO for non-verifiable rewards | Extension of DeepSeek-Math/R1 (verifiable) to noisy outcome domains |
+| 7→3 signal pruning | Analyzing gradient flow and cutting dead weight — GRPO-specific insight that low-variance signals contribute no gradient regardless of nominal weight |
+
+**Status:** Rationale documented. Informs D013 implementation and paper Method section.
