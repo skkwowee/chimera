@@ -515,3 +515,90 @@ The actual training signal is almost entirely "which strategic recommendations c
 | 7→3 signal pruning | Analyzing gradient flow and cutting dead weight — GRPO-specific insight that low-variance signals contribute no gradient regardless of nominal weight |
 
 **Status:** Rationale documented. Informs D013 implementation and paper Method section.
+
+---
+
+## D015: Mechanical skill as a latent confound — how the architecture handles aim noise (2026-02-26)
+
+Round outcome is a function of at least five variables: decision quality, mechanical skill (aim), teammate quality, opponent quality, and randomness. The model learns decision quality. Everything else is noise. This decision documents how the architecture handles — and fails to handle — mechanical skill as the primary confound.
+
+### The model's relationship to aim
+
+The model reads a HUD screenshot and outputs a strategic recommendation in text. It never controls a mouse. Aim is completely outside its input and output space — it is a **latent variable that corrupts the training signal** but does not appear at inference time. The model is a coach, not a player.
+
+### How each component handles aim noise
+
+**φ dampens aim-correlated outcome noise.**
+
+Consider two problematic cases:
+
+*Good decision + bad aim* (player holds the correct angle, whiffs the shot, dies at second 5, team loses at second 90):
+- φ is low: low damage dealt, early death, no objective interaction.
+- R_outcome is multiplied by small φ → attenuated.
+- The model is not penalized much for the correct decision. The noisy negative outcome is dampened. Working as intended.
+
+*Bad decision + good aim* (player dry-peeks into a stack, hits three headshots, team wins):
+- φ is high: lots of damage, kills, survival.
+- R_outcome is multiplied by large φ → amplified.
+- The model is rewarded for imitating a bad decision that was mechanically bailed out.
+
+This second case is the primary vulnerability. φ cannot distinguish "player contributed because of good decisions" from "player contributed because of cracked aim." Both produce high damage and kills.
+
+**R_decision provides aim-independent signal.**
+
+Behavioral feature alignment — aggression level, positioning type, utility usage, rotation timing — can be assessed regardless of whether shots landed. R_decision says "the pro held a passive angle here" or "the pro used a flashbang before peeking." These are decision-level features, not aim-level features.
+
+Even when R_outcome is corrupted by mechanical noise, R_decision provides a clean 30% signal about what kind of strategy was employed. This anchors the model to strategic patterns while R_outcome provides the noisy-but-informative "did it work?" correction.
+
+**Population averaging is the statistical defense.**
+
+Training data includes multiple pros across multiple matches. For any given game state:
+- Most pros hold the angle conventionally → works ~65% of the time
+- Occasionally a pro dry-peeks aggressively → works ~40% in general (but ~90% when a mechanically exceptional player does it)
+
+Across the training set, the expected outcome conditioned on the decision averages over the distribution of mechanical executions:
+
+```
+E[outcome | decision, game_state] averages over aim_skill ~ P(aim | pro_population)
+```
+
+Mechanically-dependent outliers (dry-peeking works because of exceptional aim) are outvoted by the population who play the same state conventionally with better expected value. The law of large numbers works because aim quality is uncorrelated with the game state visible in the HUD.
+
+### The "donk problem" — unconventional play that works
+
+Players like donk make plays that appear to defy conventional wisdom. These decompose into two categories:
+
+**1. Superior game reading expressed as aggression.** donk peeks because he has read the opponent's utility usage, timing patterns, and information state — he knows the opponent is not ready. This IS visible in the HUD (killfeed timing, minimap positions, round time, economy). The model should learn this. It is not "defying logic" — it is deeper logic.
+
+**2. Purely mechanical plays.** Dry-peeking an AWP because you can headshot faster than the AWP can scope. This works only with exceptional reaction time and is genuinely bad coaching advice for most players.
+
+How the architecture handles each:
+- Category 1: R_decision captures the aggressive posture, R_outcome rewards it because the game state supports it. When other pros face the same state and play passively, R_decision anchors differently. The model learns "aggression is viable here" — which is correct.
+- Category 2: Gets rewarded in that player's demos, but is outvoted by the broader population playing the same state conventionally. With only 4 demos, if one features a mechanically exceptional player, their influence could be outsized.
+
+### What the model actually learns
+
+The model learns **decision-level expected value averaged over the mechanical skill distribution in the training set** (pro-level play). This is the correct target for a coaching model — it advises what a pro-level player should do, given pro-level mechanics. It is not calibrated to other skill levels.
+
+The three-layer defense:
+1. **φ attenuation**: When mechanics dominate the outcome (player dies instantly or gets an improbable multi-kill), φ weights the outcome signal by actual contribution rather than treating it as pure decision feedback.
+2. **R_decision aim-independence**: 30% of the reward signal measures strategic features that are orthogonal to mechanical execution.
+3. **Population averaging**: Over many similar game states across multiple players, aim noise is uncorrelated with HUD state and averages out.
+
+### Acknowledged limitations
+
+**Small sample size.** With ~3000 samples from 4 demos, the statistical power for population averaging is limited. Mechanically-exceptional plays from one demo can have outsized influence. This is mitigated by R_decision's dense signal but cannot be fully resolved without more data.
+
+**φ conflates aim and decisions.** φ measures damage dealt, survival, and objective interaction — all of which correlate with both good decisions and good aim. A principled separation would require observing aim quality directly (crosshair placement, reaction time), which is not available from HUD screenshots.
+
+**No explicit aim latent variable.** We do not model aim as a latent variable because: (1) it is unobservable from HUD data, making the model unidentifiable; (2) the output space does not include aim, so separating aim from decisions in the reward would not change what the model generates; (3) φ already serves as an implicit proxy.
+
+### Data curation as the primary mitigation
+
+The strongest defense against mechanical confounds is **more data from more diverse players**. Stratifying demos by playstyle (passive/aggressive/hybrid) ensures population averaging works even with moderate N. This is a data curation decision, not an architectural change, but it likely matters more than any reward function modification.
+
+### Implications for the paper
+
+This analysis belongs in the Limitations section and informs the framing of R_outcome in the Method section. The key claim: the architecture handles mechanical noise through three complementary mechanisms (φ attenuation, aim-independent R_decision, population averaging), but small dataset size remains the primary bottleneck for robust noise averaging. The model learns expected value at the training population's skill level, not universal strategic truth.
+
+**Status:** Analysis documented. Informs paper Method (Section 3.4) and Limitations. Connects to D008 (data scale) and D013 (reward architecture).

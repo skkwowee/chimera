@@ -87,6 +87,12 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 % TODO: Describe Ω function and signal matrix (agree+win, agree+lose, deviate+win, deviate+lose)
 % TODO: Explain player contribution φ for credit assignment
 % TODO: Address the challenge of evaluating open-ended strategic suggestions
+% TODO: Discuss mechanical skill (aim) as a latent confound in R_outcome (D015)
+%   - φ attenuates outcome signal when mechanics dominate (good decision + bad aim → low φ → damped)
+%   - R_decision provides aim-independent 30% signal (strategic features orthogonal to execution)
+%   - Population averaging over multiple pros washes out mechanically-dependent plays
+%   - Vulnerability: bad decision + good aim → high φ → amplified bad signal; mitigated by population averaging
+%   - The model learns E[outcome | decision, game_state] averaged over pro-level aim distribution
 
 \begin{figure}[t]
 \centering
@@ -147,6 +153,14 @@ GRPO only (D) & -- & -- & -- & -- \\
 % TODO: Analyze why separating perception and reasoning into two phases works
 % TODO: Investigate what the model learns in each phase (SFT: HUD reading; GRPO: decision-making)
 % TODO: Discuss failure cases and limitations
+% TODO: Mechanical skill confound analysis (D015):
+%   - Round outcome = f(decision_quality, mechanical_skill, teammate, opponent, randomness)
+%   - Architecture handles via 3 layers: φ attenuation, aim-independent R_decision, population averaging
+%   - Limitation: small dataset (4 demos, ~3000 samples) limits statistical power for noise averaging
+%   - Limitation: φ conflates aim and decisions (damage correlates with both)
+%   - The "donk problem": unconventional plays decompose into superior game reading (learnable) vs purely mechanical (noise)
+%   - Model learns expected value at pro skill level, not universal strategic truth
+%   - Primary mitigation is more diverse demos, not architectural change
 % TODO: Explore computational efficiency gains from freezing vision layers during GRPO
 
 \section{Conclusion}
