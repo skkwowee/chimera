@@ -2,8 +2,14 @@
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
 Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
-Passes separate reward functions to TRL's GRPOTrainer so GRPO computes
-per-signal advantages instead of collapsing everything into one scalar.
+
+Revised reward architecture (D011):
+  - Multiplicative format gate (invalid JSON → zero total reward)
+  - 3 weighted reward signals passed to TRL's GRPOTrainer:
+      1. R_percept  (α=0.20) — merged hard+soft field accuracy
+      2. R_decision (β=0.30) — behavioral feature alignment
+      3. R_outcome  (γ=0.50) — outcome-modulated decision reward
+  - KL regularization (λ_KL=0.02) prevents mode collapse
 """
 
 # Import unsloth first to ensure all optimizations are applied
@@ -23,12 +29,9 @@ from .rewards import (
     REWARD_FUNCTIONS,
     DEFAULT_REWARD_WEIGHTS,
     format_gate_reward,
-    hard_field_accuracy_reward,
-    soft_field_accuracy_reward,
+    perceptual_accuracy_reward,
     decision_alignment_reward,
     outcome_reward,
-    consistency_reward,
-    reasoning_quality_reward,
 )
 
 
@@ -65,12 +68,17 @@ class CS2GRPOConfig:
     weight_decay: float = 0.01
 
     # GRPO settings
-    num_generations: int = 16  # Group size for relative ranking
+    num_generations: int = 16  # Group size for relative ranking (G in paper)
     max_new_tokens: int = 1024
     temperature: float = 0.7
     importance_sampling_level: str = "sequence"  # GSPO variant for stability
 
-    # Reward weights: [format, hard_acc, soft_acc, decision, outcome, consistency, reasoning]
+    # KL regularization — prevents mode collapse onto narrow "safe" advice
+    # that scores well across diverse game states (D011 Issue 4)
+    kl_coef: float = 0.02
+
+    # Reward weights: [R_percept, R_decision, R_outcome]
+    # Format gate is multiplicative (applied inside reward wrappers), not here.
     reward_weights: list[float] = field(
         default_factory=lambda: list(DEFAULT_REWARD_WEIGHTS)
     )
@@ -93,17 +101,14 @@ class CS2GRPOTrainer:
     GRPO trainer for CS2 screenshot analysis using Unsloth.
 
     Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
-    Passes 7 separate reward functions to TRL so GRPO computes independent
-    advantages per signal:
-      Vision (prevent SFT regression):
-        1. Format gate (binary)
-        2. Hard field accuracy (HUD-readable)
-        3. Soft field accuracy (inferential)
-      Reasoning (RL training signal):
-        4. Decision alignment (model vs pro action)
-        5. Outcome reward (alignment × round result)
-        6. Consistency (perception → reasoning coherence)
-        7. Reasoning quality (structural)
+
+    Revised reward architecture (D011):
+      - Multiplicative format gate: invalid JSON → all signals return 0.0
+      - 3 reward signals passed to TRL for per-signal advantage computation:
+          1. R_percept  (0.20) — perceptual accuracy (merged hard+soft fields)
+          2. R_decision (0.30) — behavioral feature alignment with pro play
+          3. R_outcome  (0.50) — outcome-modulated decision reward (Ω function)
+      - KL penalty (λ=0.02) regularizes against SFT reference
     """
 
     def __init__(self, config: CS2GRPOConfig | None = None):
@@ -230,7 +235,11 @@ class CS2GRPOTrainer:
         """
         Wrap each reward function for TRL's GRPOTrainer batch interface.
 
-        Each wrapper has signature: (completions: list[str], **kwargs) -> list[float]
+        Each wrapper applies the multiplicative format gate before computing
+        the signal reward. This ensures invalid JSON → 0 for ALL signals,
+        not just the format signal.
+
+        Signature: (completions: list[str], **kwargs) -> list[float]
         """
         wrappers = []
 
@@ -238,10 +247,15 @@ class CS2GRPOTrainer:
             def make_wrapper(reward_fn):
                 def wrapper(completions: list[str], **kwargs) -> list[float]:
                     ground_truths = kwargs.get("ground_truth", [None] * len(completions))
-                    return [
-                        reward_fn(completion, ground_truth=gt)
-                        for completion, gt in zip(completions, ground_truths)
-                    ]
+                    results = []
+                    for completion, gt in zip(completions, ground_truths):
+                        # Multiplicative format gate: invalid JSON → 0.0 for all signals
+                        gate = format_gate_reward(completion)
+                        if gate == 0.0:
+                            results.append(0.0)
+                        else:
+                            results.append(reward_fn(completion, ground_truth=gt))
+                    return results
                 return wrapper
             wrappers.append(make_wrapper(fn))
 
@@ -271,6 +285,7 @@ class CS2GRPOTrainer:
         print("Configuring GRPO trainer...")
         print(f"  Reward signals: {len(self.reward_fns)}")
         print(f"  Reward weights: {self.config.reward_weights}")
+        print(f"  KL coefficient: {self.config.kl_coef}")
         print(f"  Group size (num_generations): {self.config.num_generations}")
 
         # Create output directory
@@ -303,7 +318,9 @@ class CS2GRPOTrainer:
             temperature=self.config.temperature,
             # GSPO variant for stability
             importance_sampling_level=self.config.importance_sampling_level,
-            # Reward weights for the 5 separate reward functions
+            # KL regularization against SFT reference (D011)
+            kl_coef=self.config.kl_coef,
+            # Reward weights for the 3 separate reward functions
             reward_weights=self.config.reward_weights,
             # Reporting
             report_to="wandb",
@@ -386,6 +403,9 @@ class CS2GRPOTrainer:
         """
         Evaluate the model on validation data.
 
+        Reports both the 3 active reward signals and the multiplicative
+        format gate pass rate.
+
         Args:
             eval_data: Evaluation samples (uses val_dataset if not provided)
 
@@ -404,15 +424,12 @@ class CS2GRPOTrainer:
         print("Evaluating model...")
 
         signal_names = [
-            "format_gate",
-            "hard_field_accuracy",
-            "soft_field_accuracy",
+            "perceptual_accuracy",
             "decision_alignment",
             "outcome",
-            "consistency",
-            "reasoning_quality",
         ]
         metrics = {name: [] for name in signal_names}
+        metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
         try:
@@ -422,6 +439,11 @@ class CS2GRPOTrainer:
             pass
 
         weights = self.config.reward_weights
+        reward_fns = [
+            perceptual_accuracy_reward,
+            decision_alignment_reward,
+            outcome_reward,
+        ]
 
         for sample in tqdm(eval_dataset, desc="Evaluating"):
             # Generate response
@@ -451,21 +473,20 @@ class CS2GRPOTrainer:
                 skip_special_tokens=True,
             )
 
-            # Compute each reward signal
+            # Format gate (multiplicative)
+            gate = format_gate_reward(response)
+            metrics["format_gate"].append(gate)
+
+            # Compute each reward signal (gated)
             scores = [
-                format_gate_reward(response),
-                hard_field_accuracy_reward(response, ground_truth=ground_truth),
-                soft_field_accuracy_reward(response, ground_truth=ground_truth),
-                decision_alignment_reward(response, ground_truth=ground_truth),
-                outcome_reward(response, ground_truth=ground_truth),
-                consistency_reward(response),
-                reasoning_quality_reward(response),
+                gate * fn(response, ground_truth=ground_truth)
+                for fn in reward_fns
             ]
 
             for name, score in zip(signal_names, scores):
                 metrics[name].append(score)
 
-            # Weighted total
+            # Weighted total (already gated)
             weighted = sum(w * s for w, s in zip(weights, scores))
             metrics["weighted_total"].append(weighted)
 

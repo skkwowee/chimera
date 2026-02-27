@@ -18,7 +18,7 @@ Supervised fine-tuning on screenshot–game state pairs. Ground truth comes from
 
 ### Phase 2: Strategic Reasoning (GRPO on Demo-Derived Rewards)
 
-Refine with Group Relative Policy Optimization using 7 reward signals. Vision rewards (format, hard/soft field accuracy) prevent SFT regression. Reasoning rewards (decision alignment vs pro play, outcome weighting by round result, consistency, reasoning quality) are the RL training signal. Vision layers are frozen; only language layers train. Outcome reward gets the highest weight (0.30).
+Refine with Group Relative Policy Optimization using 3 reward signals gated by a multiplicative format constraint. `R_percept` (0.20) prevents SFT regression by checking field accuracy. `R_decision` (0.30) scores behavioral alignment against the pro's actual play extracted from tick data. `R_outcome` (0.50) modulates decision alignment by round outcome and player contribution, enabling strategy discovery beyond imitation. Vision layers are frozen; only language layers train. KL regularization (λ=0.02) prevents mode collapse. See `docs/decisions.md` D011 for the full mathematical formulation.
 
 ## Experiment
 
@@ -39,8 +39,8 @@ Each step is isolated: it reads from defined inputs, writes to defined outputs, 
 - [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs ([cs2-tools](https://github.com/skkwowee/cs2-tools)). Interactive demo viewer ([cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)) with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
 - [ ] **Step 3 — Screenshot-demo synchronization.** Sync VOD frames to demo ticks to produce (screenshot, exact_game_state) pairs. Figure out time offset between broadcast and demo file. Extract frames at intervals, pair with ground truth game state from Parquet data.
 - [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3-VL with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
-- [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro_action (categorized via ACTION_TAXONOMY) + round_won outcome.
-- [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 7 reward signals. Compare SFT-only vs SFT+GRPO vs GRPO-only.
+- [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro behavioral features (movement, utility, engagement timing from tick data) + round_won + player_contribution (φ).
+- [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 3 reward signals + multiplicative format gate + KL regularization (see D011). Compare SFT-only vs SFT+GRPO vs GRPO-only.
 - [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
 
 ### Resuming work
@@ -183,7 +183,8 @@ python scripts/train_sft.py --dry-run  # check VRAM
 # Phase 2: GRPO (uses SFT output)
 python scripts/train_grpo.py \
     --model-name outputs/sft/final_model/merged_16bit \
-    --screenshots data/raw --labels data/labeled
+    --screenshots data/raw --labels data/labeled \
+    --reward-weights 0.20 0.30 0.50 --kl-coef 0.02
 python scripts/train_grpo.py --dry-run  # check VRAM
 ```
 
