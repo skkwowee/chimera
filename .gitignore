@@ -4,6 +4,8 @@ data/labeled/
 data/processed/
 data/predictions/
 data/demos/
+data/.hf_cache/
+data/captures/
 
 # Python
 __pycache__/

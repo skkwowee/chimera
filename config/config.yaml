@@ -1,5 +1,10 @@
 # Chimera Configuration
 
+# HuggingFace Hub
+hub:
+  dataset_repo: "skkwowee/chimera-cs2"
+  model_repo: "skkwowee/chimera-cs2-qwen3-vl-8b"
+
 # Paths
 paths:
   raw_screenshots: "data/raw"
@@ -100,8 +105,8 @@ training:
   temperature: 0.7
   importance_sampling_level: "sequence"  # GSPO variant
 
-  # Reward weights: format, hard_acc, soft_acc, decision, outcome, consistency, reasoning
-  reward_weights: [0.05, 0.15, 0.05, 0.15, 0.30, 0.20, 0.10]
+  # Reward weights: R_percept, R_decision, R_outcome (D013)
+  reward_weights: [0.20, 0.30, 0.50]
 
   # Output
   output_dir: "outputs/grpo"

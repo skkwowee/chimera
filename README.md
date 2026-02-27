@@ -112,18 +112,14 @@ chimera/
 ├── src/
 │   ├── data/                   # Data loading + manifest utilities
 │   ├── inference/              # VLM inference (Qwen3-VL-8B)
-│   ├── labeling/               # Claude API labeling
 │   ├── training/               # SFT + GRPO training modules
 │   └── prompts.py              # Shared prompts for all models
 └── scripts/
-    ├── collect_youtube.py      # Download CS2 gameplay from YouTube
-    ├── collect_with_transcript.py  # Collect with transcript context
-    ├── label_screenshots.py    # Generate labels with Claude
     ├── run_inference.py        # Run VLM inference
     ├── evaluate.py             # Evaluate predictions
     ├── train_sft.py            # Phase 1: SFT fine-tuning
     ├── train_grpo.py           # Phase 2: GRPO fine-tuning
-    ├── upload_to_hub.py        # Upload datasets/models to HF Hub
+    ├── data.py                 # HF Hub data management (pull/push/clean)
     └── generate_review.py      # Generate HTML viewer for review
 ```
 
@@ -142,21 +138,27 @@ cp .env.example .env
 
 ## Usage
 
-### Collect Data
+### Data Management
+
+Data lives on HuggingFace Hub. The repo stays lean — pull what you need, train, clean up.
 
 ```bash
-# YouTube screenshots (extracts frame every 5 seconds)
-python scripts/collect_youtube.py "https://youtube.com/watch?v=VIDEO_ID"
+# Check what's available locally and remotely
+python scripts/data.py status
 
-# With transcript context (writes to manifest)
-python scripts/collect_with_transcript.py "https://youtube.com/watch?v=VIDEO_ID"
-```
+# Pull dataset from Hub into data/raw/ and data/labeled/
+python scripts/data.py pull
+python scripts/data.py pull --subset 100  # quick iteration
 
-### Label with Claude
+# Push local data to Hub (assembles from data/captures/ first)
+python scripts/data.py push --captures
 
-```bash
-python scripts/label_screenshots.py --single path/to/screenshot.png
-python scripts/label_screenshots.py --input data/raw --output data/labeled
+# Upload trained model
+python scripts/data.py push --model outputs/sft/final_model/merged_16bit
+
+# Clean up local data copies
+python scripts/data.py clean        # removes raw/, labeled/, .hf_cache/
+python scripts/data.py clean --all  # also removes processed/, predictions/, outputs/
 ```
 
 ### Run Inference
