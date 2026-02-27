@@ -18,7 +18,7 @@ Supervised fine-tuning on screenshot–game state pairs. Ground truth comes from
 
 ### Phase 2: Strategic Reasoning (GRPO on Demo-Derived Rewards)
 
-Refine with Group Relative Policy Optimization using 3 reward signals gated by a multiplicative format constraint. `R_percept` (0.20) prevents SFT regression by checking field accuracy. `R_decision` (0.30) scores behavioral alignment against the pro's actual play extracted from tick data. `R_outcome` (0.50) modulates decision alignment by round outcome and player contribution, enabling strategy discovery beyond imitation. Vision layers are frozen; only language layers train. KL regularization (λ=0.02) prevents mode collapse. See `docs/decisions.md` D011 for the full mathematical formulation.
+Refine with Group Relative Policy Optimization using 3 reward signals gated by a multiplicative format constraint. `R_percept` (0.20) prevents SFT regression by checking field accuracy. `R_decision` (0.30) scores behavioral alignment against the pro's actual play extracted from tick data. `R_outcome` (0.50) modulates decision alignment by round outcome and player contribution, enabling strategy discovery beyond imitation. Vision layers are frozen; only language layers train. KL regularization (λ=0.02) prevents mode collapse. See `docs/decisions.md` D013 for the full mathematical formulation.
 
 ## Experiment
 
@@ -40,7 +40,7 @@ Each step is isolated: it reads from defined inputs, writes to defined outputs, 
 - [ ] **Step 3 — Screenshot-demo synchronization.** Sync VOD frames to demo ticks to produce (screenshot, exact_game_state) pairs. Figure out time offset between broadcast and demo file. Extract frames at intervals, pair with ground truth game state from Parquet data.
 - [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3-VL with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
 - [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro behavioral features (movement, utility, engagement timing from tick data) + round_won + player_contribution (φ).
-- [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 3 reward signals + multiplicative format gate + KL regularization (see D011). Compare SFT-only vs SFT+GRPO vs GRPO-only.
+- [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 3 reward signals + multiplicative format gate + KL regularization (see D013). Compare SFT-only vs SFT+GRPO vs GRPO-only.
 - [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
 
 ### Resuming work

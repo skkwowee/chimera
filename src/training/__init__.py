@@ -1,5 +1,5 @@
 from .rewards import (
-    # Active reward functions (D011 revised architecture)
+    # Active reward functions (D013 revised architecture)
     format_gate_reward,
     perceptual_accuracy_reward,
     decision_alignment_reward,
@@ -29,7 +29,7 @@ from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
 from .sft_trainer import CS2SFTConfig, CS2SFTTrainer
 
 __all__ = [
-    # Active rewards (D011)
+    # Active rewards (D013)
     "format_gate_reward",
     "perceptual_accuracy_reward",
     "decision_alignment_reward",

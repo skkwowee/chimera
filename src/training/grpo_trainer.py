@@ -3,7 +3,7 @@ GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
 Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
 
-Revised reward architecture (D011):
+Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON → zero total reward)
   - 3 weighted reward signals passed to TRL's GRPOTrainer:
       1. R_percept  (α=0.20) — merged hard+soft field accuracy
@@ -74,7 +74,7 @@ class CS2GRPOConfig:
     importance_sampling_level: str = "sequence"  # GSPO variant for stability
 
     # KL regularization — prevents mode collapse onto narrow "safe" advice
-    # that scores well across diverse game states (D011 Issue 4)
+    # that scores well across diverse game states (D013)
     kl_coef: float = 0.02
 
     # Reward weights: [R_percept, R_decision, R_outcome]
@@ -102,7 +102,7 @@ class CS2GRPOTrainer:
 
     Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
 
-    Revised reward architecture (D011):
+    Revised reward architecture (D013):
       - Multiplicative format gate: invalid JSON → all signals return 0.0
       - 3 reward signals passed to TRL for per-signal advantage computation:
           1. R_percept  (0.20) — perceptual accuracy (merged hard+soft fields)
@@ -318,7 +318,7 @@ class CS2GRPOTrainer:
             temperature=self.config.temperature,
             # GSPO variant for stability
             importance_sampling_level=self.config.importance_sampling_level,
-            # KL regularization against SFT reference (D011)
+            # KL regularization against SFT reference (D013)
             kl_coef=self.config.kl_coef,
             # Reward weights for the 3 separate reward functions
             reward_weights=self.config.reward_weights,

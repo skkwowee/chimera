@@ -4,7 +4,7 @@ GRPO training script for CS2 VLM fine-tuning.
 
 Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
 
-Revised reward architecture (D011):
+Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON → zero total reward)
   - 3 weighted signals: R_percept (0.20), R_decision (0.30), R_outcome (0.50)
   - KL regularization (λ=0.02) prevents mode collapse

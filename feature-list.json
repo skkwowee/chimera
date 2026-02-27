@@ -26,13 +26,13 @@
   {
     "id": "F05",
     "name": "GRPO dataset from demos",
-    "description": "Convert demo snapshots into decision training format. Each sample: game state snapshot → pro behavioral features (d_move, d_obj, u_type, e_timing, δ_engage from next Δ ticks) + round_won + player_contribution (φ: damage, survival, objective). Ground truth schema defined in D011.",
+    "description": "Convert demo snapshots into decision training format. Each sample: game state snapshot → pro behavioral features (d_move, d_obj, u_type, e_timing, δ_engage from next Δ ticks) + round_won + player_contribution (φ: damage, survival, objective). Ground truth schema defined in D013.",
     "passes": false
   },
   {
     "id": "F06",
     "name": "GRPO training — strategic reasoning",
-    "description": "GRPO on demo-derived decision data (D011 architecture). Multiplicative format gate + 3 reward signals: R_percept (0.20, merged field accuracy), R_decision (0.30, behavioral feature alignment), R_outcome (0.50, outcome-modulated with player contribution φ). KL regularization (λ=0.02).",
+    "description": "GRPO on demo-derived decision data (D013 architecture). Multiplicative format gate + 3 reward signals: R_percept (0.20, merged field accuracy), R_decision (0.30, behavioral feature alignment), R_outcome (0.50, outcome-modulated with player contribution φ). KL regularization (λ=0.02).",
     "passes": false
   },
   {

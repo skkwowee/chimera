@@ -41,8 +41,8 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - SFT ground truth: demo-to-VOD synchronization, not model labeling
 - GRPO reward asymmetry: deviating from a winning pro play is NOT penalized
   hard (model's alternative might work), but endorsing a losing play is
-- Reward weights (provisional): format=0.05, hard_acc=0.15, soft_acc=0.05,
-  decision=0.15, outcome=0.30, consistency=0.20, reasoning=0.10
+- Reward architecture (D013): multiplicative format gate + 3 signals:
+  R_percept=0.20, R_decision=0.30, R_outcome=0.50, KL λ=0.02
 - Additional RL on video/screenshot data: TBD, user is contemplating
 
 ## Next step: F03 — Screenshot capture via CS2 demo playback

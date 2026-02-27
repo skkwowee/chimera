@@ -67,25 +67,31 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 \subsection{Phase 2: Strategic Reasoning via GRPO}
 \label{sec:grpo}
 
-% TODO: Explain Phase 2: GRPO with 7 reward signals derived from pro demo data
-% TODO: Vision rewards (format gate, hard/soft field accuracy) prevent SFT regression; vision layers frozen
-% TODO: Reasoning rewards (decision alignment vs pro play, outcome weighting, consistency, reasoning quality) are the RL training signal
+% TODO: Explain Phase 2: GRPO with 3 reward signals + multiplicative format gate (D013)
+% TODO: R_percept (0.20) prevents SFT regression; vision layers frozen
+% TODO: R_decision (0.30) — behavioral feature alignment with pro play from tick data
+% TODO: R_outcome (0.50) — outcome-modulated decision reward with player contribution φ
+% TODO: KL regularization (λ=0.02) prevents mode collapse
 % TODO: Describe outcome reward asymmetry: deviating from winning play not penalized hard, endorsing losing play is
 
 \subsection{Reward Design}
 \label{sec:reward}
 
-% TODO: Detail the 7 reward functions and their weights
-%   Vision (prevent SFT regression): format gate (0.05), hard field accuracy (0.15), soft field accuracy (0.05)
-%   Reasoning (RL signal): decision alignment (0.15), outcome reward (0.30), consistency (0.20), reasoning quality (0.10)
-% TODO: Explain action taxonomy for categorizing model advice vs pro play
-% TODO: Describe outcome reward signal matrix (agree+win, agree+lose, deviate+win, deviate+lose)
+% TODO: Detail the 3 reward functions + multiplicative format gate (D013)
+%   Format gate: multiplicative mask — invalid JSON → zero total reward
+%   R_percept (α=0.20): merged hard+soft field accuracy (prevents SFT regression)
+%   R_decision (β=0.30): behavioral feature alignment (d_move, d_obj, u_type, e_timing, δ_engage)
+%   R_outcome (γ=0.50): R_decision · Ω(W, φ, a) — outcome-modulated with player contribution
+%   KL penalty (λ=0.02): regularization against SFT reference
+% TODO: Explain behavioral feature vectors extracted from tick data
+% TODO: Describe Ω function and signal matrix (agree+win, agree+lose, deviate+win, deviate+lose)
+% TODO: Explain player contribution φ for credit assignment
 % TODO: Address the challenge of evaluating open-ended strategic suggestions
 
 \begin{figure}[t]
 \centering
 \fbox{\parbox{0.9\linewidth}{\centering\vspace{2in}[Placeholder: System Architecture Diagram]}}
-\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on screenshot--game state pairs to learn visual grounding (reading the HUD). Phase 2 applies GRPO with demo-derived rewards to learn strategic reasoning (decision alignment with pro play, outcome weighting). Vision layers are frozen in Phase 2.}
+\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on screenshot--game state pairs to learn visual grounding (reading the HUD). Phase 2 applies GRPO with 3 reward signals gated by a multiplicative format constraint: $R_\text{percept}$ (perceptual accuracy), $R_\text{decision}$ (behavioral alignment with pro play), and $R_\text{outcome}$ (outcome-modulated decision reward with player contribution weighting). Vision layers are frozen in Phase 2; KL regularization prevents mode collapse.}
 \label{fig:architecture}
 \end{figure}
 
@@ -125,7 +131,7 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 \label{tab:results}
 \begin{tabular}{lcccc}
 \toprule
-\textbf{Method} & \textbf{Field Acc.} & \textbf{Decision Align.} & \textbf{Consistency} & \textbf{Weighted Total} \\
+\textbf{Method} & $\mathbf{R_\text{percept}}$ & $\mathbf{R_\text{decision}}$ & $\mathbf{R_\text{outcome}}$ & \textbf{Weighted Total} \\
 \midrule
 Zero-shot (A) & -- & -- & -- & -- \\
 SFT only (B) & -- & -- & -- & -- \\

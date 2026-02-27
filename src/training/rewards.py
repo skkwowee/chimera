@@ -1009,10 +1009,10 @@ def soft_field_accuracy_reward(
 
 
 def consistency_reward(response: str, **kwargs) -> float:
-    """Legacy: consistency reward. Dropped from active training (see D011)."""
+    """Legacy: consistency reward. Dropped from active training (see D013)."""
     return 0.0
 
 
 def reasoning_quality_reward(response: str, **kwargs) -> float:
-    """Legacy: reasoning quality reward. Dropped from active training (see D011)."""
+    """Legacy: reasoning quality reward. Dropped from active training (see D013)."""
     return 0.0
