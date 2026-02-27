@@ -18,7 +18,7 @@ Supervised fine-tuning on screenshot–game state pairs. Ground truth comes from
 
 ### Phase 2: Strategic Reasoning (GRPO on Demo-Derived Rewards)
 
-Refine with Group Relative Policy Optimization using 3 reward signals gated by a multiplicative format constraint. `R_percept` (0.20) prevents SFT regression by checking field accuracy. `R_decision` (0.30) scores behavioral alignment against the pro's actual play extracted from tick data. `R_outcome` (0.50) modulates decision alignment by round outcome and player contribution, enabling strategy discovery beyond imitation. Vision layers are frozen; only language layers train. KL regularization (λ=0.02) prevents mode collapse. See `docs/decisions.md` D013 for the full mathematical formulation.
+Refine with Group Relative Policy Optimization using 3 reward signals gated by a multiplicative format constraint. `R_percept` (0.20) prevents SFT regression by checking field accuracy. `R_decision` (0.30) scores behavioral alignment against the pro's actual play extracted from tick data. `R_outcome` (0.50) modulates decision alignment by round outcome and player contribution, enabling strategy discovery beyond imitation. Vision layers are frozen; only language layers train. KL regularization (λ=0.02) prevents mode collapse. See `decisions.md` D013 for the full mathematical formulation.
 
 ## Experiment
 
@@ -97,6 +97,7 @@ Two components live in their own repositories and are managed as dependencies:
 
 ```
 chimera/
+├── decisions.md                # Design decision log (D001–D014)
 ├── paper/                      # NeurIPS 2026 submission
 │   ├── main.tex                # Main paper
 │   ├── references.bib          # Bibliography
@@ -114,17 +115,16 @@ chimera/
 │   ├── labeling/               # Claude API labeling
 │   ├── training/               # SFT + GRPO training modules
 │   └── prompts.py              # Shared prompts for all models
-├── scripts/
-│   ├── collect_youtube.py      # Download CS2 gameplay from YouTube
-│   ├── collect_with_transcript.py  # Collect with transcript context
-│   ├── label_screenshots.py    # Generate labels with Claude
-│   ├── run_inference.py        # Run VLM inference
-│   ├── evaluate.py             # Evaluate predictions
-│   ├── train_sft.py            # Phase 1: SFT fine-tuning
-│   ├── train_grpo.py           # Phase 2: GRPO fine-tuning
-│   ├── upload_to_hub.py        # Upload datasets/models to HF Hub
-│   └── generate_review.py      # Generate HTML viewer for review
-└── notebooks/                  # Jupyter notebooks
+└── scripts/
+    ├── collect_youtube.py      # Download CS2 gameplay from YouTube
+    ├── collect_with_transcript.py  # Collect with transcript context
+    ├── label_screenshots.py    # Generate labels with Claude
+    ├── run_inference.py        # Run VLM inference
+    ├── evaluate.py             # Evaluate predictions
+    ├── train_sft.py            # Phase 1: SFT fine-tuning
+    ├── train_grpo.py           # Phase 2: GRPO fine-tuning
+    ├── upload_to_hub.py        # Upload datasets/models to HF Hub
+    └── generate_review.py      # Generate HTML viewer for review
 ```
 
 ## Setup
