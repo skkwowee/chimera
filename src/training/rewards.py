@@ -8,9 +8,12 @@ Mathematical Formulation (for NeurIPS submission)
 Problem setup
 -------------
 At each decision point t within a round, the model receives an observation
-o_t = (I_t, c_t) where I_t is the current screenshot and c_t is a natural
-language context string summarizing round progression. The model's output y
-is structured JSON containing game state extraction, analysis, and advice.
+o_t = (I_{t-k}, ..., I_t, c_t) where I_{t-j} are screenshots (current +
+up to k prior frames for visual continuity) and c_t is a structured context
+string generated from engine tick data summarizing round progression:
+economy, kills, utility usage, bomb events, and current player states.
+The model's output y is structured JSON containing game state extraction,
+analysis, and advice. See D018 in decisions.md.
 
 The reward function has access to ground truth from demo data that the model
 never sees: the pro player's actual state s_t, their subsequent behavior

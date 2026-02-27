@@ -602,3 +602,204 @@ The strongest defense against mechanical confounds is **more data from more dive
 This analysis belongs in the Limitations section and informs the framing of R_outcome in the Method section. The key claim: the architecture handles mechanical noise through three complementary mechanisms (φ attenuation, aim-independent R_decision, population averaging), but small dataset size remains the primary bottleneck for robust noise averaging. The model learns expected value at the training population's skill level, not universal strategic truth.
 
 **Status:** Analysis documented. Informs paper Method (Section 3.4) and Limitations. Connects to D008 (data scale) and D013 (reward architecture).
+
+---
+
+## D016: Temporal credit assignment — from bandit framing to causal proximity (2026-02-26)
+
+The current GRPO architecture treats each screenshot as an independent contextual bandit: one observation, one response, one reward. The round outcome W and player contribution φ are round-level aggregates applied identically to every decision point within a round. This decision documents the credit assignment problem and the planned solution.
+
+### The problem: round outcome is temporally diffuse
+
+A round lasts 30-90 seconds. Screenshots are captured every ~3 seconds, producing 10-30 decision points per round. All receive the same W ∈ {0,1} and the same φ. But the decision that determined the round outcome was typically made 20-40 seconds before the round ended — the execute timing, the rotation call, the utility usage that opened a site. Late-round events (clutch plays, defuse attempts) are resolutions of earlier decisions, not the decisions themselves.
+
+Concrete failure case: a buy-phase screenshot (t=3s) where the pro correctly purchases AK + armor gets the same outcome penalty as a screenshot at t=25s where the pro made the bad rotation that actually lost the round. The model is penalized for correct buy advice because of a decision made 22 seconds later.
+
+### Why forward windows don't work
+
+An initial proposal was per-timestep φ computed from a forward window (damage/survival/objective in the next Δ≈12 seconds after each decision point). This is wrong for the same reason: the window captures what happened *after* the decision point, but the outcome relevance of a decision may not manifest for 30-60 seconds. The flash thrown at t=15 that enabled the site take at t=20 that led to the plant at t=25 — the forward window from t=15 might not even reach the plant.
+
+More fundamentally: kill events are outcomes, not decisions. Weighting by proximity to kills conflates results with the choices that caused them.
+
+### Detecting actual decision moments in tick data
+
+A "decision" is a behavioral state transition — the moment a player commits to a new course of action. These are detectable from the Parquet tick data (90Hz position, velocity, view angles, active weapon):
+
+| Signal | State transition | Decision type |
+|--------|-----------------|---------------|
+| Velocity: 0 → moving | Started moving after holding | Commit to rotate/push/reposition |
+| Velocity: moving → 0 | Stopped after moving | Set up at new position |
+| View angle: >30° snap in 0.5s | Rapid aim redirect | Received info, shifted attention |
+| Active weapon → grenade | Switched to utility | About to commit a consumable |
+| Grenade → rifle | Utility thrown | Executed utility play, ready to fight |
+| Walking ↔ running | Shift key change | Chose speed vs stealth |
+
+The causal chain for a kill at tick T is:
+
+```
+T-800: weapon switch to flash     ← DECISION (commit utility)
+T-650: flash thrown                ← EXECUTION
+T-500: weapon switch to rifle     ← DECISION (re-equip)
+T-450: velocity 0→moving          ← DECISION (commit to push)
+T-200: enemy flashed              ← CONSEQUENCE
+T:     kill                        ← OUTCOME
+```
+
+The decision that matters is at T-800 (committing the flash) and T-450 (committing to push), not T (the kill).
+
+### Proposed solution: causal proximity to decision-linked outcomes
+
+1. For each round, detect behavioral state transitions from tick data (decision moments)
+2. For each decisive outcome event (first blood, entry frag, bomb plant, round-ending kill), trace backward to the nearest decision moment that preceded it
+3. For each screenshot/decision point, compute proximity to these decision-linked moments
+4. Use proximity as a multiplier on the outcome signal
+
+```
+causal_weight(t) = max over (decision_moment d linked to outcome e):
+    exp(-|t - d.tick| / τ)     where τ ≈ 5-8 seconds
+
+φ_causal(t) = causal_weight(t) / Σ_t' causal_weight(t')
+```
+
+This replaces the current round-level φ with a per-timestep weight that tracks actual causal relevance: screenshots near the decisions that caused the outcome get strong signal, screenshots during buy phase or post-resolution get weak signal.
+
+### Economy as an additional confound
+
+Round type (eco/force/full buy/pistol) dominates expected outcome independent of decision quality. Eco rounds have ~10-15% win rate regardless of strategy. The outcome signal on eco rounds is near-zero mutual information with decision quality.
+
+Planned addition: economy informativeness ε derived from team equipment value ratios:
+
+```
+ε = sigmoid(k · (team_equipment / enemy_equipment - 0.5))
+```
+
+Full buy mirrors: ε ≈ 1.0 (outcome reflects decisions). Eco vs full buy: ε ≈ 0.2 (outcome reflects economy). Folds into Ω multiplicatively alongside φ_causal.
+
+### The combined outcome signal
+
+```
+R_outcome(t) = R_decision(t) · ε · φ_causal(t) · asymmetry(W, a)
+```
+
+Three layered filters, each removing a different source of noise:
+
+| Filter | Question it answers | Noise it removes |
+|--------|-------------------|-----------------|
+| ε (economy) | Was outcome economically predetermined? | Economic confound |
+| φ_causal(t) | Was this decision causally relevant? | Temporal diffusion |
+| asymmetry(W, a) | Did the strategy work or fail? | Imitation bias |
+
+### Mathematical interpretation: heuristics as variance reduction
+
+Each component is formally a variance reduction technique on the policy gradient estimate:
+
+- **φ / φ_causal**: Control variate — multiplies noisy gradients by ~0 when signal is pure noise
+- **ε**: Prior on signal-to-noise ratio — downweights samples where I(decision; outcome) ≈ 0
+- **R_decision**: Reward shaping — dense signal that guides policy search without changing optimal convergence point
+- **Causal proximity**: Importance weight on the temporal dimension — corrects for non-uniform relevance of decision points within a round
+
+Each heuristic trades a small, understood bias for a large reduction in gradient variance. This tradeoff is favorable in low-data regimes and becomes less necessary as data scales.
+
+### Scaling behavior: heuristics vs data
+
+Every heuristic becomes unnecessary with sufficient data — the law of large numbers does the work instead:
+
+| Heuristic | Replaced by | Approximate data needed |
+|-----------|------------|------------------------|
+| φ (contribution) | Population averaging over diverse players per state | ~100x current |
+| ε (economy) | Enough samples per economy level per state | ~5x per round type |
+| R_decision (alignment) | Pure outcome signal with enough samples per state | ~1000x current |
+| Causal proximity | Enough rounds that irrelevant timestamps' noise averages out | ~50x current |
+
+With thousands of demos (planned training scale), several heuristics may become unnecessary. The ablation curve — which heuristics can be removed at which data scales — is itself an interesting empirical result for the paper.
+
+### Paper framing
+
+The reward architecture should be presented as domain-informed variance reduction for RL in a regime where standard solutions (learned reward model, simulator, verifiable answers) are unavailable:
+
+1. No learned reward model (no pairwise preference data)
+2. No simulator (can't run counterfactuals — no CS2 engine that takes text advice as input)
+3. No verifiable answers (no ground truth for "correct strategy")
+4. Only: offline expert demos with noisy terminal reward
+
+The heuristic decomposition IS the method contribution. It makes RL viable where naive outcome-based training would fail. The intellectual lineage is offline RL (advantage-weighted regression, Decision Transformer) adapted to a text-output, non-interactive setting.
+
+**Status:** Analysis documented. Requires implementation in F05 (ground truth generation). Connects to D013 (reward architecture), D014 (design rationale), D015 (mechanical skill confound).
+
+---
+
+## D017: Data scale revision — thousands of demos (2026-02-26)
+
+**Decision:** Training will use thousands of demos, not just the initial 4 from Furia vs Vitality. This significantly changes the data regime and the relative importance of reward heuristics.
+
+**Why this matters:**
+- D008 identified data scale as the primary limitation. With thousands of demos from diverse teams/events/maps, the population averaging defense (D015) becomes robust rather than theoretical.
+- Several reward heuristics (D016) exist specifically to compensate for low-N variance. At thousands of demos, some become unnecessary and their bias becomes the dominant concern.
+- The ablation study gains statistical power: can meaningfully test which heuristics are needed at which data scales.
+
+**Implications:**
+- The parsing pipeline (`cs2-parse-demos`, `cs2-tools`) and capture pipeline (`cs2-capture`) are already generalized. Scaling is mechanical, not architectural.
+- Per-state sample counts will be high enough that rare game states (eco clutches, 1v5s) have meaningful representation.
+- The "donk problem" (D015) is mitigated by population diversity — unconventional playstyles are outvoted by the broader population.
+- Economy informativeness ε (D016) may still be valuable even at scale, since eco rounds are fundamentally low-information regardless of sample count.
+
+**Status:** Decided. Updates D008 (data scale) assessment. Training data collection to scale with pipeline tooling.
+
+---
+
+## D018: Context-aware observation model — multi-image + round context (2026-02-27)
+
+**Decision:** The model receives multi-image input (current + up to 2 prior screenshots) plus a structured round context string c_t, rather than a single screenshot with a generic prompt.
+
+**Observation model:** `o_t = (I_{t-k}, ..., I_t, c_t)`
+
+### Why this matters
+
+The previous implementation passed a single screenshot with a static prompt: "Analyze this CS2 screenshot." The model had to infer the entire round state from one HUD frame — who died, what utility was used, what the economy is, what happened 20 seconds ago. This is both unrealistic (a real player/coach has full round awareness) and wasteful (the information exists in the tick data but was being discarded).
+
+With context, the task shifts from "infer everything from one frame" to "given full round context + current visual, advise on strategy." This is a much better-specified problem and matches the information a real coach would have.
+
+### What c_t contains
+
+Generated from Parquet tick data by `scripts/generate_sft_labels.py`:
+
+- **Round header:** Round number, score, map name, round time elapsed
+- **Economy (at round start):** Both teams' buy type and total equipment value
+- **Chronological events (up to tick t):**
+  - Deaths — detected from health transitions (>0 → 0) in consecutive ticks
+  - Utility usage — detected from grenade items disappearing from inventory
+  - Bomb events — from the bomb event JSON (plant, defuse, drop)
+- **Current state:** Alive counts, bomb status, POV player loadout, teammate states
+
+All derived from engine data. No inference, no model labeling.
+
+### Multi-image input
+
+Up to 2 prior screenshots from the same round and POV player are included before the current screenshot. This provides visual continuity — the model can observe:
+- A smoke that was present 6s ago and has now faded
+- An enemy that was visible and has moved
+- Teammates who were alive and are now dead
+- Position changes of the POV player
+
+Qwen3-VL supports multi-image natively. At typical resolution, 3 images add ~1500 image tokens — manageable with 4-bit quantization on 24GB VRAM.
+
+### Impact on reward terms
+
+**R_percept:** The model has no excuse for getting alive counts wrong when the context says who died. Perceptual accuracy should be higher with context, making R_percept more of a floor/constraint than before.
+
+**R_decision:** Becomes much more meaningful. Without context, advice is reactive to a single frame. With context, the model can reason about round progression — "two smokes have been used A, they're probably executing B" — and the behavioral alignment score measures whether that reasoning leads to the right call.
+
+**R_outcome:** Credit assignment partially improves. The model at t=25s knows that a trade happened at mid and CTs have no AWP. If it advises "execute A now" and the round is won, the reward is attributable to informed advice. But temporal credit assignment (D016) is still needed to weight decision points by causal relevance within the round.
+
+### Files changed
+
+- `src/prompts.py` — System prompt updated for multi-image + context. Added `build_user_prompt(context)` function.
+- `scripts/generate_sft_labels.py` — Added `generate_round_context()`, `detect_round_events()`, `find_prior_screenshots()`, economy classification. Labels now include `context` and `prior_screenshots` fields.
+- `src/training/data_utils.py` — `GRPODataItem` now has `prior_image_paths` and `context`. `_build_prompt_content()` assembles multi-image + context prompts. `prepare_conversation_format()` supports prior images.
+- `src/training/rewards.py` — Docstring updated to reflect observation model.
+
+### Backward compatibility
+
+Labels without `context` or `prior_screenshots` fields still work — the data loading falls back to the legacy single-image, generic-prompt behavior. Existing labels on Hub don't need regeneration for SFT (though they should be regenerated to include context before GRPO training).
+
+**Status:** Implemented. Labels need regeneration with updated `generate_sft_labels.py` to include context. Connects to D013 (reward architecture), D016 (credit assignment).

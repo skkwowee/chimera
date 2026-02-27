@@ -1,7 +1,12 @@
 """
-Data preparation utilities for GRPO training.
+Data preparation utilities for GRPO and SFT training.
 
-Provides data loading and conversion for Unsloth-compatible GRPO training.
+Provides data loading and conversion for Unsloth-compatible training.
+
+Observation model: o_t = (I_{t-k}, ..., I_t, c_t)
+  - Prior screenshots provide visual continuity
+  - Context string c_t from engine tick data provides round history
+  - See D018 in decisions.md
 """
 
 import json
@@ -12,18 +17,33 @@ from typing import Iterator
 
 from PIL import Image
 
+from ..prompts import build_user_prompt
+
+
+SUPPORTED_IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".webp"}
+
 
 @dataclass
 class GRPODataItem:
-    """A single training sample for GRPO."""
+    """A single training sample for GRPO.
+
+    Attributes:
+        image_path: Path to the current (most recent) screenshot.
+        prior_image_paths: Paths to prior screenshots in the same round,
+            ordered oldest to newest. Provides visual continuity.
+        context: Round context string c_t generated from tick data.
+        ground_truth: Engine-accurate ground truth for reward computation.
+        image: Lazily loaded current image.
+    """
 
     image_path: Path
-    prompt: str
     ground_truth: dict
+    prior_image_paths: list[Path] = field(default_factory=list)
+    context: str | None = None
     image: Image.Image | None = field(default=None, repr=False)
 
     def load_image(self) -> Image.Image:
-        """Load the image lazily."""
+        """Load the current image lazily."""
         if self.image is None:
             self.image = Image.open(self.image_path).convert("RGB")
         return self.image
@@ -32,40 +52,45 @@ class GRPODataItem:
         """Unload image to free memory."""
         self.image = None
 
+    @property
+    def prompt(self) -> str:
+        """Build user prompt with context."""
+        return build_user_prompt(self.context)
 
-# Default prompt template for CS2 analysis
-DEFAULT_PROMPT = """Analyze this Counter-Strike 2 screenshot and provide:
-1. Game state (health, armor, money, weapons, alive players, etc.)
-2. Strategic analysis (economy assessment, round importance, threats, opportunities)
-3. Tactical advice (primary action, reasoning, fallback plan, team callout)
 
-Respond in JSON format with keys: game_state, analysis, advice"""
+def _find_image(directory: Path, stem: str) -> Path | None:
+    """Find an image file with the given stem in any supported format."""
+    for fmt in SUPPORTED_IMAGE_FORMATS:
+        candidate = directory / f"{stem}{fmt}"
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def convert_labeled_to_grpo_format(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
-    prompt: str | None = None,
     manifest: dict[str, dict] | None = None,
 ) -> list[GRPODataItem]:
     """
     Convert existing labeled data to GRPO training format.
 
+    Labels are expected to contain:
+      - game_state: HUD ground truth
+      - context: round context string c_t (optional, from generate_sft_labels.py)
+      - prior_screenshots: list of screenshot IDs for prior frames (optional)
+
     Args:
-        screenshots_dir: Directory containing screenshot images
-        labels_dir: Directory containing JSON label files
-        prompt: Custom prompt to use (defaults to DEFAULT_PROMPT)
-        manifest: Optional manifest dict (from load_manifest/filter_manifest)
-                  to restrict which samples are included
+        screenshots_dir: Directory containing screenshot images.
+        labels_dir: Directory containing JSON label files.
+        manifest: Optional manifest dict to restrict which samples are included.
 
     Returns:
-        List of GRPODataItem instances ready for training
+        List of GRPODataItem instances ready for training.
     """
     screenshots_dir = Path(screenshots_dir)
     labels_dir = Path(labels_dir)
-    prompt = prompt or DEFAULT_PROMPT
 
-    supported_formats = {".png", ".jpg", ".jpeg", ".webp"}
     items = []
 
     if not labels_dir.exists():
@@ -74,34 +99,62 @@ def convert_labeled_to_grpo_format(
     for label_path in sorted(labels_dir.glob("*.json")):
         stem = label_path.stem
 
-        # Skip if manifest provided and this sample isn't in it
         if manifest is not None and stem not in manifest:
             continue
 
-        # Find matching image
-        image_path = None
-        for fmt in supported_formats:
-            candidate = screenshots_dir / f"{stem}{fmt}"
-            if candidate.exists():
-                image_path = candidate
-                break
-
+        image_path = _find_image(screenshots_dir, stem)
         if image_path is None:
             continue
 
-        # Load label
         with open(label_path) as f:
-            ground_truth = json.load(f)
+            label_data = json.load(f)
+
+        # Extract context and prior screenshot refs from label
+        context = label_data.get("context")
+        prior_ids = label_data.get("prior_screenshots", [])
+
+        # Resolve prior screenshot IDs to paths
+        prior_paths = []
+        for prior_id in prior_ids:
+            prior_path = _find_image(screenshots_dir, prior_id)
+            if prior_path is not None:
+                prior_paths.append(prior_path)
 
         items.append(
             GRPODataItem(
                 image_path=image_path,
-                prompt=prompt,
-                ground_truth=ground_truth,
+                ground_truth=label_data,
+                prior_image_paths=prior_paths,
+                context=context,
             )
         )
 
     return items
+
+
+def _build_prompt_content(item: GRPODataItem) -> list[dict]:
+    """
+    Build Qwen3-VL multimodal content list for a training item.
+
+    Includes prior screenshots (oldest first), then current screenshot,
+    then the text prompt with round context.
+
+    Returns:
+        List of content dicts for the user message.
+    """
+    content = []
+
+    # Prior screenshots (oldest first) for visual continuity
+    for prior_path in item.prior_image_paths:
+        content.append({"type": "image", "image": str(prior_path)})
+
+    # Current screenshot (most recent)
+    content.append({"type": "image", "image": str(item.image_path)})
+
+    # Text prompt with context
+    content.append({"type": "text", "text": item.prompt})
+
+    return content
 
 
 def create_grpo_dataset(
@@ -112,18 +165,16 @@ def create_grpo_dataset(
     """
     Create Unsloth-compatible dataset from GRPO items.
 
-    Each sample is formatted for Qwen3-VL multimodal input:
-    - prompt: List with image and text content
-    - ground_truth: The expected JSON output
+    Each sample is formatted for Qwen3-VL multimodal input with
+    optional prior screenshots and round context.
 
     Args:
-        items: List of GRPODataItem instances
-        train_ratio: Ratio of data for training (rest is validation)
-        seed: Random seed for reproducibility
+        items: List of GRPODataItem instances.
+        train_ratio: Ratio of data for training (rest is validation).
+        seed: Random seed for reproducibility.
 
     Returns:
-        Tuple of (train_dataset, val_dataset) where each dataset
-        is a list of dicts with 'prompt' and 'ground_truth' keys
+        Tuple of (train_dataset, val_dataset).
     """
     random.seed(seed)
     shuffled = items.copy()
@@ -136,10 +187,7 @@ def create_grpo_dataset(
     def format_item(item: GRPODataItem) -> dict:
         """Format item for Unsloth/TRL GRPO training."""
         return {
-            "prompt": [
-                {"type": "image", "image": str(item.image_path)},
-                {"type": "text", "text": item.prompt},
-            ],
+            "prompt": _build_prompt_content(item),
             "ground_truth": item.ground_truth,
             "image_path": str(item.image_path),
         }
@@ -164,13 +212,6 @@ class GRPODataLoader:
         shuffle: bool = True,
         seed: int = 42,
     ):
-        """
-        Args:
-            items: List of GRPODataItem instances
-            batch_size: Number of samples per batch
-            shuffle: Whether to shuffle data each epoch
-            seed: Random seed for shuffling
-        """
         self.items = items
         self.batch_size = batch_size
         self.shuffle = shuffle
@@ -178,11 +219,9 @@ class GRPODataLoader:
         self._rng = random.Random(seed)
 
     def __len__(self) -> int:
-        """Number of batches per epoch."""
         return (len(self.items) + self.batch_size - 1) // self.batch_size
 
     def __iter__(self) -> Iterator[list[dict]]:
-        """Iterate over batches with lazy image loading."""
         indices = list(range(len(self.items)))
 
         if self.shuffle:
@@ -207,12 +246,10 @@ class GRPODataLoader:
 
             yield batch
 
-            # Unload images after batch is processed
             for idx in batch_indices:
                 self.items[idx].unload_image()
 
     def reset(self, seed: int | None = None) -> None:
-        """Reset the random state for a new epoch."""
         if seed is not None:
             self._rng = random.Random(seed)
 
@@ -221,77 +258,73 @@ def prepare_conversation_format(
     image_path: str | Path,
     prompt: str,
     response: str | None = None,
+    prior_image_paths: list[str | Path] | None = None,
 ) -> list[dict]:
     """
     Prepare input in Qwen3-VL conversation format.
 
-    This format is compatible with Unsloth's apply_chat_template.
+    Supports multi-image input: prior screenshots are included before
+    the current screenshot.
 
     Args:
-        image_path: Path to the image file
-        prompt: Text prompt for the model
-        response: Optional model response (for supervised training)
+        image_path: Path to the current (most recent) image.
+        prompt: Text prompt (should include context via build_user_prompt).
+        response: Optional model response (for supervised training).
+        prior_image_paths: Optional paths to prior screenshots.
 
     Returns:
-        List of conversation messages in Qwen format
+        List of conversation messages in Qwen format.
     """
-    messages = [
-        {
-            "role": "user",
-            "content": [
-                {"type": "image", "image": str(image_path)},
-                {"type": "text", "text": prompt},
-            ],
-        }
-    ]
+    content = []
+
+    # Prior images (oldest first)
+    if prior_image_paths:
+        for prior_path in prior_image_paths:
+            content.append({"type": "image", "image": str(prior_path)})
+
+    # Current image
+    content.append({"type": "image", "image": str(image_path)})
+
+    # Text prompt with context
+    content.append({"type": "text", "text": prompt})
+
+    messages = [{"role": "user", "content": content}]
 
     if response is not None:
         messages.append(
-            {
-                "role": "assistant",
-                "content": [{"type": "text", "text": response}],
-            }
+            {"role": "assistant", "content": [{"type": "text", "text": response}]}
         )
 
     return messages
 
 
 def format_ground_truth_as_json(ground_truth: dict) -> str:
-    """
-    Format ground truth dict as JSON string for training targets.
+    """Format ground truth dict as JSON string for training targets.
 
-    Args:
-        ground_truth: Dict containing game_state, analysis, advice
-
-    Returns:
-        JSON string formatted for model output
+    Excludes context and metadata — only the fields the model should output.
     """
-    return json.dumps(ground_truth, indent=2)
+    output = {}
+    for key in ("game_state", "analysis", "advice"):
+        if key in ground_truth:
+            output[key] = ground_truth[key]
+    # If label only has game_state (SFT labels without analysis/advice),
+    # return just what's there
+    if not output:
+        output = ground_truth
+    return json.dumps(output, indent=2)
 
 
 def convert_labeled_to_sft_format(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
-    prompt: str | None = None,
     manifest: dict[str, dict] | None = None,
 ) -> list[GRPODataItem]:
     """
     Convert existing labeled data to SFT training format.
 
-    Same matching logic as convert_labeled_to_grpo_format — reuses GRPODataItem
-    since the fields are identical.
-
-    Args:
-        screenshots_dir: Directory containing screenshot images
-        labels_dir: Directory containing JSON label files
-        prompt: Custom prompt to use (defaults to DEFAULT_PROMPT)
-        manifest: Optional manifest dict (from load_manifest/filter_manifest)
-                  to restrict which samples are included
-
-    Returns:
-        List of GRPODataItem instances ready for SFT training
+    Same as GRPO format — reuses GRPODataItem since fields are identical.
     """
-    return convert_labeled_to_grpo_format(screenshots_dir, labels_dir, prompt, manifest)
+    return convert_labeled_to_grpo_format(screenshots_dir, labels_dir, manifest)
 
 
 def create_sft_dataset(
@@ -302,18 +335,8 @@ def create_sft_dataset(
     """
     Create SFT dataset from labeled items.
 
-    Each training sample is formatted as a conversation with the ground truth
-    as the assistant response. Validation samples also include ground_truth
-    as a separate key for use with evaluate().
-
-    Args:
-        items: List of GRPODataItem instances
-        train_ratio: Ratio of data for training (rest is validation)
-        seed: Random seed for reproducibility
-
-    Returns:
-        Tuple of (train_dataset, val_dataset) where each entry has 'messages'
-        and val entries also have 'ground_truth' and 'image_path'
+    Each training sample is a conversation with the ground truth as the
+    assistant response. Includes prior screenshots and round context.
     """
     random.seed(seed)
     shuffled = items.copy()
@@ -324,19 +347,19 @@ def create_sft_dataset(
     val_items = shuffled[split_idx:]
 
     def format_train_item(item: GRPODataItem) -> dict:
-        """Format item for SFT training with assistant response."""
         messages = prepare_conversation_format(
             image_path=item.image_path,
             prompt=item.prompt,
             response=format_ground_truth_as_json(item.ground_truth),
+            prior_image_paths=[str(p) for p in item.prior_image_paths],
         )
         return {"messages": messages}
 
     def format_val_item(item: GRPODataItem) -> dict:
-        """Format item for evaluation — user message only + ground_truth for scoring."""
         messages = prepare_conversation_format(
             image_path=item.image_path,
             prompt=item.prompt,
+            prior_image_paths=[str(p) for p in item.prior_image_paths],
         )
         return {
             "messages": messages,
