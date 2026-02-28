@@ -3,7 +3,7 @@
 # HuggingFace Hub
 hub:
   dataset_repo: "skkwowee/chimera-cs2"
-  model_repo: "skkwowee/Qwen3.5-27B-bnb-4bit"
+  model_repo: "Qwen/Qwen3.5-35B-A3B"
 
 # Paths
 paths:
@@ -18,7 +18,7 @@ claude:
 
 # Local VLM settings (for inference)
 vlm:
-  model_name: "skkwowee/Qwen3.5-27B-bnb-4bit"
+  model_name: "Qwen/Qwen3.5-35B-A3B"
   device: "cuda"
   torch_dtype: "bfloat16"
 
@@ -43,7 +43,7 @@ game_state:
 
 # SFT Training settings (run before GRPO)
 sft_training:
-  model_name: "skkwowee/Qwen3.5-27B-bnb-4bit"
+  model_name: "Qwen/Qwen3.5-35B-A3B"
   torch_dtype: "bfloat16"
 
   # LoRA settings
@@ -71,7 +71,7 @@ sft_training:
 # GRPO Training settings
 training:
   # Model settings
-  model_name: "skkwowee/Qwen3.5-27B-bnb-4bit"
+  model_name: "Qwen/Qwen3.5-35B-A3B"
   use_vllm: true
   torch_dtype: "bfloat16"
 

@@ -2,9 +2,9 @@
 """
 SFT training script for CS2 VLM fine-tuning.
 
-Uses transformers + peft + bitsandbytes for memory-efficient supervised fine-tuning
-of Qwen3.5-27B on 24GB VRAM. SFT teaches the model output format and CS2 domain
-knowledge before GRPO refinement.
+Uses transformers + peft for bf16 supervised fine-tuning of Qwen3.5-35B-A3B MoE
+on H200. SFT teaches the model output format and CS2 domain knowledge before
+GRPO refinement.
 
 Usage:
     # Basic training (saves merged model for GRPO handoff)
@@ -40,7 +40,7 @@ from src.training import (
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Qwen3.5-27B on CS2 screenshots using SFT (supervised fine-tuning)",
+        description="Train Qwen3.5-35B-A3B on CS2 screenshots using SFT (supervised fine-tuning)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -76,7 +76,7 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="skkwowee/Qwen3.5-27B-bnb-4bit",
+        default="Qwen/Qwen3.5-35B-A3B",
         help="Model name or path to load",
     )
     model_group.add_argument(

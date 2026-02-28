@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Test Qwen3.5-27B VLM inference on RTX 4090 (24GB).
+Test Qwen3.5-35B-A3B MoE VLM inference in bf16.
 
-Loads the NF4-quantized full VLM from HuggingFace Hub.
+Loads the full VLM from HuggingFace Hub.
 Tests with screenshots if available, otherwise falls back to text-only.
 
 Usage:
@@ -21,11 +21,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+from transformers import Qwen3_5MoeForConditionalGeneration, AutoProcessor
 from src.prompts import CS2_SYSTEM_PROMPT
 from PIL import Image
 
-HUB_REPO = "skkwowee/Qwen3.5-27B-bnb-4bit"
+HUB_REPO = "Qwen/Qwen3.5-35B-A3B"
 
 
 def clear_hf_cache(repo_id: str):
@@ -48,29 +48,21 @@ def clear_hf_cache(repo_id: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test Qwen3.5-27B VLM inference")
+    parser = argparse.ArgumentParser(description="Test Qwen3.5-35B-A3B VLM inference")
     parser.add_argument("--clear-cache", action="store_true",
                         help="Delete HF Hub cache for the model after inference")
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Qwen3.5-27B VLM Inference Test")
+    print("Qwen3.5-35B-A3B VLM Inference Test")
     print("=" * 60)
 
     # Load model from Hub
     print(f"\nLoading VLM from {HUB_REPO}...")
     t0 = time.time()
 
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-        bnb_4bit_quant_type="nf4",
-        bnb_4bit_use_double_quant=True,
-    )
-
-    model = Qwen3_5ForConditionalGeneration.from_pretrained(
+    model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
         HUB_REPO,
-        quantization_config=bnb_config,
         device_map="auto",
         torch_dtype=torch.bfloat16,
     )

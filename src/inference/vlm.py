@@ -1,5 +1,5 @@
 """
-VLM inference for CS2 screenshot analysis using Qwen3.5-27B.
+VLM inference for CS2 screenshot analysis using Qwen3.5-35B-A3B MoE.
 """
 
 import json
@@ -8,8 +8,58 @@ from typing import Optional
 
 import torch
 from PIL import Image
+from transformers.generation import LogitsProcessor
 
-from src.prompts import CS2_SYSTEM_PROMPT
+from src.prompts import CS2_SYSTEM_PROMPT, CS2_USER_PROMPT
+
+
+class ThinkingBudgetProcessor(LogitsProcessor):
+    """Cap thinking tokens and force a clean </think> transition.
+
+    Reference: Zach Mueller's ThinkingTokenBudgetProcessor
+    (https://muellerzr.github.io/til/end_thinking.html)
+
+    Behavior:
+    - At 95% budget: soft boost to </think> and newline logits
+    - At budget-1: force newline (clean line break)
+    - At budget: force </think>, set stopped_thinking=True
+    - After </think>: no intervention, model generates freely
+    """
+
+    def __init__(self, processor, max_thinking_tokens: int):
+        self.max_thinking_tokens = max_thinking_tokens
+        # Processor wraps tokenizer — use .tokenizer for encode
+        tok = getattr(processor, "tokenizer", processor)
+        self.think_end_token = tok.encode("</think>", add_special_tokens=False)[0]
+        self.nl_token = tok.encode("\n", add_special_tokens=False)[0]
+        self.tokens_generated = 0
+        self.stopped_thinking = False
+        self.neg_inf = float("-inf")
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        self.tokens_generated += 1
+
+        if self.stopped_thinking or self.max_thinking_tokens is None:
+            return scores
+
+        # Soft boost at 95% budget
+        ratio = self.tokens_generated / self.max_thinking_tokens
+        if ratio > 0.95:
+            boost = 1 + ratio
+            scores[0][self.nl_token] = scores[0][self.think_end_token] * boost
+            scores[0][self.think_end_token] = scores[0][self.think_end_token] * boost
+
+        # Hard cutoff: force \n then </think>
+        if self.tokens_generated >= self.max_thinking_tokens - 1:
+            if self.tokens_generated == self.max_thinking_tokens - 1:
+                scores[:] = self.neg_inf
+                scores[0][self.nl_token] = 0
+            else:
+                scores[:] = self.neg_inf
+                scores[0][self.think_end_token] = 0
+                self.stopped_thinking = True
+
+        return scores
 
 
 def parse_json_response(response: str) -> dict:
@@ -26,15 +76,14 @@ def parse_json_response(response: str) -> dict:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3.5-27B NF4-quantized VLM.
+    Run inference using Qwen3.5-35B-A3B MoE VLM in bf16.
 
-    Loads from HuggingFace Hub using Qwen3_5ForConditionalGeneration
-    with BitsAndBytes NF4 quantization.
+    Loads from HuggingFace Hub using Qwen3_5MoeForConditionalGeneration.
     """
 
     def __init__(
         self,
-        model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit",
+        model_name: str = "Qwen/Qwen3.5-35B-A3B",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
     ):
@@ -46,20 +95,12 @@ class Qwen3VLInference:
 
     def load_model(self):
         """Load the model and processor from HuggingFace Hub."""
-        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+        from transformers import Qwen3_5MoeForConditionalGeneration, AutoProcessor
 
         print(f"Loading {self.model_name}...")
 
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=self.dtype,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-        )
-
-        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
             self.model_name,
-            quantization_config=bnb_config,
             device_map="auto",
             torch_dtype=self.dtype,
         )
@@ -73,27 +114,33 @@ class Qwen3VLInference:
         self,
         image_path: Path | str,
         prompt: Optional[str] = None,
-        max_new_tokens: int = 1024,
+        max_new_tokens: Optional[int] = None,
+        enable_thinking: bool = True,
+        thinking_budget: int = 512,
     ) -> dict:
         """Analyze a CS2 screenshot."""
         if self.model is None:
             self.load_model()
 
+        if max_new_tokens is None:
+            max_new_tokens = 2048 if enable_thinking else 1024
+
         image_path = Path(image_path)
-        prompt_text = prompt or CS2_SYSTEM_PROMPT
+        prompt_text = prompt or CS2_USER_PROMPT
 
         # Load image
         image = Image.open(image_path).convert("RGB")
 
-        # Qwen3.5 message format
+        # Qwen3.5 message format — system prompt separate from user message
         messages = [
+            {"role": "system", "content": [{"type": "text", "text": CS2_SYSTEM_PROMPT}]},
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
                     {"type": "text", "text": prompt_text},
                 ],
-            }
+            },
         ]
 
         # Apply chat template with tokenization
@@ -103,15 +150,28 @@ class Qwen3VLInference:
             add_generation_prompt=True,
             return_dict=True,
             return_tensors="pt",
+            enable_thinking=enable_thinking,
         ).to(self.model.device)
+
+        # Build generation kwargs — Qwen3.5 recommended sampling params
+        # (greedy decoding causes repetition/stuck outputs with thinking mode)
+        gen_kwargs = dict(
+            **inputs,
+            max_new_tokens=max_new_tokens,
+            do_sample=True,
+            temperature=1.0,
+            top_p=0.95,
+            top_k=20,
+            repetition_penalty=1.5,
+        )
+        if enable_thinking:
+            gen_kwargs["logits_processor"] = [
+                ThinkingBudgetProcessor(self.processor, thinking_budget)
+            ]
 
         # Generate
         with torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-            )
+            output_ids = self.model.generate(**gen_kwargs)
 
         # Decode only the generated tokens (exclude input)
         generated_ids = [

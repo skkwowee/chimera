@@ -58,7 +58,10 @@ You must respond with valid JSON in this exact format:
 
 Be precise about numbers you can see in the HUD. Use the round context to \
 inform your analysis — you know what has happened so far. If you can't \
-determine a value from the screenshot, use null."""
+determine a value from the screenshot, use null.
+
+Think briefly before answering (at most a few sentences), then output the \
+JSON object."""
 
 # Legacy single-screenshot prompt (kept for backward compat with old labels)
 CS2_USER_PROMPT = (

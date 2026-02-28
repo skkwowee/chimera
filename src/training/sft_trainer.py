@@ -1,10 +1,9 @@
 """
 SFT (Supervised Fine-Tuning) trainer for CS2 VLM fine-tuning.
 
-Uses transformers + peft + bitsandbytes for memory-efficient training of
-Qwen3.5-27B on 24GB VRAM. Teaches the model output format (valid JSON with
-game_state/analysis/advice) and CS2 domain knowledge through supervised
-learning on demo ground truth data.
+Uses transformers + peft for bf16 training of Qwen3.5-35B-A3B MoE on H200.
+Teaches the model output format (valid JSON with game_state/analysis/advice)
+and CS2 domain knowledge through supervised learning on demo ground truth data.
 
 SFT should run before GRPO — it outputs a merged 16-bit model that GRPO
 loads as its base for reinforcement learning refinement.
@@ -31,7 +30,7 @@ class CS2SFTConfig:
     """Configuration for SFT training."""
 
     # Model settings
-    model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit"
+    model_name: str = "Qwen/Qwen3.5-35B-A3B"
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
 
@@ -78,7 +77,7 @@ class CS2SFTTrainer:
     """
     SFT trainer for CS2 screenshot analysis.
 
-    Uses NF4 quantization and LoRA via peft for memory efficiency on 24GB VRAM.
+    Uses bf16 and LoRA via peft on H200 SXM (141 GB).
     Trains the model to produce valid JSON with game_state/analysis/advice
     through supervised learning on demo ground truth data.
     """
@@ -91,8 +90,8 @@ class CS2SFTTrainer:
         self.val_dataset = None
 
     def load_model(self):
-        """Load Qwen3.5-27B with BitsAndBytes NF4 quantization and LoRA."""
-        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+        """Load Qwen3.5-35B-A3B MoE in bf16 with LoRA."""
+        from transformers import Qwen3_5MoeForConditionalGeneration, AutoProcessor
         from peft import get_peft_model, LoraConfig
 
         dtype = getattr(torch, self.config.torch_dtype)
@@ -101,16 +100,8 @@ class CS2SFTTrainer:
         print(f"  Finetune vision layers: {self.config.finetune_vision_layers}")
         print(f"  LoRA: {self.config.use_lora}")
 
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=dtype,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-        )
-
-        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
             self.config.model_name,
-            quantization_config=bnb_config,
             device_map="auto",
             torch_dtype=dtype,
         )

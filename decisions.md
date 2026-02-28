@@ -914,3 +914,81 @@ Rented an **H200 SXM (140GB VRAM)** on RunPod. The quantization itself took ~2 m
 Revisited and rejected again. The MoE's BnB incompatibility (D019) is architectural, not a VRAM issue. Qwen3.5-35B-A3B packs all 256 experts into 3D tensors that aren't `nn.Linear` — BnB skips them and leaves them in bf16. A bigger GPU lets you *load* the model but the "quantized" result still has ~60GB of bf16 expert weights. AWQ/GPTQ can handle arbitrary tensor shapes but aren't compatible with QLoRA training.
 
 **Status:** Done. Checkpoint published, verified, fits on RTX 4090.
+
+---
+
+## D021: Qwen3.5 inference — thinking budget + sampling params (2026-02-28)
+
+**Decision:** Fix two inference bugs that prevent Qwen3.5 from producing JSON output: greedy decoding and unbounded thinking.
+
+### Problem
+
+Qwen3.5 thinking mode consumes the entire `max_new_tokens` budget on reasoning, never producing JSON. Two root causes:
+
+1. **Greedy decoding (`do_sample=False`).** Qwen3.5 docs explicitly warn: greedy decoding causes repetition and stuck outputs. Recommended for thinking mode: `temperature=1.0, top_p=0.95, top_k=20, repetition_penalty=1.5`.
+
+2. **No thinking budget.** `thinking_budget` isn't supported as a generate parameter in transformers. Without a cap, the model thinks until `max_new_tokens` is exhausted, leaving zero budget for the actual JSON response.
+
+Quantization (NF4) is not a factor — verbose thinking is a training characteristic regardless of precision.
+
+### Solution
+
+**Sampling params:** Switched from `do_sample=False` to Qwen3.5's recommended sampling configuration. These are the official Hugging Face recommendations for thinking-enabled generation.
+
+**`ThinkingBudgetProcessor`:** Added a `LogitsProcessor` subclass that caps thinking tokens, following Zach Mueller's reference implementation (also being adopted by vLLM). Behavior:
+- At 95% of budget: soft boost to `</think>` and `\n` logits (nudges model toward wrapping up)
+- At budget-1: force `\n` token (clean line break before closing tag)
+- At budget: force `</think>` token, set `stopped_thinking=True`
+- After `</think>`: no intervention, model generates JSON freely with remaining token budget
+
+Default thinking budget: 512 tokens. With `max_new_tokens=2048` (thinking mode default), this leaves ~1536 tokens for JSON output — more than sufficient for the response schema.
+
+### API changes
+
+`analyze()` gains one new parameter:
+- `thinking_budget` (int, default 512): max tokens for thinking before forced `</think>`
+
+### Files changed
+
+- `src/inference/vlm.py` — Added `ThinkingBudgetProcessor` class. Updated `analyze()` signature and `generate()` call.
+
+**Status:** Implemented. Supersedes the greedy decoding in the initial inference implementation.
+
+---
+
+## D022: Migration to H200 SXM + Qwen3.5-35B-A3B MoE bf16 (2026-02-28)
+
+**Decision:** Replace the NF4-quantized Qwen3.5-27B dense model on RTX 4090 with Qwen3.5-35B-A3B MoE in bf16 on H200 SXM (141 GB VRAM).
+
+### Why
+
+The NF4-quantized 27B dense model produces poor zero-shot output on CS2 screenshots — degenerate thinking, inability to follow the JSON schema, and hallucinated "no image" responses despite the image being correctly passed. The smaller 8B model (previous generation) performed better at the same task, suggesting NF4 quantization on the 27B is degrading quality beyond acceptable levels.
+
+Moving to an H200 SXM eliminates the need for quantization entirely:
+- Qwen3.5-35B-A3B in bf16 is ~70 GB, fitting comfortably with ~71 GB headroom for LoRA training, GRPO sampling, and inference.
+- The MoE architecture has 3B active parameters per token (vs 27B dense), giving ~9x faster inference — critical for GRPO where G=16 completions are generated per prompt.
+- bf16 preserves full model quality with no quantization artifacts.
+
+### What changed
+
+1. **Model**: `skkwowee/Qwen3.5-27B-bnb-4bit` -> `Qwen/Qwen3.5-35B-A3B` (official HF checkpoint)
+2. **No quantization**: Removed all `BitsAndBytesConfig` / NF4 logic. Load with `torch_dtype=torch.bfloat16` only.
+3. **Model class**: `Qwen3_5ForConditionalGeneration` -> `Qwen3_5MoeForConditionalGeneration`
+
+### What didn't change
+
+- Reward functions (`src/training/rewards.py`) — architecture-agnostic
+- Prompts (`src/prompts.py`) — model-agnostic
+- Data pipeline (`scripts/data.py`, `scripts/generate_sft_labels.py`) — no model refs
+- LoRA target modules — `q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj` all exist in MoE layers. Router layers skipped initially.
+- Vision encoder LoRA targets — MoE has the same vision encoder
+
+### Why MoE works now (but didn't before — D019)
+
+D019 rejected MoE because BnB NF4 quantization is incompatible with Qwen3.5's packed expert tensors — they aren't `nn.Linear` modules, so BnB skips them. The H200's 141 GB VRAM makes quantization unnecessary; the full bf16 model loads directly.
+
+### Removed scripts
+
+Quantization scripts deleted (no longer needed without NF4): `scripts/quantize_base_model.py`, `scripts/cloud_quantize.py`, `scripts/harness_quantize.sh`, `scripts/harness_cloud_quantize.sh`.
+
+**Status:** Implemented. Supersedes D019 (27B dense) and D020 (cloud quantization).
