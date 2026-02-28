@@ -2,15 +2,16 @@
 """
 GRPO training script for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient training of Qwen3.5-27B on 24GB VRAM.
+Uses transformers + peft + bitsandbytes for memory-efficient training of
+Qwen3.5-27B on 24GB VRAM.
 
 Revised reward architecture (D013):
-  - Multiplicative format gate (invalid JSON → zero total reward)
+  - Multiplicative format gate (invalid JSON -> zero total reward)
   - 3 weighted signals: R_percept (0.20), R_decision (0.30), R_outcome (0.50)
-  - KL regularization (λ=0.02) prevents mode collapse
+  - KL regularization (lambda=0.02) prevents mode collapse
 
 Usage:
-    # Basic training (SFT→GRPO handoff)
+    # Basic training (SFT->GRPO handoff)
     python scripts/train_grpo.py \\
         --model-name outputs/sft/final_model/merged_16bit \\
         --screenshots data/raw --labels data/labeled
@@ -27,12 +28,6 @@ Usage:
     # Dry run (load model and check VRAM, no training)
     python scripts/train_grpo.py --dry-run
 """
-
-# Import unsloth first to ensure all optimizations are applied
-try:
-    import unsloth  # noqa: F401
-except ImportError:
-    pass
 
 import argparse
 import sys
@@ -87,13 +82,8 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="Qwen/Qwen3.5-27B",
-        help="Model name or path (use SFT merged output for SFT→GRPO handoff)",
-    )
-    model_group.add_argument(
-        "--no-4bit",
-        action="store_true",
-        help="Disable 4-bit quantization (uses more VRAM)",
+        default="skkwowee/Qwen3.5-27B-bnb-4bit",
+        help="Model name or path (use SFT merged output for SFT->GRPO handoff)",
     )
     model_group.add_argument(
         "--no-vllm",
@@ -233,12 +223,6 @@ def parse_args():
         action="store_true",
         help="Save merged model (LoRA weights merged into base model)",
     )
-    output_group.add_argument(
-        "--quantization",
-        type=str,
-        default="q4_k_m",
-        help="Quantization method for merged GGUF export",
-    )
 
     # Other options
     parser.add_argument(
@@ -267,7 +251,6 @@ def main():
     # Create config from args
     config = CS2GRPOConfig(
         model_name=args.model_name,
-        use_4bit=not args.no_4bit,
         use_vllm=not args.no_vllm,
         torch_dtype=args.dtype,
         use_lora=not args.no_lora,
@@ -293,7 +276,6 @@ def main():
     print("CS2 GRPO Training")
     print("=" * 60)
     print(f"Model: {config.model_name}")
-    print(f"4-bit quantization: {config.use_4bit}")
     print(f"LoRA: {config.use_lora}")
     if config.use_lora:
         print(f"  - rank: {config.lora_r}")
@@ -370,7 +352,6 @@ def main():
     trainer.save_model(
         output_path,
         save_merged=args.save_merged,
-        quantization_method=args.quantization if args.save_merged else None,
     )
 
     # Final evaluation

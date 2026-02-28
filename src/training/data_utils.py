@@ -1,7 +1,7 @@
 """
 Data preparation utilities for GRPO and SFT training.
 
-Provides data loading and conversion for Unsloth-compatible training.
+Provides data loading and conversion for SFT and GRPO training.
 
 Observation model: o_t = (I_{t-k}, ..., I_t, c_t)
   - Prior screenshots provide visual continuity
@@ -163,7 +163,7 @@ def create_grpo_dataset(
     seed: int = 42,
 ) -> tuple[list[dict], list[dict]]:
     """
-    Create Unsloth-compatible dataset from GRPO items.
+    Create dataset from GRPO items.
 
     Each sample is formatted for Qwen3.5 multimodal input with
     optional prior screenshots and round context.
@@ -185,7 +185,7 @@ def create_grpo_dataset(
     val_items = shuffled[split_idx:]
 
     def format_item(item: GRPODataItem) -> dict:
-        """Format item for Unsloth/TRL GRPO training."""
+        """Format item for TRL GRPO training."""
         return {
             "prompt": _build_prompt_content(item),
             "ground_truth": item.ground_truth,

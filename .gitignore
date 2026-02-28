@@ -56,7 +56,6 @@ models/
 
 # Training outputs
 outputs/
-unsloth_compiled_cache/
 
 # Logs
 *.log

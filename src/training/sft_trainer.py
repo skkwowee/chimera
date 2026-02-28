@@ -1,19 +1,14 @@
 """
 SFT (Supervised Fine-Tuning) trainer for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient training of Qwen3.5-27B on 24GB VRAM.
-Teaches the model output format (valid JSON with game_state/analysis/advice)
-and CS2 domain knowledge through supervised learning on demo ground truth data.
+Uses transformers + peft + bitsandbytes for memory-efficient training of
+Qwen3.5-27B on 24GB VRAM. Teaches the model output format (valid JSON with
+game_state/analysis/advice) and CS2 domain knowledge through supervised
+learning on demo ground truth data.
 
 SFT should run before GRPO — it outputs a merged 16-bit model that GRPO
 loads as its base for reinforcement learning refinement.
 """
-
-# Import unsloth first to ensure all optimizations are applied
-try:
-    import unsloth  # noqa: F401
-except ImportError:
-    pass
 
 import json
 from dataclasses import dataclass, field
@@ -36,8 +31,7 @@ class CS2SFTConfig:
     """Configuration for SFT training."""
 
     # Model settings
-    model_name: str = "Qwen/Qwen3.5-27B"
-    use_4bit: bool = True
+    model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit"
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
 
@@ -82,9 +76,9 @@ class CS2SFTConfig:
 
 class CS2SFTTrainer:
     """
-    SFT trainer for CS2 screenshot analysis using Unsloth.
+    SFT trainer for CS2 screenshot analysis.
 
-    Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
+    Uses NF4 quantization and LoRA via peft for memory efficiency on 24GB VRAM.
     Trains the model to produce valid JSON with game_state/analysis/advice
     through supervised learning on demo ground truth data.
     """
@@ -92,57 +86,61 @@ class CS2SFTTrainer:
     def __init__(self, config: CS2SFTConfig | None = None):
         self.config = config or CS2SFTConfig()
         self.model = None
-        self.tokenizer = None
         self.processor = None
         self.train_dataset = None
         self.val_dataset = None
 
     def load_model(self):
-        """Load Qwen3.5-27B with Unsloth optimizations."""
-        try:
-            from unsloth import FastVisionModel
-        except ImportError:
-            raise ImportError(
-                "Unsloth is required for SFT training. Install with:\n"
-                "  pip install unsloth"
-            )
+        """Load Qwen3.5-27B with BitsAndBytes NF4 quantization and LoRA."""
+        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+        from peft import get_peft_model, LoraConfig
 
-        print(f"Loading {self.config.model_name} with Unsloth...")
-        print(f"  4-bit quantization: {self.config.use_4bit}")
+        dtype = getattr(torch, self.config.torch_dtype)
+
+        print(f"Loading {self.config.model_name}...")
         print(f"  Finetune vision layers: {self.config.finetune_vision_layers}")
         print(f"  LoRA: {self.config.use_lora}")
 
-        # Load model with Unsloth optimizations
-        dtype = getattr(torch, self.config.torch_dtype)
-
-        self.model, self.tokenizer = FastVisionModel.from_pretrained(
-            self.config.model_name,
-            load_in_4bit=self.config.use_4bit,
-            use_gradient_checkpointing="unsloth",  # Memory efficient
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
         )
+
+        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+            self.config.model_name,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=dtype,
+        )
+
+        self.model.gradient_checkpointing_enable()
+
+        self.processor = AutoProcessor.from_pretrained(self.config.model_name)
 
         # Apply LoRA if enabled
         if self.config.use_lora:
-            self.model = FastVisionModel.get_peft_model(
-                self.model,
-                finetune_vision_layers=self.config.finetune_vision_layers,
-                finetune_language_layers=True,
-                finetune_attention_modules=True,
-                finetune_mlp_modules=True,
+            target_modules = list(self.config.lora_target_modules)
+            if self.config.finetune_vision_layers:
+                target_modules = target_modules + [
+                    "visual.*q_proj", "visual.*k_proj", "visual.*v_proj",
+                    "visual.*o_proj",
+                ]
+
+            lora_config = LoraConfig(
                 r=self.config.lora_r,
                 lora_alpha=self.config.lora_alpha,
                 lora_dropout=self.config.lora_dropout,
+                target_modules=target_modules,
                 bias="none",
-                random_state=42,
-                use_rslora=True,  # Rank-stabilized LoRA for better performance
-                loftq_config=None,
+                use_rslora=True,
+                task_type="CAUSAL_LM",
             )
+            self.model = get_peft_model(self.model, lora_config)
+            self.model.print_trainable_parameters()
 
-        # Get processor for image handling
-        from transformers import AutoProcessor
-        self.processor = AutoProcessor.from_pretrained(self.config.model_name)
-
-        print("Model loaded successfully")
+        print(f"Model loaded | vision encoder: {hasattr(self.model, 'visual')}")
         self._print_memory_usage()
 
     def _print_memory_usage(self):
@@ -151,6 +149,35 @@ class CS2SFTTrainer:
             allocated = torch.cuda.memory_allocated() / 1024**3
             reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
+
+    def _vision_data_collator(self, examples):
+        """Collate multimodal examples using processor."""
+        texts = [
+            self.processor.apply_chat_template(
+                ex["messages"], tokenize=False, add_generation_prompt=False,
+            )
+            for ex in examples
+        ]
+        # Extract images from messages
+        images = []
+        for ex in examples:
+            ex_images = []
+            for msg in ex["messages"]:
+                content = msg.get("content", [])
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict) and part.get("type") == "image":
+                            ex_images.append(part["image"])
+            images.append(ex_images if ex_images else None)
+
+        batch = self.processor(
+            text=texts,
+            images=images,
+            padding=True,
+            return_tensors="pt",
+        )
+        batch["labels"] = batch["input_ids"].clone()
+        return batch
 
     def prepare_data(
         self,
@@ -233,16 +260,12 @@ class CS2SFTTrainer:
             report_to="wandb",
         )
 
-        # Create vision data collator for multimodal tokenization
-        from unsloth import UnslothVisionDataCollator
-        data_collator = UnslothVisionDataCollator(self.model, self.tokenizer)
-
         # Create SFT trainer
         trainer = SFTTrainer(
             model=self.model,
-            processing_class=self.tokenizer,
+            processing_class=self.processor,
             args=sft_config,
-            data_collator=data_collator,
+            data_collator=self._vision_data_collator,
             train_dataset=self.train_dataset,
             eval_dataset=self.val_dataset,
         )
@@ -265,7 +288,6 @@ class CS2SFTTrainer:
         self,
         output_path: str | Path,
         save_merged: bool = True,
-        quantization_method: str = "q4_k_m",
     ):
         """
         Save the trained model.
@@ -273,8 +295,7 @@ class CS2SFTTrainer:
         Args:
             output_path: Path to save the model
             save_merged: If True, merge LoRA weights and save full model
-                         (default True for SFT→GRPO handoff)
-            quantization_method: Quantization for merged model (q4_k_m, q8_0, etc.)
+                         (default True for SFT->GRPO handoff)
         """
         if self.model is None:
             raise ValueError("No model loaded")
@@ -282,32 +303,15 @@ class CS2SFTTrainer:
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        try:
-            from unsloth import FastVisionModel
-        except ImportError:
-            raise ImportError("Unsloth is required. Install with: pip install unsloth")
-
         if save_merged and self.config.use_lora:
-            print(f"Saving merged model to {output_path}...")
-            # Save merged 16-bit model
-            self.model.save_pretrained_merged(
-                output_path / "merged_16bit",
-                self.tokenizer,
-                save_method="merged_16bit",
-            )
-
-            # Optionally save quantized GGUF
-            if quantization_method:
-                print(f"Saving GGUF with {quantization_method} quantization...")
-                self.model.save_pretrained_gguf(
-                    output_path / "gguf",
-                    self.tokenizer,
-                    quantization_method=quantization_method,
-                )
+            print(f"Saving merged model to {output_path / 'merged_16bit'}...")
+            merged = self.model.merge_and_unload()
+            merged.save_pretrained(output_path / "merged_16bit")
+            self.processor.save_pretrained(output_path / "merged_16bit")
         else:
-            print(f"Saving LoRA adapter to {output_path}...")
+            print(f"Saving LoRA adapter to {output_path / 'lora_adapter'}...")
             self.model.save_pretrained(output_path / "lora_adapter")
-            self.tokenizer.save_pretrained(output_path / "lora_adapter")
+            self.processor.save_pretrained(output_path / "lora_adapter")
 
         print(f"Model saved to {output_path}")
 
@@ -345,11 +349,7 @@ class CS2SFTTrainer:
         metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
-        try:
-            from unsloth import FastVisionModel
-            FastVisionModel.for_inference(self.model)
-        except Exception:
-            pass
+        self.model.eval()
 
         weights = DEFAULT_REWARD_WEIGHTS
         reward_fns = [
@@ -381,7 +381,7 @@ class CS2SFTTrainer:
 
             # Decode response
             generated_ids = output_ids[0][inputs.input_ids.shape[1]:]
-            response = self.tokenizer.decode(
+            response = self.processor.decode(
                 generated_ids,
                 skip_special_tokens=True,
             )

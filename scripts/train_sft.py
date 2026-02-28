@@ -2,8 +2,9 @@
 """
 SFT training script for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient supervised fine-tuning of Qwen3.5-27B on 24GB VRAM.
-SFT teaches the model output format and CS2 domain knowledge before GRPO refinement.
+Uses transformers + peft + bitsandbytes for memory-efficient supervised fine-tuning
+of Qwen3.5-27B on 24GB VRAM. SFT teaches the model output format and CS2 domain
+knowledge before GRPO refinement.
 
 Usage:
     # Basic training (saves merged model for GRPO handoff)
@@ -21,16 +22,6 @@ Usage:
     # Then use the merged output as GRPO base:
     python scripts/train_grpo.py --model-name outputs/sft/final_model/merged_16bit
 """
-
-# Disable torch dynamo — incompatible with unsloth's import patches on torch 2.6
-import torch._dynamo
-torch._dynamo.config.disable = True
-
-# Import unsloth first to ensure all optimizations are applied
-try:
-    import unsloth  # noqa: F401
-except ImportError:
-    pass
 
 import argparse
 import sys
@@ -85,13 +76,8 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="Qwen/Qwen3.5-27B",
+        default="skkwowee/Qwen3.5-27B-bnb-4bit",
         help="Model name or path to load",
-    )
-    model_group.add_argument(
-        "--no-4bit",
-        action="store_true",
-        help="Disable 4-bit quantization (uses more VRAM)",
     )
     model_group.add_argument(
         "--dtype",
@@ -207,12 +193,6 @@ def parse_args():
         action="store_true",
         help="Save LoRA adapter only (no merge)",
     )
-    output_group.add_argument(
-        "--quantization",
-        type=str,
-        default="q4_k_m",
-        help="Quantization method for merged GGUF export",
-    )
 
     # Other options
     parser.add_argument(
@@ -244,7 +224,6 @@ def main():
     # Create config from args
     config = CS2SFTConfig(
         model_name=args.model_name,
-        use_4bit=not args.no_4bit,
         torch_dtype=args.dtype,
         use_lora=not args.no_lora,
         lora_r=args.lora_r,
@@ -266,7 +245,6 @@ def main():
     print("CS2 SFT Training")
     print("=" * 60)
     print(f"Model: {config.model_name}")
-    print(f"4-bit quantization: {config.use_4bit}")
     print(f"LoRA: {config.use_lora}")
     if config.use_lora:
         print(f"  - rank: {config.lora_r}")
@@ -342,7 +320,6 @@ def main():
     trainer.save_model(
         output_path,
         save_merged=save_merged,
-        quantization_method=args.quantization if save_merged else None,
     )
 
     # Final evaluation

@@ -1,22 +1,17 @@
 """
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient training of Qwen3.5-27B on 24GB VRAM.
+Uses transformers + peft + bitsandbytes for memory-efficient training of
+Qwen3.5-27B on 24GB VRAM.
 
 Revised reward architecture (D013):
-  - Multiplicative format gate (invalid JSON → zero total reward)
+  - Multiplicative format gate (invalid JSON -> zero total reward)
   - 3 weighted reward signals passed to TRL's GRPOTrainer:
-      1. R_percept  (α=0.20) — merged hard+soft field accuracy
-      2. R_decision (β=0.30) — behavioral feature alignment
-      3. R_outcome  (γ=0.50) — outcome-modulated decision reward
-  - KL regularization (λ_KL=0.02) prevents mode collapse
+      1. R_percept  (alpha=0.20) -- merged hard+soft field accuracy
+      2. R_decision (beta=0.30) -- behavioral feature alignment
+      3. R_outcome  (gamma=0.50) -- outcome-modulated decision reward
+  - KL regularization (lambda_KL=0.02) prevents mode collapse
 """
-
-# Import unsloth first to ensure all optimizations are applied
-try:
-    import unsloth  # noqa: F401
-except ImportError:
-    pass
 
 import json
 from dataclasses import dataclass, field
@@ -40,8 +35,7 @@ class CS2GRPOConfig:
     """Configuration for GRPO training."""
 
     # Model settings
-    model_name: str = "Qwen/Qwen3.5-27B"
-    use_4bit: bool = True
+    model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit"
     use_vllm: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
@@ -73,7 +67,7 @@ class CS2GRPOConfig:
     temperature: float = 0.7
     importance_sampling_level: str = "sequence"  # GSPO variant for stability
 
-    # KL regularization — prevents mode collapse onto narrow "safe" advice
+    # KL regularization -- prevents mode collapse onto narrow "safe" advice
     # that scores well across diverse game states (D013)
     kl_coef: float = 0.02
 
@@ -98,75 +92,79 @@ class CS2GRPOConfig:
 
 class CS2GRPOTrainer:
     """
-    GRPO trainer for CS2 screenshot analysis using Unsloth.
+    GRPO trainer for CS2 screenshot analysis.
 
-    Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
+    Uses NF4 quantization and LoRA via peft for memory efficiency on 24GB VRAM.
 
     Revised reward architecture (D013):
-      - Multiplicative format gate: invalid JSON → all signals return 0.0
+      - Multiplicative format gate: invalid JSON -> all signals return 0.0
       - 3 reward signals passed to TRL for per-signal advantage computation:
-          1. R_percept  (0.20) — perceptual accuracy (merged hard+soft fields)
-          2. R_decision (0.30) — behavioral feature alignment with pro play
-          3. R_outcome  (0.50) — outcome-modulated decision reward (Ω function)
-      - KL penalty (λ=0.02) regularizes against SFT reference
+          1. R_percept  (0.20) -- perceptual accuracy (merged hard+soft fields)
+          2. R_decision (0.30) -- behavioral feature alignment with pro play
+          3. R_outcome  (0.50) -- outcome-modulated decision reward (Omega function)
+      - KL penalty (lambda=0.02) regularizes against SFT reference
     """
 
     def __init__(self, config: CS2GRPOConfig | None = None):
         self.config = config or CS2GRPOConfig()
         self.model = None
-        self.tokenizer = None
         self.processor = None
         self.reward_fns: list[Callable] = list(REWARD_FUNCTIONS)
         self.train_dataset = None
         self.val_dataset = None
 
     def load_model(self):
-        """Load Qwen3.5-27B with Unsloth optimizations."""
-        try:
-            from unsloth import FastVisionModel
-        except ImportError:
-            raise ImportError(
-                "Unsloth is required for GRPO training. Install with:\n"
-                "  pip install unsloth"
-            )
+        """Load Qwen3.5-27B with BitsAndBytes NF4 quantization and LoRA."""
+        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
+        from peft import get_peft_model, LoraConfig
 
-        print(f"Loading {self.config.model_name} with Unsloth...")
-        print(f"  4-bit quantization: {self.config.use_4bit}")
+        dtype = getattr(torch, self.config.torch_dtype)
+
+        print(f"Loading {self.config.model_name}...")
         print(f"  vLLM fast inference: {self.config.use_vllm}")
         print(f"  LoRA: {self.config.use_lora}")
 
-        # Load model with Unsloth optimizations
-        dtype = getattr(torch, self.config.torch_dtype)
-
-        # Note: finetune_vision_layers=False is required for vLLM support
-        self.model, self.tokenizer = FastVisionModel.from_pretrained(
-            self.config.model_name,
-            load_in_4bit=self.config.use_4bit,
-            use_gradient_checkpointing="unsloth",  # Memory efficient
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=dtype,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
         )
 
+        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+            self.config.model_name,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=dtype,
+        )
+
+        self.model.gradient_checkpointing_enable()
+
+        self.processor = AutoProcessor.from_pretrained(self.config.model_name)
+
         # Apply LoRA if enabled
+        # GRPO freezes vision layers when using vLLM
         if self.config.use_lora:
-            self.model = FastVisionModel.get_peft_model(
-                self.model,
-                finetune_vision_layers=not self.config.use_vllm,  # False for vLLM
-                finetune_language_layers=True,
-                finetune_attention_modules=True,
-                finetune_mlp_modules=True,
+            target_modules = list(self.config.lora_target_modules)
+            if not self.config.use_vllm:
+                target_modules = target_modules + [
+                    "visual.*q_proj", "visual.*k_proj", "visual.*v_proj",
+                    "visual.*o_proj",
+                ]
+
+            lora_config = LoraConfig(
                 r=self.config.lora_r,
                 lora_alpha=self.config.lora_alpha,
                 lora_dropout=self.config.lora_dropout,
+                target_modules=target_modules,
                 bias="none",
-                random_state=42,
-                use_rslora=True,  # Rank-stabilized LoRA for better performance
-                loftq_config=None,
+                use_rslora=True,
+                task_type="CAUSAL_LM",
             )
+            self.model = get_peft_model(self.model, lora_config)
+            self.model.print_trainable_parameters()
 
-        # Get processor for image handling
-        from transformers import AutoProcessor
-        self.processor = AutoProcessor.from_pretrained(self.config.model_name)
-
-        print("Model loaded successfully")
+        print(f"Model loaded | vision encoder: {hasattr(self.model, 'visual')}")
         self._print_memory_usage()
 
     def _print_memory_usage(self):
@@ -191,7 +189,7 @@ class CS2GRPOTrainer:
         from datasets import Dataset
 
         def format_sample(sample: dict) -> dict:
-            """Format a sample for Unsloth GRPO training."""
+            """Format a sample for GRPO training."""
             prompt_content = sample["prompt"]
             if isinstance(prompt_content, list):
                 messages = [{"role": "user", "content": prompt_content}]
@@ -236,7 +234,7 @@ class CS2GRPOTrainer:
         Wrap each reward function for TRL's GRPOTrainer batch interface.
 
         Each wrapper applies the multiplicative format gate before computing
-        the signal reward. This ensures invalid JSON → 0 for ALL signals,
+        the signal reward. This ensures invalid JSON -> 0 for ALL signals,
         not just the format signal.
 
         Signature: (completions: list[str], **kwargs) -> list[float]
@@ -249,7 +247,7 @@ class CS2GRPOTrainer:
                     ground_truths = kwargs.get("ground_truth", [None] * len(completions))
                     results = []
                     for completion, gt in zip(completions, ground_truths):
-                        # Multiplicative format gate: invalid JSON → 0.0 for all signals
+                        # Multiplicative format gate: invalid JSON -> 0.0 for all signals
                         gate = format_gate_reward(completion)
                         if gate == 0.0:
                             results.append(0.0)
@@ -329,7 +327,7 @@ class CS2GRPOTrainer:
         # Create GRPO trainer with separate reward functions
         trainer = GRPOTrainer(
             model=self.model,
-            processing_class=self.tokenizer,
+            processing_class=self.processor,
             args=grpo_config,
             train_dataset=self.train_dataset,
             eval_dataset=self.val_dataset,
@@ -354,7 +352,6 @@ class CS2GRPOTrainer:
         self,
         output_path: str | Path,
         save_merged: bool = False,
-        quantization_method: str = "q4_k_m",
     ):
         """
         Save the trained model.
@@ -362,7 +359,6 @@ class CS2GRPOTrainer:
         Args:
             output_path: Path to save the model
             save_merged: If True, merge LoRA weights and save full model
-            quantization_method: Quantization for merged model (q4_k_m, q8_0, etc.)
         """
         if self.model is None:
             raise ValueError("No model loaded")
@@ -370,32 +366,15 @@ class CS2GRPOTrainer:
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        try:
-            from unsloth import FastVisionModel
-        except ImportError:
-            raise ImportError("Unsloth is required. Install with: pip install unsloth")
-
         if save_merged and self.config.use_lora:
-            print(f"Saving merged model to {output_path}...")
-            # Save merged 16-bit model
-            self.model.save_pretrained_merged(
-                output_path / "merged_16bit",
-                self.tokenizer,
-                save_method="merged_16bit",
-            )
-
-            # Optionally save quantized GGUF
-            if quantization_method:
-                print(f"Saving GGUF with {quantization_method} quantization...")
-                self.model.save_pretrained_gguf(
-                    output_path / "gguf",
-                    self.tokenizer,
-                    quantization_method=quantization_method,
-                )
+            print(f"Saving merged model to {output_path / 'merged_16bit'}...")
+            merged = self.model.merge_and_unload()
+            merged.save_pretrained(output_path / "merged_16bit")
+            self.processor.save_pretrained(output_path / "merged_16bit")
         else:
-            print(f"Saving LoRA adapter to {output_path}...")
+            print(f"Saving LoRA adapter to {output_path / 'lora_adapter'}...")
             self.model.save_pretrained(output_path / "lora_adapter")
-            self.tokenizer.save_pretrained(output_path / "lora_adapter")
+            self.processor.save_pretrained(output_path / "lora_adapter")
 
         print(f"Model saved to {output_path}")
 
@@ -432,11 +411,7 @@ class CS2GRPOTrainer:
         metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
-        try:
-            from unsloth import FastVisionModel
-            FastVisionModel.for_inference(self.model)
-        except Exception:
-            pass
+        self.model.eval()
 
         weights = self.config.reward_weights
         reward_fns = [
@@ -468,7 +443,7 @@ class CS2GRPOTrainer:
 
             # Decode response
             generated_ids = output_ids[0][inputs.input_ids.shape[1]:]
-            response = self.tokenizer.decode(
+            response = self.processor.decode(
                 generated_ids,
                 skip_special_tokens=True,
             )
