@@ -853,3 +853,51 @@ The older Qwen3-30B-A3B stored experts individually (`experts.0.down_proj`, `exp
 - Loading spike: BnB deserializes bf16 weights through CPU RAM before quantizing to 4-bit. 32GB system RAM is sufficient (was failing with WSL's default 16GB limit).
 
 **Status:** Decided. All config/scripts updated. Supersedes the Qwen3.5-35B-A3B commit (4891cef).
+
+---
+
+## D020: Quantization on 24GB — what failed and what's next (2026-02-28)
+
+**Decision:** Rent a cloud GPU (A100 80GB) to quantize the full Qwen3.5-27B VLM to BnB NF4, producing a checkpoint that includes the vision encoder.
+
+### The problem
+
+We need a 4-bit checkpoint of Qwen3.5-27B as a **full VLM** (vision encoder + language model) to process CS2 screenshots. The RTX 4090 (24GB) cannot quantize this model locally.
+
+### What we tried and why it failed
+
+1. **Unsloth `FastVisionModel`** with `load_in_4bit=True` — tried to fit full bf16 weights on GPU (~38GB). Immediate CUDA OOM.
+
+2. **Transformers `AutoModelForCausalLM`** with `device_map="auto"`, `max_memory={0: "22GiB", "cpu": "28GiB"}` — BnB materializes each weight tensor in bf16 on GPU before quantizing to 4-bit in place. The `max_memory` constraint controls device map layer placement but is **not enforced during the quantization kernel**. By layer 6 of 54, PyTorch had allocated 37GB on a 24GB card. No amount of `max_memory` tuning fixes this.
+
+3. **Community pre-quantized checkpoint** (`cyberenchanter/Qwen3.5-27B-bnb-4bit`) — downloaded successfully, loaded at 10.6GB VRAM. But investigation revealed it was created with `AutoModelForCausalLM` / Unsloth's `FastLanguageModel`, which **strips the vision encoder**. The checkpoint contained only the 14.7B-param text decoder, not the full 27.8B VLM. Missing: vision encoder (~0.4B), multimodal projector, MTP head, and other components totaling ~13B params. **Useless for screenshot-based training.** Deleted.
+
+### Why the size mismatch wasn't caught immediately
+
+The 10.6GB checkpoint seemed plausible for a "27B model at 4-bit" — the expected ~13.5GB minus double-quant savings. The actual breakdown: 14.7B params (not 27B) with ~12.2B quantized at NF4 (~6.1GB) and ~2.5B in bf16 (~5.1GB). The "27B" name is the full VLM; `AutoModelForCausalLM` silently loads only the language model submodule.
+
+### Lesson learned
+
+`AutoModelForCausalLM` vs `AutoModelForVision2Seq` (or `Qwen3_5ForConditionalGeneration`) is the difference between loading a text-only decoder and the full VLM. Always verify the model class matches the intended architecture. Always sanity-check checkpoint size against expected parameter count.
+
+### Plan: cloud quantization
+
+1. Rent an A100 80GB (or A6000 48GB) — one-time job, a few hours
+2. Load `Qwen/Qwen3.5-27B` with the correct VLM model class
+3. Apply BnB NF4 quantization — full bf16 model is ~55GB, fits in 80GB
+4. Save checkpoint — expected ~18-20GB with vision encoder included
+5. Download to local machine, verify loads on RTX 4090
+6. Push to HF Hub as backup
+
+### Why not Qwen3.5-35B-A3B MoE instead?
+
+Revisited and rejected again. The MoE's BnB incompatibility (D019) is architectural, not a VRAM issue. Qwen3.5-35B-A3B packs all 256 experts into 3D tensors that aren't `nn.Linear` — BnB skips them and leaves them in bf16. A bigger GPU lets you *load* the model but the "quantized" result still has ~60GB of bf16 expert weights. It won't fit on the 4090 afterward. AWQ/GPTQ can handle arbitrary tensor shapes but aren't compatible with QLoRA training.
+
+### Alternatives considered
+
+- **Lower `max_memory` locally.** Won't help — constraint not enforced during BnB quantization kernel.
+- **`device_map="cpu"` for CPU-only quantization.** BnB quantization kernels require CUDA — they don't run on CPU.
+- **Find a pre-quantized full VLM checkpoint.** None exists. All community checkpoints used `AutoModelForCausalLM` (text-only).
+- **Qwen3.5-35B-A3B MoE on cloud GPU.** BnB can't quantize the packed expert tensors regardless of VRAM. See above.
+
+**Status:** Plan decided. Need to rent cloud GPU and run quantization. Scripts (`quantize_base_model.py`, `harness_quantize.sh`) need updating for the correct model class once cloud access is available. Stripped text-only checkpoint deleted.
