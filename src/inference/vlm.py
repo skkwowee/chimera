@@ -26,47 +26,48 @@ def _parse_json_response(response: str) -> dict:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3.5-27B.
+    Run inference using Qwen3.5-27B NF4-quantized VLM.
 
-    Requires transformers from source:
-        pip install git+https://github.com/huggingface/transformers
-
-    For flash attention (faster, less memory):
-        pip install flash-attn --no-build-isolation
+    Loads from HuggingFace Hub using Qwen3_5ForConditionalGeneration
+    with BitsAndBytes NF4 quantization.
     """
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3.5-27B",
+        model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
-        use_4bit: bool = True,
     ):
         self.model_name = model_name
         self.device = device
         self.dtype = getattr(torch, torch_dtype)
-        self.use_4bit = use_4bit
         self.model = None
         self.processor = None
 
     def load_model(self):
-        """Load the model and processor via Unsloth."""
-        from unsloth import FastVisionModel
-        from transformers import AutoProcessor
+        """Load the model and processor from HuggingFace Hub."""
+        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
 
-        print(f"Loading {self.model_name} with Unsloth...")
-        print(f"  4-bit quantization: {self.use_4bit}")
+        print(f"Loading {self.model_name}...")
 
-        self.model, self.tokenizer = FastVisionModel.from_pretrained(
-            self.model_name,
-            load_in_4bit=self.use_4bit,
-            use_gradient_checkpointing="unsloth",
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=self.dtype,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
         )
-        FastVisionModel.for_inference(self.model)
+
+        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+            self.model_name,
+            quantization_config=bnb_config,
+            device_map="auto",
+            torch_dtype=self.dtype,
+        )
+        self.model.eval()
 
         self.processor = AutoProcessor.from_pretrained(self.model_name)
 
-        print(f"Model loaded on {self.device}")
+        print(f"Model loaded | vision encoder: {hasattr(self.model, 'visual')}")
 
     def analyze(
         self,
