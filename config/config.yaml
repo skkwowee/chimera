@@ -11,6 +11,11 @@ paths:
   labeled_data: "data/labeled"
   processed_data: "data/processed"
 
+# Claude API settings (for baseline comparison)
+claude:
+  model: "claude-opus-4-6"
+  max_tokens: 1024
+
 # Local VLM settings (for inference)
 vlm:
   model_name: "Qwen/Qwen3.5-27B"
