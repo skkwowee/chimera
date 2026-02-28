@@ -120,6 +120,7 @@ class CS2SFTTrainer:
         self.processor = AutoProcessor.from_pretrained(self.config.model_name)
 
         # Apply LoRA if enabled
+        base_model = self.model
         if self.config.use_lora:
             target_modules = list(self.config.lora_target_modules)
             if self.config.finetune_vision_layers:
@@ -140,7 +141,7 @@ class CS2SFTTrainer:
             self.model = get_peft_model(self.model, lora_config)
             self.model.print_trainable_parameters()
 
-        print(f"Model loaded | vision encoder: {hasattr(self.model, 'visual')}")
+        print(f"Model loaded | vision encoder: {hasattr(base_model.model, 'visual')}")
         self._print_memory_usage()
 
     def _print_memory_usage(self):

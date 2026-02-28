@@ -81,7 +81,7 @@ def main():
     load_time = time.time() - t0
     allocated = torch.cuda.memory_allocated() / 1024**3
     reserved = torch.cuda.memory_reserved() / 1024**3
-    has_vision = hasattr(model, "visual")
+    has_vision = hasattr(model.model, "visual")
     print(f"Loaded in {load_time:.1f}s | GPU: {allocated:.2f} GB allocated, {reserved:.2f} GB reserved")
     print(f"Vision encoder: {'yes' if has_vision else 'NO — something is wrong'}\n")
 

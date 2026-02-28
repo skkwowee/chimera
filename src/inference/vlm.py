@@ -12,7 +12,7 @@ from PIL import Image
 from src.prompts import CS2_SYSTEM_PROMPT
 
 
-def _parse_json_response(response: str) -> dict:
+def parse_json_response(response: str) -> dict:
     """Try to extract JSON from model response."""
     try:
         start = response.find("{")
@@ -67,7 +67,7 @@ class Qwen3VLInference:
 
         self.processor = AutoProcessor.from_pretrained(self.model_name)
 
-        print(f"Model loaded | vision encoder: {hasattr(self.model, 'visual')}")
+        print(f"Model loaded | vision encoder: {hasattr(self.model.model, 'visual')}")
 
     def analyze(
         self,
@@ -124,7 +124,7 @@ class Qwen3VLInference:
             clean_up_tokenization_spaces=False,
         )[0]
 
-        return _parse_json_response(response)
+        return parse_json_response(response)
 
     def analyze_batch(
         self,
