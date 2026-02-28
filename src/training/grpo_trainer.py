@@ -40,7 +40,7 @@ class CS2GRPOConfig:
     """Configuration for GRPO training."""
 
     # Model settings
-    model_name: str = "Qwen/Qwen3-VL-8B-Instruct"
+    model_name: str = "Qwen/Qwen3.5-35B-A3B"
     use_4bit: bool = True
     use_vllm: bool = True
     device: str = "cuda"

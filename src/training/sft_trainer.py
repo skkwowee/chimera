@@ -38,7 +38,7 @@ class CS2SFTConfig:
     """Configuration for SFT training."""
 
     # Model settings
-    model_name: str = "Qwen/Qwen3-VL-8B-Instruct"
+    model_name: str = "Qwen/Qwen3.5-35B-A3B"
     use_4bit: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
@@ -230,15 +230,21 @@ class CS2SFTTrainer:
             max_seq_length=self.config.max_seq_length,
             dataset_text_field="",  # We use messages format
             dataset_kwargs={"skip_prepare_dataset": True},
+            remove_unused_columns=False,
             # Reporting
             report_to="wandb",
         )
+
+        # Create vision data collator for multimodal tokenization
+        from unsloth import UnslothVisionDataCollator
+        data_collator = UnslothVisionDataCollator(self.model, self.tokenizer)
 
         # Create SFT trainer
         trainer = SFTTrainer(
             model=self.model,
             processing_class=self.tokenizer,
             args=sft_config,
+            data_collator=data_collator,
             train_dataset=self.train_dataset,
             eval_dataset=self.val_dataset,
         )

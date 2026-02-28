@@ -1,5 +1,5 @@
 """
-VLM inference for CS2 screenshot analysis using Qwen3-VL-8B.
+VLM inference for CS2 screenshot analysis using Qwen3.5-35B-A3B.
 """
 
 import json
@@ -26,20 +26,18 @@ def _parse_json_response(response: str) -> dict:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3-VL-8B.
+    Run inference using Qwen3.5-35B-A3B.
 
     Requires transformers from source:
         pip install git+https://github.com/huggingface/transformers
 
     For flash attention (faster, less memory):
         pip install flash-attn --no-build-isolation
-
-    VRAM: ~18GB (full precision), ~6GB (4-bit quantized)
     """
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3-VL-8B-Instruct",
+        model_name: str = "Qwen/Qwen3.5-35B-A3B",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
         use_flash_attention: bool = True,
@@ -54,10 +52,10 @@ class Qwen3VLInference:
     def load_model(self):
         """Load the model and processor."""
         try:
-            from transformers import Qwen3VLForConditionalGeneration, AutoProcessor
+            from transformers import AutoModelForVision2Seq, AutoProcessor
         except ImportError:
             raise ImportError(
-                "Qwen3-VL requires transformers from source:\n"
+                "Requires transformers from source:\n"
                 "  pip install git+https://github.com/huggingface/transformers"
             )
 
@@ -77,7 +75,7 @@ class Qwen3VLInference:
         model_kwargs["attn_implementation"] = "sdpa"
         print("Using PyTorch SDPA")
 
-        self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForVision2Seq.from_pretrained(
             self.model_name,
             **model_kwargs,
         )

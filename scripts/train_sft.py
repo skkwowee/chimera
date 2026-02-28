@@ -22,6 +22,10 @@ Usage:
     python scripts/train_grpo.py --model-name outputs/sft/final_model/merged_16bit
 """
 
+# Disable torch dynamo — incompatible with unsloth's import patches on torch 2.6
+import torch._dynamo
+torch._dynamo.config.disable = True
+
 # Import unsloth first to ensure all optimizations are applied
 try:
     import unsloth  # noqa: F401
@@ -81,7 +85,7 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="Qwen/Qwen3-VL-8B-Instruct",
+        default="Qwen/Qwen3.5-35B-A3B",
         help="Model name or path to load",
     )
     model_group.add_argument(
