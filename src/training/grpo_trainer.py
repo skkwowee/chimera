@@ -1,7 +1,7 @@
 """
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
+Uses Unsloth for memory-efficient training of Qwen3.5-27B on 24GB VRAM.
 
 Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON → zero total reward)
@@ -121,7 +121,7 @@ class CS2GRPOTrainer:
         self.val_dataset = None
 
     def load_model(self):
-        """Load Qwen3-VL with Unsloth optimizations."""
+        """Load Qwen3.5-27B with Unsloth optimizations."""
         try:
             from unsloth import FastVisionModel
         except ImportError:

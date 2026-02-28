@@ -11,7 +11,7 @@ paths:
   labeled_data: "data/labeled"
   processed_data: "data/processed"
 
-# Claude API settings (for labeling)
+# Claude API settings (for baseline comparison)
 claude:
   model: "claude-opus-4-6"
   max_tokens: 1024
@@ -40,15 +40,6 @@ game_state:
     - bomb_status        # carried, planted, defused, exploded, null
     - site               # A, B, mid, etc.
     - visible_enemies    # count
-
-# Labeling prompt template
-labeling:
-  system_prompt: |
-    You are an expert CS2 analyst. Given a screenshot from Counter-Strike 2,
-    extract the game state and provide strategic advice.
-
-    Be precise about numbers (health, money, ammo) and positions.
-    For strategic advice, consider economy, positioning, and round context.
 
 # SFT Training settings (run before GRPO)
 sft_training:

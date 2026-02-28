@@ -134,7 +134,7 @@ def convert_labeled_to_grpo_format(
 
 def _build_prompt_content(item: GRPODataItem) -> list[dict]:
     """
-    Build Qwen3-VL multimodal content list for a training item.
+    Build Qwen3.5 multimodal content list for a training item.
 
     Includes prior screenshots (oldest first), then current screenshot,
     then the text prompt with round context.
@@ -165,7 +165,7 @@ def create_grpo_dataset(
     """
     Create Unsloth-compatible dataset from GRPO items.
 
-    Each sample is formatted for Qwen3-VL multimodal input with
+    Each sample is formatted for Qwen3.5 multimodal input with
     optional prior screenshots and round context.
 
     Args:
@@ -261,7 +261,7 @@ def prepare_conversation_format(
     prior_image_paths: list[str | Path] | None = None,
 ) -> list[dict]:
     """
-    Prepare input in Qwen3-VL conversation format.
+    Prepare input in Qwen3.5 conversation format.
 
     Supports multi-image input: prior screenshots are included before
     the current screenshot.

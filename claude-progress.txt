@@ -1,7 +1,7 @@
 # Chimera — Session Progress
 
 ## Project
-CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen3-VL-8B.
+CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen3.5-27B.
 - SFT: teach model to read the HUD — synchronize perceived game state with demo ground truth
 - GRPO: teach model strategic reasoning — decisions scored against pro play + round outcomes
 
@@ -28,14 +28,13 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
   scripts/capture_screenshots.py, scripts/generate_sft_labels.py
 
 ## What changed last session (2026-02-15)
-- Rewrote reward functions: added decision_alignment_reward and outcome_reward
-  for GRPO phase. Now 7 reward signals (was 5). Vision rewards kept to prevent
-  SFT regression during RL. Outcome reward gets highest weight (0.30).
+- Rewrote reward functions: 3-signal architecture (D013) with multiplicative
+  format gate. R_percept=0.20, R_decision=0.30, R_outcome=0.50, KL λ=0.02.
 - Updated grpo_trainer.py, train_grpo.py, config.yaml, __init__.py to match.
 - Clarified pipeline: old "strategy pre-training on text" phase is cut.
   SFT is on screenshots (vision), GRPO is on demo data (reasoning).
-- Ground truth for SFT comes from demo data synced to video frames, NOT from
-  Claude labeling. Demo data = engine truth (exact health, armor, weapons, etc.).
+- Ground truth for SFT comes from demo data synced to video frames.
+  Demo data = engine truth (exact health, armor, weapons, etc.).
 
 ## Key design decisions
 - SFT ground truth: demo-to-VOD synchronization, not model labeling

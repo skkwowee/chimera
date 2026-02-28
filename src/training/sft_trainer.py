@@ -1,9 +1,9 @@
 """
 SFT (Supervised Fine-Tuning) trainer for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
+Uses Unsloth for memory-efficient training of Qwen3.5-27B on 24GB VRAM.
 Teaches the model output format (valid JSON with game_state/analysis/advice)
-and CS2 domain knowledge through supervised learning on Claude-labeled data.
+and CS2 domain knowledge through supervised learning on demo ground truth data.
 
 SFT should run before GRPO — it outputs a merged 16-bit model that GRPO
 loads as its base for reinforcement learning refinement.
@@ -23,13 +23,11 @@ from typing import Optional
 import torch
 
 from .rewards import (
-    REWARD_FUNCTIONS,
     DEFAULT_REWARD_WEIGHTS,
     format_gate_reward,
-    hard_field_accuracy_reward,
-    soft_field_accuracy_reward,
-    consistency_reward,
-    reasoning_quality_reward,
+    perceptual_accuracy_reward,
+    decision_alignment_reward,
+    outcome_reward,
 )
 
 
@@ -88,7 +86,7 @@ class CS2SFTTrainer:
 
     Uses 4-bit quantization and LoRA for memory efficiency on 24GB VRAM.
     Trains the model to produce valid JSON with game_state/analysis/advice
-    through supervised learning on Claude-labeled data.
+    through supervised learning on demo ground truth data.
     """
 
     def __init__(self, config: CS2SFTConfig | None = None):
@@ -100,7 +98,7 @@ class CS2SFTTrainer:
         self.val_dataset = None
 
     def load_model(self):
-        """Load Qwen3-VL with Unsloth optimizations."""
+        """Load Qwen3.5-27B with Unsloth optimizations."""
         try:
             from unsloth import FastVisionModel
         except ImportError:
@@ -317,7 +315,9 @@ class CS2SFTTrainer:
         """
         Evaluate the model on validation data.
 
-        Uses the same 5 reward functions as GRPO for consistent metrics.
+        Uses the D013 reward architecture: format gate + 3 weighted signals
+        (perceptual_accuracy, decision_alignment, outcome) for consistent
+        metrics across SFT and GRPO evaluation.
 
         Args:
             eval_data: Evaluation samples (uses val_dataset if not provided)
@@ -337,14 +337,12 @@ class CS2SFTTrainer:
         print("Evaluating model...")
 
         signal_names = [
-            "format_gate",
-            "hard_field_accuracy",
-            "soft_field_accuracy",
-            "consistency",
-            "reasoning_quality",
+            "perceptual_accuracy",
+            "decision_alignment",
+            "outcome",
         ]
-        weights = DEFAULT_REWARD_WEIGHTS
         metrics = {name: [] for name in signal_names}
+        metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
         try:
@@ -352,6 +350,13 @@ class CS2SFTTrainer:
             FastVisionModel.for_inference(self.model)
         except Exception:
             pass
+
+        weights = DEFAULT_REWARD_WEIGHTS
+        reward_fns = [
+            perceptual_accuracy_reward,
+            decision_alignment_reward,
+            outcome_reward,
+        ]
 
         for sample in tqdm(eval_dataset, desc="Evaluating"):
             # Generate response
@@ -381,19 +386,20 @@ class CS2SFTTrainer:
                 skip_special_tokens=True,
             )
 
-            # Compute each reward signal
+            # Format gate (multiplicative)
+            gate = format_gate_reward(response)
+            metrics["format_gate"].append(gate)
+
+            # Compute each reward signal (gated)
             scores = [
-                format_gate_reward(response),
-                hard_field_accuracy_reward(response, ground_truth=ground_truth),
-                soft_field_accuracy_reward(response, ground_truth=ground_truth),
-                consistency_reward(response),
-                reasoning_quality_reward(response),
+                gate * fn(response, ground_truth=ground_truth)
+                for fn in reward_fns
             ]
 
             for name, score in zip(signal_names, scores):
                 metrics[name].append(score)
 
-            # Weighted total
+            # Weighted total (already gated)
             weighted = sum(w * s for w, s in zip(weights, scores))
             metrics["weighted_total"].append(weighted)
 

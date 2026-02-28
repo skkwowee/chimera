@@ -20,7 +20,7 @@
   {
     "id": "F04",
     "name": "SFT training — visual grounding",
-    "description": "SFT on Qwen3-VL to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA on vision + language layers. Validates that model can accurately extract health, armor, weapons, player counts, etc.",
+    "description": "SFT on Qwen3.5-27B to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA on vision + language layers. Validates that model can accurately extract health, armor, weapons, player counts, etc.",
     "passes": false
   },
   {
