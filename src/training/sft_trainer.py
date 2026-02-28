@@ -38,7 +38,7 @@ class CS2SFTConfig:
     """Configuration for SFT training."""
 
     # Model settings
-    model_name: str = "Qwen/Qwen3.5-35B-A3B"
+    model_name: str = "Qwen/Qwen3.5-27B"
     use_4bit: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"

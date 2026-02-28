@@ -1,5 +1,5 @@
 """
-VLM inference for CS2 screenshot analysis using Qwen3.5-35B-A3B.
+VLM inference for CS2 screenshot analysis using Qwen3.5-27B.
 """
 
 import json
@@ -26,7 +26,7 @@ def _parse_json_response(response: str) -> dict:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3.5-35B-A3B.
+    Run inference using Qwen3.5-27B.
 
     Requires transformers from source:
         pip install git+https://github.com/huggingface/transformers
@@ -37,48 +37,34 @@ class Qwen3VLInference:
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3.5-35B-A3B",
+        model_name: str = "Qwen/Qwen3.5-27B",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
-        use_flash_attention: bool = True,
+        use_4bit: bool = True,
     ):
         self.model_name = model_name
         self.device = device
         self.dtype = getattr(torch, torch_dtype)
-        self.use_flash_attention = use_flash_attention
+        self.use_4bit = use_4bit
         self.model = None
         self.processor = None
 
     def load_model(self):
-        """Load the model and processor."""
-        try:
-            from transformers import AutoModelForVision2Seq, AutoProcessor
-        except ImportError:
-            raise ImportError(
-                "Requires transformers from source:\n"
-                "  pip install git+https://github.com/huggingface/transformers"
-            )
+        """Load the model and processor via Unsloth."""
+        from unsloth import FastVisionModel
+        from transformers import AutoProcessor
 
-        print(f"Loading {self.model_name}...")
+        print(f"Loading {self.model_name} with Unsloth...")
+        print(f"  4-bit quantization: {self.use_4bit}")
 
-        # Load processor
-        self.processor = AutoProcessor.from_pretrained(self.model_name)
-
-        # Load model with optional flash attention
-        model_kwargs = {
-            "torch_dtype": self.dtype,
-            "device_map": "auto",
-        }
-
-        # Use SDPA (PyTorch 2.0+ built-in efficient attention)
-        # Flash attention can cause OOM issues on some systems
-        model_kwargs["attn_implementation"] = "sdpa"
-        print("Using PyTorch SDPA")
-
-        self.model = AutoModelForVision2Seq.from_pretrained(
+        self.model, self.tokenizer = FastVisionModel.from_pretrained(
             self.model_name,
-            **model_kwargs,
+            load_in_4bit=self.use_4bit,
+            use_gradient_checkpointing="unsloth",
         )
+        FastVisionModel.for_inference(self.model)
+
+        self.processor = AutoProcessor.from_pretrained(self.model_name)
 
         print(f"Model loaded on {self.device}")
 
@@ -98,7 +84,7 @@ class Qwen3VLInference:
         # Load image
         image = Image.open(image_path).convert("RGB")
 
-        # Qwen3-VL message format
+        # Qwen3.5 message format
         messages = [
             {
                 "role": "user",

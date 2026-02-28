@@ -430,13 +430,13 @@ tags:
   - vlm
   - game-ai
   - qwen
-base_model: Qwen/Qwen3.5-35B-A3B
+base_model: Qwen/Qwen3.5-27B
 pipeline_tag: image-to-text
 ---
 
-# Chimera — CS2 Game AI (Qwen3.5-35B-A3B)
+# Chimera — CS2 Game AI (Qwen3.5-27B)
 
-Fine-tuned Qwen3.5-35B-A3B for Counter-Strike 2 screenshot analysis and strategic advice.
+Fine-tuned Qwen3.5-27B for Counter-Strike 2 screenshot analysis and strategic advice.
 
 ## Usage
 

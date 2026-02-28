@@ -85,7 +85,7 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="Qwen/Qwen3.5-35B-A3B",
+        default="Qwen/Qwen3.5-27B",
         help="Model name or path to load",
     )
     model_group.add_argument(

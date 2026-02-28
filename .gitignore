@@ -75,6 +75,9 @@ experiment-state.json
 site/public/viewer-data/
 site/public/maps/
 
+# Weights & Biases
+wandb/
+
 # OS
 .DS_Store
 Thumbs.db
