@@ -2,7 +2,7 @@
 """
 SFT training script for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient supervised fine-tuning of Qwen3-VL on 24GB VRAM.
+Uses Unsloth for memory-efficient supervised fine-tuning of Qwen3.5-27B on 24GB VRAM.
 SFT teaches the model output format and CS2 domain knowledge before GRPO refinement.
 
 Usage:
@@ -49,7 +49,7 @@ from src.training import (
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Qwen3-VL on CS2 screenshots using SFT (supervised fine-tuning)",
+        description="Train Qwen3.5-27B on CS2 screenshots using SFT (supervised fine-tuning)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -358,8 +358,8 @@ def main():
         print(f"\nTo use as GRPO base:")
         print(f"  python scripts/train_grpo.py --model-name {output_path / 'merged_16bit'}")
     print(f"\nFinal mean weighted total: {results.get('mean_weighted_total', 'N/A'):.4f}")
-    for signal in ("format_gate", "hard_field_accuracy", "soft_field_accuracy",
-                    "consistency", "reasoning_quality"):
+    print(f"  Format gate pass rate: {results.get('mean_format_gate', 'N/A'):.4f}")
+    for signal in ("perceptual_accuracy", "decision_alignment", "outcome"):
         val = results.get(f"mean_{signal}", "N/A")
         label = signal.replace("_", " ").title()
         if isinstance(val, float):

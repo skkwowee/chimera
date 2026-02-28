@@ -46,10 +46,10 @@ See `decisions.md` D013–D015 for the full mathematical formulation, design rat
 
 | Model | Description |
 |-------|-------------|
-| A | Qwen3-VL zero-shot (no training) |
-| B | Qwen3-VL + SFT only (visual grounding, no GRPO) |
-| C | Qwen3-VL + SFT + GRPO (visual grounding + strategic reasoning) |
-| D | Qwen3-VL + GRPO only (no SFT, tests whether SFT phase is necessary) |
+| A | Qwen3.5-27B zero-shot (no training) |
+| B | Qwen3.5-27B + SFT only (visual grounding, no GRPO) |
+| C | Qwen3.5-27B + SFT + GRPO (visual grounding + strategic reasoning) |
+| D | Qwen3.5-27B + GRPO only (no SFT, tests whether SFT phase is necessary) |
 
 If C > B, GRPO improves reasoning beyond what SFT alone provides. If C > D, SFT visual grounding is a necessary foundation for effective GRPO.
 
@@ -60,7 +60,7 @@ Each step is isolated: it reads from defined inputs, writes to defined outputs, 
 - [x] **Step 1 — Data schema & manifest.** Unified data manifest (`src/data/manifest.py`, JSONL append-only) for tracking screenshot provenance, source, timestamps, and transcript context. Collection scripts write to `data/manifest.jsonl`, `ScreenshotDataset` loads/filters by manifest fields, training utils accept manifest filtering.
 - [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs ([cs2-tools](https://github.com/skkwowee/cs2-tools)). Interactive demo viewer ([cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)) with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
 - [ ] **Step 3 — Screenshot-demo synchronization.** Sync VOD frames to demo ticks to produce (screenshot, exact_game_state) pairs. Figure out time offset between broadcast and demo file. Extract frames at intervals, pair with ground truth game state from Parquet data.
-- [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3-VL with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
+- [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3.5-27B with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
 - [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro behavioral features (movement, utility, engagement timing from tick data) + round_won + player_contribution (φ).
 - [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 3 reward signals + multiplicative format gate + KL regularization (see D013). Compare SFT-only vs SFT+GRPO vs GRPO-only.
 - [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
@@ -119,7 +119,7 @@ Two components live in their own repositories and are managed as dependencies:
 
 ```
 chimera/
-├── decisions.md                # Design decision log (D001–D015)
+├── decisions.md                # Design decision log (D001–D019)
 ├── paper/                      # NeurIPS 2026 submission
 │   ├── main.tex                # Main paper
 │   ├── references.bib          # Bibliography
@@ -128,12 +128,12 @@ chimera/
 ├── data/
 │   ├── manifest.jsonl          # Data provenance tracking
 │   ├── raw/                    # Raw screenshots
-│   ├── labeled/                # Claude-labeled ground truth
+│   ├── labeled/                # Demo-derived ground truth
 │   ├── processed/              # Processed data
 │   └── predictions/            # VLM predictions
 ├── src/
 │   ├── data/                   # Data loading + manifest utilities
-│   ├── inference/              # VLM inference (Qwen3-VL-8B)
+│   ├── inference/              # VLM inference (Qwen3.5-27B)
 │   ├── training/               # SFT + GRPO training modules
 │   └── prompts.py              # Shared prompts for all models
 └── scripts/
@@ -155,7 +155,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# Edit .env with your ANTHROPIC_API_KEY
+# Edit .env with your HF_TOKEN
 ```
 
 ## Usage
@@ -223,10 +223,9 @@ python scripts/generate_review.py --compare --embed
 
 | Task | VRAM | Recommended GPU |
 |------|------|-----------------|
-| Inference (Qwen3-VL-8B) | ~18 GB | RTX 4090, A100 |
-| Inference (4-bit) | ~6 GB | RTX 3080+ |
-| SFT Training | ~18 GB | RTX 4090 (24GB) |
-| GRPO Training | ~20 GB | RTX 4090 (24GB) |
+| Inference (Qwen3.5-27B, 4-bit) | ~15 GB | RTX 4090 (24GB) |
+| SFT Training (4-bit + LoRA) | ~18 GB | RTX 4090 (24GB) |
+| GRPO Training (4-bit + LoRA) | ~20 GB | RTX 4090 (24GB) |
 
 ## Why This Matters Beyond Games
 

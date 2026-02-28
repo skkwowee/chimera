@@ -7,9 +7,6 @@ accelerate>=0.27.0
 timm>=0.9.0
 einops>=0.7.0
 
-# Claude API
-anthropic>=0.25.0
-
 # Image processing
 Pillow>=10.0.0
 opencv-python>=4.9.0
@@ -35,5 +32,5 @@ peft>=0.13.0
 # Optional: Flash attention for faster inference
 # pip install flash-attn --no-build-isolation
 
-# Qwen3-VL (requires transformers from source):
+# Qwen3.5-27B (requires transformers from source):
 #   pip install git+https://github.com/huggingface/transformers

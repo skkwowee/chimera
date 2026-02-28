@@ -2,7 +2,7 @@
 Shared prompts for CS2 analysis.
 
 This module contains the canonical prompts used across all models
-(Claude labeling, local VLM inference, and fine-tuning).
+(local VLM inference and fine-tuning).
 
 Observation model: o_t = (I_{t-k}, ..., I_t, c_t)
   - I_{t-k}..I_t: current + prior screenshots (visual continuity)

@@ -2,7 +2,7 @@
 """
 GRPO training script for CS2 VLM fine-tuning.
 
-Uses Unsloth for memory-efficient training of Qwen3-VL on 24GB VRAM.
+Uses Unsloth for memory-efficient training of Qwen3.5-27B on 24GB VRAM.
 
 Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON → zero total reward)
@@ -51,7 +51,7 @@ from src.training import (
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Qwen3-VL on CS2 screenshots using GRPO",
+        description="Train Qwen3.5-27B on CS2 screenshots using GRPO",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 

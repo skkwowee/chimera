@@ -9,11 +9,6 @@ from .rewards import (
     # Reward math components (exposed for testing / paper figures)
     compute_player_contribution,
     compute_outcome_modulation,
-    # Legacy (backward compat — these are thin wrappers or no-ops)
-    hard_field_accuracy_reward,
-    soft_field_accuracy_reward,
-    consistency_reward,
-    reasoning_quality_reward,
 )
 from .data_utils import (
     GRPODataItem,
@@ -39,11 +34,6 @@ __all__ = [
     # Reward math components
     "compute_player_contribution",
     "compute_outcome_modulation",
-    # Legacy rewards (backward compat)
-    "hard_field_accuracy_reward",
-    "soft_field_accuracy_reward",
-    "consistency_reward",
-    "reasoning_quality_reward",
     # Data utilities
     "GRPODataItem",
     "convert_labeled_to_grpo_format",
