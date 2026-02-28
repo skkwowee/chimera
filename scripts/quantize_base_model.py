@@ -19,7 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-HUB_REPO = "skkwowee/chimera-cs2-qwen3.5"
+HUB_REPO = "skkwowee/Qwen3.5-27B-bnb-4bit"
 OUTPUT_DIR = Path("models/Qwen3.5-27B-bnb-4bit")
 
 

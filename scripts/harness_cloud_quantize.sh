@@ -10,7 +10,7 @@
 #   1. Installs Python dependencies
 #   2. Logs into HuggingFace Hub
 #   3. Quantizes Qwen3.5-27B (full VLM) to BnB NF4
-#   4. Pushes checkpoint to HF Hub (skkwowee/chimera-cs2-qwen3.5)
+#   4. Pushes checkpoint to HF Hub (skkwowee/Qwen3.5-27B-bnb-4bit)
 #   5. Verifies the upload
 #
 # REQUIREMENTS:
@@ -97,13 +97,13 @@ pip install --quiet huggingface-hub
 python -c "
 from huggingface_hub import HfApi
 api = HfApi()
-files = api.list_repo_files('skkwowee/chimera-cs2-qwen3.5')
+files = api.list_repo_files('skkwowee/Qwen3.5-27B-bnb-4bit')
 safetensors = [f for f in files if f.endswith('.safetensors')]
 print(f'Files on Hub: {len(files)} total, {len(safetensors)} safetensors')
 if 'quantize_meta.json' in files:
     import json
     from huggingface_hub import hf_hub_download
-    meta = json.load(open(hf_hub_download('skkwowee/chimera-cs2-qwen3.5', 'quantize_meta.json')))
+    meta = json.load(open(hf_hub_download('skkwowee/Qwen3.5-27B-bnb-4bit', 'quantize_meta.json')))
     print(f'Parameters: {meta[\"parameter_count_B\"]}')
     print(f'Vision encoder: {meta[\"includes_vision_encoder\"]}')
     print(f'Model class: {meta[\"model_class\"]}')

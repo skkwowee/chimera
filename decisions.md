@@ -856,48 +856,61 @@ The older Qwen3-30B-A3B stored experts individually (`experts.0.down_proj`, `exp
 
 ---
 
-## D020: Quantization on 24GB — what failed and what's next (2026-02-28)
+## D020: Cloud quantization of Qwen3.5-27B full VLM (2026-02-28)
 
-**Decision:** Rent a cloud GPU (A100 80GB) to quantize the full Qwen3.5-27B VLM to BnB NF4, producing a checkpoint that includes the vision encoder.
+**Decision:** Rent a cloud GPU to quantize the full Qwen3.5-27B VLM to BnB NF4, producing a checkpoint that includes the vision encoder. Published as [`skkwowee/Qwen3.5-27B-bnb-4bit`](https://huggingface.co/skkwowee/Qwen3.5-27B-bnb-4bit).
 
 ### The problem
 
-We need a 4-bit checkpoint of Qwen3.5-27B as a **full VLM** (vision encoder + language model) to process CS2 screenshots. The RTX 4090 (24GB) cannot quantize this model locally.
+We need a 4-bit checkpoint of Qwen3.5-27B as a **full VLM** (vision encoder + language model) to process CS2 screenshots. The RTX 4090 (24GB) cannot quantize this model locally — BnB materializes each weight tensor in bf16 on GPU before quantizing to 4-bit in place, and the `max_memory` constraint is not enforced during the quantization kernel. OOM at layer 6/54.
 
-### What we tried and why it failed
+### What failed before cloud quantization
 
 1. **Unsloth `FastVisionModel`** with `load_in_4bit=True` — tried to fit full bf16 weights on GPU (~38GB). Immediate CUDA OOM.
 
-2. **Transformers `AutoModelForCausalLM`** with `device_map="auto"`, `max_memory={0: "22GiB", "cpu": "28GiB"}` — BnB materializes each weight tensor in bf16 on GPU before quantizing to 4-bit in place. The `max_memory` constraint controls device map layer placement but is **not enforced during the quantization kernel**. By layer 6 of 54, PyTorch had allocated 37GB on a 24GB card. No amount of `max_memory` tuning fixes this.
+2. **Transformers `AutoModelForCausalLM`** with `device_map="auto"`, `max_memory={0: "22GiB", "cpu": "28GiB"}` — by layer 6 of 54, PyTorch had allocated 37GB on a 24GB card. No amount of `max_memory` tuning fixes this.
 
-3. **Community pre-quantized checkpoint** (`cyberenchanter/Qwen3.5-27B-bnb-4bit`) — downloaded successfully, loaded at 10.6GB VRAM. But investigation revealed it was created with `AutoModelForCausalLM` / Unsloth's `FastLanguageModel`, which **strips the vision encoder**. The checkpoint contained only the 14.7B-param text decoder, not the full 27.8B VLM. Missing: vision encoder (~0.4B), multimodal projector, MTP head, and other components totaling ~13B params. **Useless for screenshot-based training.** Deleted.
+3. **Community pre-quantized checkpoint** (`cyberenchanter/Qwen3.5-27B-bnb-4bit`) — created with `AutoModelForCausalLM`, which **strips the vision encoder**. Only 14.7B-param text decoder, not the full 27.8B VLM. Deleted.
 
-### Why the size mismatch wasn't caught immediately
+### Cloud quantization — what worked (and what broke along the way)
 
-The 10.6GB checkpoint seemed plausible for a "27B model at 4-bit" — the expected ~13.5GB minus double-quant savings. The actual breakdown: 14.7B params (not 27B) with ~12.2B quantized at NF4 (~6.1GB) and ~2.5B in bf16 (~5.1GB). The "27B" name is the full VLM; `AutoModelForCausalLM` silently loads only the language model submodule.
+Rented an **H200 SXM (140GB VRAM)** on RunPod. The quantization itself took ~2 minutes. Getting there took longer:
 
-### Lesson learned
+1. **CRLF line endings** — scripts written on WSL had `\r\n`, breaking bash on the pod. Fix: `sed -i 's/\r$//'`.
 
-`AutoModelForCausalLM` vs `AutoModelForVision2Seq` (or `Qwen3_5ForConditionalGeneration`) is the difference between loading a text-only decoder and the full VLM. Always verify the model class matches the intended architecture. Always sanity-check checkpoint size against expected parameter count.
+2. **`AutoModelForVision2Seq` doesn't exist in transformers 5.x** — the API changed. Qwen3.5 uses `Qwen3_5ForConditionalGeneration` as the concrete VLM class.
 
-### Plan: cloud quantization
+3. **PyTorch version mismatch** — the pod had PyTorch 2.4.1, but transformers 5.2 calls `nn.Module.set_submodule()` which was added in PyTorch 2.5. Fix: upgrade to torch 2.6.
 
-1. Rent an A100 80GB (or A6000 48GB) — one-time job, a few hours
-2. Load `Qwen/Qwen3.5-27B` with the correct VLM model class
-3. Apply BnB NF4 quantization — full bf16 model is ~55GB, fits in 80GB
-4. Save checkpoint — expected ~18-20GB with vision encoder included
-5. Download to local machine, verify loads on RTX 4090
-6. Push to HF Hub as backup
+4. **torch/torchvision mismatch** — upgrading torch without torchvision caused `torchvision::nms does not exist` at import time. Fix: upgrade torchvision to 0.21 to match torch 2.6.
+
+5. **Parameter count sanity check was wrong** — the script asserted `param_count > 20B` to detect missing vision encoder. But NF4 quantization packs 27B logical parameters into ~15B stored elements. The check triggered a false positive. Fix: verify vision encoder structurally (`hasattr(model, 'visual')`) instead of by parameter count.
+
+### Result
+
+| | |
+|---|---|
+| **Checkpoint** | [`skkwowee/Qwen3.5-27B-bnb-4bit`](https://huggingface.co/skkwowee/Qwen3.5-27B-bnb-4bit) |
+| **Model class** | `Qwen3_5ForConditionalGeneration` |
+| **Size on disk** | 16.7 GB |
+| **GPU VRAM at load** | ~17 GB (fits RTX 4090) |
+| **Quantization** | BnB NF4, double quant, bf16 compute |
+| **Vision encoder** | Present (27 blocks, merger, patch_embed) |
+| **Cloud GPU** | RunPod H200 SXM, ~$3 total |
+| **Quantization time** | ~2 minutes (model load + save + push) |
+
+### Lessons learned
+
+1. **`AutoModelForCausalLM` silently strips the vision encoder** from VLMs like Qwen3.5-27B. Always use the model-specific class (`Qwen3_5ForConditionalGeneration`) or the correct Auto class. Every community 4-bit checkpoint we found had this bug.
+
+2. **NF4 parameter counts are misleading.** `sum(p.numel())` reports stored elements, not logical parameters. A 27B model reports ~15B after NF4 packing. Verify architecture structurally, not numerically.
+
+3. **Cloud GPU environments are fragile.** Pre-installed torch/transformers versions on RunPod templates lag behind what current model code requires. Budget time for dependency debugging, not just the quantization.
+
+4. **Quantization is IO-bound, not compute-bound.** On the H200, the actual quantize-and-save took 2 minutes. Downloading the 55GB source model and uploading the 17GB result took longer. The cloud GPU bill is mostly download time.
 
 ### Why not Qwen3.5-35B-A3B MoE instead?
 
-Revisited and rejected again. The MoE's BnB incompatibility (D019) is architectural, not a VRAM issue. Qwen3.5-35B-A3B packs all 256 experts into 3D tensors that aren't `nn.Linear` — BnB skips them and leaves them in bf16. A bigger GPU lets you *load* the model but the "quantized" result still has ~60GB of bf16 expert weights. It won't fit on the 4090 afterward. AWQ/GPTQ can handle arbitrary tensor shapes but aren't compatible with QLoRA training.
+Revisited and rejected again. The MoE's BnB incompatibility (D019) is architectural, not a VRAM issue. Qwen3.5-35B-A3B packs all 256 experts into 3D tensors that aren't `nn.Linear` — BnB skips them and leaves them in bf16. A bigger GPU lets you *load* the model but the "quantized" result still has ~60GB of bf16 expert weights. AWQ/GPTQ can handle arbitrary tensor shapes but aren't compatible with QLoRA training.
 
-### Alternatives considered
-
-- **Lower `max_memory` locally.** Won't help — constraint not enforced during BnB quantization kernel.
-- **`device_map="cpu"` for CPU-only quantization.** BnB quantization kernels require CUDA — they don't run on CPU.
-- **Find a pre-quantized full VLM checkpoint.** None exists. All community checkpoints used `AutoModelForCausalLM` (text-only).
-- **Qwen3.5-35B-A3B MoE on cloud GPU.** BnB can't quantize the packed expert tensors regardless of VRAM. See above.
-
-**Status:** Plan decided. Need to rent cloud GPU and run quantization. Scripts (`quantize_base_model.py`, `harness_quantize.sh`) need updating for the correct model class once cloud access is available. Stripped text-only checkpoint deleted.
+**Status:** Done. Checkpoint published, verified, fits on RTX 4090.

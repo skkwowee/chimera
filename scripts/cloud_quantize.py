@@ -5,7 +5,7 @@ Quantize Qwen3.5-27B full VLM to BnB NF4 and push to HuggingFace Hub.
 Run on a cloud GPU (A100 80GB recommended). The full bf16 model is ~55GB,
 so this requires more VRAM than a consumer card.
 
-CRITICAL: Uses AutoModelForVision2Seq, NOT AutoModelForCausalLM.
+CRITICAL: Uses Qwen3_5ForConditionalGeneration, NOT AutoModelForCausalLM.
 AutoModelForCausalLM silently strips the vision encoder, producing a
 text-only checkpoint. We need the full VLM for screenshot-based training.
 
@@ -32,7 +32,7 @@ import psutil
 import torch
 
 SOURCE_MODEL = "Qwen/Qwen3.5-27B"
-DEFAULT_HUB_REPO = "skkwowee/chimera-cs2-qwen3.5"
+DEFAULT_HUB_REPO = "skkwowee/Qwen3.5-27B-bnb-4bit"
 LOCAL_DIR = "Qwen3.5-27B-VLM-bnb-4bit"
 
 
@@ -64,10 +64,10 @@ def check_prerequisites():
 
 
 def quantize_and_push(hub_repo: str, push: bool):
-    from transformers import AutoModelForVision2Seq, AutoTokenizer, AutoProcessor, BitsAndBytesConfig
+    from transformers import Qwen3_5ForConditionalGeneration, AutoTokenizer, AutoProcessor, BitsAndBytesConfig
 
     log(f"Loading {SOURCE_MODEL} as full VLM with BnB NF4...")
-    log("Using AutoModelForVision2Seq (NOT AutoModelForCausalLM — preserves vision encoder)")
+    log("Using Qwen3_5ForConditionalGeneration (NOT AutoModelForCausalLM — preserves vision encoder)")
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -76,7 +76,7 @@ def quantize_and_push(hub_repo: str, push: bool):
         bnb_4bit_use_double_quant=True,
     )
 
-    model = AutoModelForVision2Seq.from_pretrained(
+    model = Qwen3_5ForConditionalGeneration.from_pretrained(
         SOURCE_MODEL,
         quantization_config=bnb_config,
         device_map="auto",
@@ -87,17 +87,16 @@ def quantize_and_push(hub_repo: str, push: bool):
     log("Model loaded. Verifying vision encoder is present...")
 
     # Verify we got the full VLM, not just the text decoder
-    has_vision = hasattr(model, 'visual') or hasattr(model, 'vision_tower') or hasattr(model, 'model') and hasattr(model.model, 'visual')
+    has_vision = hasattr(model, 'visual') or hasattr(model, 'model') and hasattr(model.model, 'visual')
     param_count = sum(p.numel() for p in model.parameters())
-    log(f"Total parameters: {param_count / 1e9:.2f}B")
+    log(f"Total parameters: {param_count / 1e9:.2f}B (stored; ~27B logical before NF4 packing)")
 
-    if param_count < 20e9:
-        print(f"\nERROR: Only {param_count / 1e9:.2f}B parameters loaded.")
-        print("Expected ~27B for full VLM. Vision encoder may be missing.")
-        print("Make sure you're using AutoModelForVision2Seq, not AutoModelForCausalLM.")
+    if not has_vision:
+        print("\nERROR: Vision encoder not found on model.")
+        print("Make sure you're using Qwen3_5ForConditionalGeneration, not AutoModelForCausalLM.")
         sys.exit(1)
 
-    log(f"Parameter count OK ({param_count / 1e9:.2f}B). Full VLM loaded.")
+    log(f"Vision encoder present. Full VLM loaded.")
 
     tokenizer = AutoTokenizer.from_pretrained(SOURCE_MODEL)
     processor = AutoProcessor.from_pretrained(SOURCE_MODEL)
@@ -112,7 +111,7 @@ def quantize_and_push(hub_repo: str, push: bool):
     meta = {
         "source_model": SOURCE_MODEL,
         "quantization": "bnb-4bit-nf4",
-        "model_class": "AutoModelForVision2Seq",
+        "model_class": "Qwen3_5ForConditionalGeneration",
         "parameter_count": param_count,
         "parameter_count_B": f"{param_count / 1e9:.2f}B",
         "includes_vision_encoder": True,
