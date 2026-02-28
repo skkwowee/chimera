@@ -18,7 +18,7 @@ claude:
 
 # Local VLM settings (for inference)
 vlm:
-  model_name: "Qwen/Qwen3.5-27B"
+  model_name: "skkwowee/Qwen3.5-27B-bnb-4bit"
   device: "cuda"
   torch_dtype: "bfloat16"
 
@@ -43,8 +43,7 @@ game_state:
 
 # SFT Training settings (run before GRPO)
 sft_training:
-  model_name: "Qwen/Qwen3.5-27B"
-  use_4bit: true
+  model_name: "skkwowee/Qwen3.5-27B-bnb-4bit"
   torch_dtype: "bfloat16"
 
   # LoRA settings
@@ -72,8 +71,7 @@ sft_training:
 # GRPO Training settings
 training:
   # Model settings
-  model_name: "Qwen/Qwen3.5-27B"
-  use_4bit: true
+  model_name: "skkwowee/Qwen3.5-27B-bnb-4bit"
   use_vllm: true
   torch_dtype: "bfloat16"
 

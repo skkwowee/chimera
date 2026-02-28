@@ -430,7 +430,7 @@ tags:
   - vlm
   - game-ai
   - qwen
-base_model: Qwen/Qwen3.5-27B
+base_model: skkwowee/Qwen3.5-27B-bnb-4bit
 pipeline_tag: image-to-text
 ---
 
@@ -441,9 +441,9 @@ Fine-tuned Qwen3.5-27B for Counter-Strike 2 screenshot analysis and strategic ad
 ## Usage
 
 ```python
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
-model = AutoModelForVision2Seq.from_pretrained("{repo_id}")
+model = Qwen3_5ForConditionalGeneration.from_pretrained("{repo_id}")
 processor = AutoProcessor.from_pretrained("{repo_id}")
 ```
 
