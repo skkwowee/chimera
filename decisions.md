@@ -781,7 +781,7 @@ Up to 2 prior screenshots from the same round and POV player are included before
 - Teammates who were alive and are now dead
 - Position changes of the POV player
 
-Qwen3-VL supports multi-image natively. At typical resolution, 3 images add ~1500 image tokens — manageable with 4-bit quantization on 24GB VRAM.
+Qwen3.5-27B supports multi-image natively. At typical resolution, 3 images add ~1500 image tokens — manageable with 4-bit quantization on 24GB VRAM.
 
 ### Impact on reward terms
 
@@ -803,3 +803,53 @@ Qwen3-VL supports multi-image natively. At typical resolution, 3 images add ~150
 Labels without `context` or `prior_screenshots` fields still work — the data loading falls back to the legacy single-image, generic-prompt behavior. Existing labels on Hub don't need regeneration for SFT (though they should be regenerated to include context before GRPO training).
 
 **Status:** Implemented. Labels need regeneration with updated `generate_sft_labels.py` to include context. Connects to D013 (reward architecture), D016 (credit assignment).
+
+---
+
+## D019: Base model — Qwen3.5-27B dense over Qwen3.5-35B-A3B MoE (2026-02-27)
+
+**Decision:** Use Qwen3.5-27B (dense, 27B params) as the base model, not Qwen3.5-35B-A3B (MoE, 35B total / 3B active).
+
+### Why
+
+The MoE model cannot be trained on our hardware (RTX 4090, 24GB VRAM). Two independent blockers:
+
+1. **BnB 4-bit quantization incompatibility.** Qwen3.5-35B-A3B packs all 256 experts into single 3D tensors (e.g. `mlp.experts.down_proj` → shape `[256, 512, 2048]`). BnB only quantizes `nn.Linear` modules — packed expert tensors aren't `nn.Linear`, so BnB treats them as bf16. The device map calculator then estimates ~60GB and pushes layers to CPU, triggering `validate_environment()` rejection. The final quantized model *would* fit (~20GB), but loading never completes.
+
+2. **No fused kernel support for Qwen3.5.** The `qwen3-moe-fused` kernel (which fuses experts into single tensors to fix the peak memory spike) only supports Qwen3, not Qwen3.5. Contributing Qwen3.5 support is possible but a time sink orthogonal to the research.
+
+3. **Unsloth confirms.** Their Qwen3.5 docs explicitly state: "MoE QLoRA 4-bit is not recommended due to BitsAndBytes limitations." bf16 LoRA requires 74GB VRAM.
+
+The older Qwen3-30B-A3B stored experts individually (`experts.0.down_proj`, `experts.1.down_proj`, ...) as separate `nn.Linear` modules, so BnB worked. Qwen3.5 changed the internal format.
+
+### Alternatives considered
+
+- **Qwen3.5-35B-A3B (MoE) with fused kernel.** Blocked: fused kernel doesn't support Qwen3.5 yet. Would need Triton 3.6+, PyTorch 2.10+, and an `OutputRecorder` stub. Investigated thoroughly, dependency chain too fragile.
+- **Qwen3-30B-A3B (MoE, older generation).** Tooling works, similar architecture. Rejected: older model family, weaker vision understanding. The base model's zero-shot ability to parse CS2 screenshots is the foundation for everything downstream.
+- **Pre-quantized BnB checkpoint.** Chicken-and-egg: creating one requires an 80GB+ GPU. None published for Qwen3.5-35B-A3B.
+- **GGUF format.** Inference-only — no autograd, no training. Incompatible with QLoRA/GRPO.
+- **Qwen2.5-VL-8B (original base model).** Would work trivially on hardware. Rejected: much less capable for vision and reasoning.
+
+### Why dense is fine for Chimera
+
+- **LoRA expressiveness is sufficient.** We train ~0.1-1% of parameters via QLoRA adapters. The LoRA rank (r=16-64) determines how many "directions" each layer's correction can adjust — r=64 modifies ~1.5% of directions per layer, but corrections compound across 50+ layers. Empirically, r=32-64 handles complex behavioral changes like strategic reasoning patterns.
+- **Simpler RL dynamics.** Dense models have clean gradient flow — no router instability, no expert collapse, no reward signal dilution through discrete top-k routing. MoE RL works (DeepSeek-R1 proved it) but is less forgiving. One fewer failure mode for GRPO.
+- **Training speed is acceptable.** Dense 27B is ~3-5x slower per step than 3B-active MoE (all 27B params in forward/backward vs ~3B). But iteration speed is gated by reward function design and data quality, not wall-clock time per step. We'll run fewer experiments more carefully.
+- **Data requirements unchanged.** Data needs are driven by task complexity, not architecture. QLoRA trains the same tiny adapter fraction either way.
+
+### Technical details: MoE vs dense
+
+**MoE (Mixture of Experts):** Router network selects top-k experts per token from a pool. Only activated experts compute. Advantage: knowledge capacity of 35B with compute cost of ~3B. Disadvantage: all 35B params must be in VRAM (only compute is saved, not memory), training needs load balancing losses to prevent expert collapse, RL gradient flow through discrete routing is complex.
+
+**Unfused vs fused experts:** Standard (unfused) MoE stores each expert's weights as separate `nn.Linear` modules — 256 individual tensors that get separate matmuls. Fused MoE packs all experts into single stacked tensors (e.g. `[256, 512, 2048]`) and uses one batched matmul with expert indexing. Fusion is a memory layout optimization (fewer kernel launches, better GPU utilization) that doesn't affect model quality. Qwen3.5 ships pre-fused at the architecture level — which ironically breaks BnB because the packed tensors aren't `nn.Linear`.
+
+**Dense:** All parameters active for every token. Simpler, more predictable, but more compute per token. For QLoRA fine-tuning, the base model weights are frozen regardless — the question is only how fast forward/backward passes are through the frozen weights.
+
+### Hardware constraints
+
+- RTX 4090: 24GB VRAM
+- System: 32GB RAM (WSL2, `.wslconfig` set to `memory=32GB`)
+- Qwen3.5-27B in 4-bit: ~15GB VRAM post-load. ~8GB headroom for QLoRA adapters, optimizer states, gradients, activations.
+- Loading spike: BnB deserializes bf16 weights through CPU RAM before quantizing to 4-bit. 32GB system RAM is sufficient (was failing with WSL's default 16GB limit).
+
+**Status:** Decided. All config/scripts updated. Supersedes the Qwen3.5-35B-A3B commit (4891cef).
