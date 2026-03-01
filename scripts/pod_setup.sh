@@ -16,6 +16,13 @@ fi
 
 cd "$REPO_DIR"
 
+# Install git-lfs (needed for HF dataset clone)
+if ! git lfs version >/dev/null 2>&1; then
+    echo "Installing git-lfs..."
+    apt-get update -qq && apt-get install -y -qq git-lfs
+    git lfs install
+fi
+
 # Install dependencies (RunPod templates have torch/CUDA pre-installed)
 echo "Installing dependencies..."
 pip install -r requirements.txt

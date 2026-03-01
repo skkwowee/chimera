@@ -151,8 +151,12 @@ def _git_clone_or_pull(repo_id, cache_path):
         subprocess.run(["git", "clone", url, str(cache_path)], check=True, env=env)
 
     # Pull LFS files that may not have been fetched
-    print("  Fetching LFS files...")
-    subprocess.run(["git", "-C", str(cache_path), "lfs", "pull"], check=True)
+    result = subprocess.run(["git", "lfs", "version"], capture_output=True)
+    if result.returncode == 0:
+        print("  Fetching LFS files...")
+        subprocess.run(["git", "-C", str(cache_path), "lfs", "pull"], check=True)
+    else:
+        print("  Warning: git-lfs not installed, LFS files may be pointers")
 
 
 def cmd_pull(args):
