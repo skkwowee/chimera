@@ -133,21 +133,37 @@ def cmd_status(args):
 # ── pull ────────────────────────────────────────────────────────────────
 
 
-def cmd_pull(args):
-    from huggingface_hub import snapshot_download
+def _git_clone_or_pull(repo_id, cache_path):
+    """Clone or pull a HF dataset repo using git (avoids per-file API rate limits)."""
+    import subprocess
 
+    url = f"https://huggingface.co/datasets/{repo_id}"
+
+    if (cache_path / ".git").exists():
+        print("  Pulling latest...")
+        subprocess.run(["git", "-C", str(cache_path), "pull"], check=True)
+    else:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        if cache_path.exists():
+            shutil.rmtree(cache_path)
+        print("  Cloning dataset repo...")
+        env = {**__import__("os").environ, "GIT_LFS_SKIP_SMUDGE": "0"}
+        subprocess.run(["git", "clone", url, str(cache_path)], check=True, env=env)
+
+    # Pull LFS files that may not have been fetched
+    print("  Fetching LFS files...")
+    subprocess.run(["git", "-C", str(cache_path), "lfs", "pull"], check=True)
+
+
+def cmd_pull(args):
     config = _load_config()
     repo_id = _get_repo(args, config, "dataset_repo")
 
     print(f"Pulling dataset from {repo_id}...")
 
-    # Download into cache
-    cache_dir = snapshot_download(
-        repo_id,
-        repo_type="dataset",
-        local_dir=str(HF_CACHE),
-    )
-    cache_path = Path(cache_dir)
+    # Clone/pull via git (single operation, no per-file rate limits)
+    _git_clone_or_pull(repo_id, HF_CACHE)
+    cache_path = HF_CACHE
 
     # Copy labels → data/labeled/
     src_labels = cache_path / "labels"
