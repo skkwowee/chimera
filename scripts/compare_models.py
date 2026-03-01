@@ -233,38 +233,60 @@ def main():
                 pred = model.analyze(pair["image_path"], **kwargs)
             predictions[name] = pred
 
-        # Compare and print table
-        comparisons = print_sample_table(pair["id"], label, predictions)
-
-        # Accumulate
-        sample_result = {
-            "id": pair["id"],
-            "image": str(pair["image_path"]),
-            "label": label,
-            "predictions": {},
-        }
-        for name in models:
-            c = comparisons[name]
-            aggregate[name]["matches"] += c["matches"]
-            aggregate[name]["total"] += c["total"]
-            sample_result["predictions"][name] = {
-                "output": predictions[name],
-                "matches": c["matches"],
-                "total": c["total"],
+        # Compare and print
+        if phase == "planning":
+            # Planning has no ground truth — just print the output
+            print(f"\n=== {pair['id']} ===\n")
+            for name, pred in predictions.items():
+                print(f"  [{name}]")
+                for section in ("analysis", "advice"):
+                    data = pred.get(section)
+                    if data:
+                        print(f"    {section}:")
+                        for k, v in data.items():
+                            print(f"      {k}: {v}")
+                if "raw_response" in pred:
+                    print(f"    raw: {pred['raw_response'][:200]}")
+                print()
+            sample_result = {
+                "id": pair["id"],
+                "image": str(pair["image_path"]),
+                "label": label,
+                "predictions": {name: {"output": pred} for name, pred in predictions.items()},
             }
+        else:
+            comparisons = print_sample_table(pair["id"], label, predictions)
+            sample_result = {
+                "id": pair["id"],
+                "image": str(pair["image_path"]),
+                "label": label,
+                "predictions": {},
+            }
+            for name in models:
+                c = comparisons[name]
+                aggregate[name]["matches"] += c["matches"]
+                aggregate[name]["total"] += c["total"]
+                sample_result["predictions"][name] = {
+                    "output": predictions[name],
+                    "matches": c["matches"],
+                    "total": c["total"],
+                }
         all_results.append(sample_result)
 
     # Summary
     print(f"\n{'='*50}")
-    print("=== Summary ===\n")
-    header = f"| {'Model':<10} | {'Accuracy':<20} |"
-    sep = f"|{'-'*12}|{'-'*22}|"
-    print(header)
-    print(sep)
-    for name in models:
-        a = aggregate[name]
-        pct = a["matches"] / a["total"] * 100 if a["total"] > 0 else 0
-        print(f"| {name:<10} | {a['matches']}/{a['total']} ({pct:.1f}%){'':<8} |")
+    if phase != "planning":
+        print("=== Summary ===\n")
+        header = f"| {'Model':<10} | {'Accuracy':<20} |"
+        sep = f"|{'-'*12}|{'-'*22}|"
+        print(header)
+        print(sep)
+        for name in models:
+            a = aggregate[name]
+            pct = a["matches"] / a["total"] * 100 if a["total"] > 0 else 0
+            print(f"| {name:<10} | {a['matches']}/{a['total']} ({pct:.1f}%){'':<8} |")
+    else:
+        print(f"Planning outputs for {len(all_results)} samples saved.")
 
     # Save results
     output_dir = Path("data/predictions")
