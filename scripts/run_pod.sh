@@ -103,7 +103,7 @@ echo "=== Running inference ==="
 ARGS_STR=""
 [ ${#EXTRA_ARGS[@]} -gt 0 ] && ARGS_STR="${EXTRA_ARGS[*]}"
 
-ssh_cmd "bash -lc 'cd $REPO_DIR && python scripts/compare_models.py $ARGS_STR'"
+ssh_cmd "bash -lc 'export HF_HOME=/workspace/.cache/huggingface && cd $REPO_DIR && python scripts/compare_models.py $ARGS_STR'"
 
 # --- Download results ---
 echo ""
