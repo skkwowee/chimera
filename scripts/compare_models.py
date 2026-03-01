@@ -8,8 +8,8 @@ and compares per-field accuracy against ground truth.
 Usage:
     python scripts/compare_models.py --samples 5
     python scripts/compare_models.py --samples 5 --models claude
-    python scripts/compare_models.py --samples 5 --models qwen
-    python scripts/compare_models.py --samples 5 --models claude qwen
+    python scripts/compare_models.py --samples 5 --models qwen --phase perception
+    python scripts/compare_models.py --samples 5 --models qwen --model-name Qwen/Qwen3.5-27B
 """
 
 import argparse
@@ -140,9 +140,32 @@ def main():
     parser.add_argument("--models", nargs="+", default=["claude", "qwen"],
                         choices=["claude", "qwen"], help="Models to run")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for sampling")
+    parser.add_argument("--phase", type=str, default="perception",
+                        choices=["perception", "planning", "combined"],
+                        help="Prompt phase: perception (HUD-only), planning (strategy from game_state), or combined")
+    parser.add_argument("--model-name", type=str, default=None,
+                        help="Override default Qwen model name/path")
+    parser.add_argument("--perception-run", type=str, default=None,
+                        help="Path to previous perception comparison JSON (required for --phase planning)")
     parser.add_argument("--labeled-dir", type=str, default="data/labeled")
     parser.add_argument("--captures-dir", type=str, default="data/captures")
     args = parser.parse_args()
+
+    # Load perception results for planning phase
+    perception_lookup = {}
+    if args.phase == "planning":
+        if not args.perception_run:
+            print("Error: --perception-run is required for --phase planning")
+            sys.exit(1)
+        with open(args.perception_run) as f:
+            prev = json.load(f)
+        for sample in prev["samples"]:
+            # Grab Qwen's predicted game_state from the perception run
+            qwen_pred = sample.get("predictions", {}).get("Qwen", {})
+            gs = qwen_pred.get("output", {}).get("game_state")
+            if gs:
+                perception_lookup[sample["id"]] = gs
+        print(f"Loaded {len(perception_lookup)} perception results from {args.perception_run}")
 
     labeled_dir = Path(args.labeled_dir)
     captures_dir = Path(args.captures_dir)
@@ -160,16 +183,20 @@ def main():
     samples = random.sample(pairs, min(args.samples, len(pairs)))
     print(f"Sampled {len(samples)} for evaluation (seed={args.seed})")
     print(f"Models: {', '.join(args.models)}")
+    print(f"Phase: {args.phase}")
 
     # Initialize models
     models = {}
     if "claude" in args.models:
-        from src.inference import ClaudeVLMInference
+        from src.inference.claude import ClaudeVLMInference
         models["Claude"] = ClaudeVLMInference()
         print("Claude client ready")
     if "qwen" in args.models:
-        from src.inference import Qwen3VLInference
-        models["Qwen"] = Qwen3VLInference()
+        from src.inference.vlm import Qwen3VLInference
+        qwen_kwargs = {}
+        if args.model_name:
+            qwen_kwargs["model_name"] = args.model_name
+        models["Qwen"] = Qwen3VLInference(**qwen_kwargs)
         print("Loading Qwen model...")
 
     # Run inference and compare
@@ -185,9 +212,25 @@ def main():
 
         # Run each model
         predictions = {}
+        # Map phase arg to analyze kwarg (None for combined)
+        phase = args.phase if args.phase != "combined" else None
+
         for name, model in models.items():
             print(f"  Running {name}...")
-            pred = model.analyze(pair["image_path"])
+            kwargs = {}
+            if name == "Qwen" and phase == "planning":
+                game_state = perception_lookup.get(pair["id"])
+                if not game_state:
+                    print(f"    Skipping: no perception result for {pair['id']}")
+                    continue
+                kwargs["phase"] = "planning"
+                kwargs["game_state"] = game_state
+                pred = model.analyze(pair["image_path"], **kwargs)
+            elif name == "Qwen":
+                kwargs["phase"] = phase
+                pred = model.analyze(pair["image_path"], **kwargs)
+            else:
+                pred = model.analyze(pair["image_path"], **kwargs)
             predictions[name] = pred
 
         # Compare and print table
@@ -233,6 +276,7 @@ def main():
         "timestamp": timestamp,
         "seed": args.seed,
         "models": args.models,
+        "phase": args.phase,
         "num_samples": len(samples),
         "aggregate": {
             name: {

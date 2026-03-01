@@ -450,20 +450,20 @@ tags:
   - vlm
   - game-ai
   - qwen
-base_model: Qwen/Qwen3.5-35B-A3B
+base_model: skkwowee/Qwen3.5-27B-bnb-4bit
 pipeline_tag: image-to-text
 ---
 
-# Chimera — CS2 Game AI (Qwen3.5-35B-A3B)
+# Chimera — CS2 Game AI (Qwen3.5-27B)
 
-Fine-tuned Qwen3.5-35B-A3B MoE for Counter-Strike 2 screenshot analysis and strategic advice.
+Fine-tuned Qwen3.5-27B for Counter-Strike 2 screenshot analysis and strategic advice.
 
 ## Usage
 
 ```python
-from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
+from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
-model = Qwen3_5MoeForConditionalGeneration.from_pretrained("{repo_id}")
+model = Qwen3_5ForConditionalGeneration.from_pretrained("{repo_id}")
 processor = AutoProcessor.from_pretrained("{repo_id}")
 ```
 

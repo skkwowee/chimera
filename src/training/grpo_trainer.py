@@ -1,7 +1,7 @@
 """
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
-Uses transformers + peft for bf16 training of Qwen3.5-35B-A3B MoE on H200.
+Uses transformers + peft for QLoRA training of Qwen3.5-27B (4-bit).
 
 Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON -> zero total reward)
@@ -34,7 +34,7 @@ class CS2GRPOConfig:
     """Configuration for GRPO training."""
 
     # Model settings
-    model_name: str = "Qwen/Qwen3.5-35B-A3B"
+    model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit"
     use_vllm: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
@@ -93,7 +93,7 @@ class CS2GRPOTrainer:
     """
     GRPO trainer for CS2 screenshot analysis.
 
-    Uses bf16 and LoRA via peft on H200 SXM (141 GB).
+    Uses QLoRA (4-bit + LoRA) via peft.
 
     Revised reward architecture (D013):
       - Multiplicative format gate: invalid JSON -> all signals return 0.0
@@ -113,8 +113,8 @@ class CS2GRPOTrainer:
         self.val_dataset = None
 
     def load_model(self):
-        """Load Qwen3.5-35B-A3B MoE in bf16 with LoRA."""
-        from transformers import Qwen3_5MoeForConditionalGeneration, AutoProcessor
+        """Load Qwen3.5-27B (4-bit) with LoRA."""
+        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
         from peft import get_peft_model, LoraConfig
 
         dtype = getattr(torch, self.config.torch_dtype)
@@ -123,7 +123,7 @@ class CS2GRPOTrainer:
         print(f"  vLLM fast inference: {self.config.use_vllm}")
         print(f"  LoRA: {self.config.use_lora}")
 
-        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
+        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
             self.config.model_name,
             device_map="auto",
             torch_dtype=dtype,

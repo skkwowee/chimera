@@ -110,9 +110,8 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 \label{sec:setup}
 
 % TODO: Detail the dataset (size, sources, split)
-% Base model: Qwen3.5-35B-A3B (MoE, 35B total / 3B active per token) in bf16 on H200 SXM (141 GB).
-% MoE gives ~9x faster inference than 27B dense — critical for GRPO with G=16 completions per prompt (D022).
-% Training: LoRA via peft (LoRA rank r=16-64 on bf16 base). Both SFT and GRPO train only LoRA adapters
+% Base model: Qwen3.5-27B (dense, 4-bit NF4 quantized via BitsAndBytes).
+% Training: QLoRA via peft (LoRA rank r=16-64 on 4-bit base). Both SFT and GRPO train only LoRA adapters
 % (~0.1-1% of parameters); base model weights are frozen. Vision layers trainable in SFT, frozen in GRPO (D007).
 % TODO: Specify training hyperparameters for both phases
 % TODO: Define evaluation metrics

@@ -2,7 +2,7 @@
 """
 GRPO training script for CS2 VLM fine-tuning.
 
-Uses transformers + peft for bf16 training of Qwen3.5-35B-A3B MoE on H200.
+Uses transformers + peft for QLoRA training of Qwen3.5-27B (4-bit).
 
 Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON -> zero total reward)
@@ -45,7 +45,7 @@ from src.training import (
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Qwen3.5-35B-A3B on CS2 screenshots using GRPO",
+        description="Train Qwen3.5-27B on CS2 screenshots using GRPO",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
@@ -81,7 +81,7 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="Qwen/Qwen3.5-35B-A3B",
+        default="skkwowee/Qwen3.5-27B-bnb-4bit",
         help="Model name or path (use SFT merged output for SFT->GRPO handoff)",
     )
     model_group.add_argument(

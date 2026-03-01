@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Test Qwen3.5-35B-A3B MoE VLM inference in bf16.
+Test Qwen3.5-27B VLM inference (4-bit).
 
-Loads the full VLM from HuggingFace Hub.
+Loads the VLM from HuggingFace Hub.
 Tests with screenshots if available, otherwise falls back to text-only.
 
 Usage:
@@ -21,11 +21,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from transformers import Qwen3_5MoeForConditionalGeneration, AutoProcessor
+from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
 from src.prompts import CS2_SYSTEM_PROMPT
 from PIL import Image
 
-HUB_REPO = "Qwen/Qwen3.5-35B-A3B"
+HUB_REPO = "skkwowee/Qwen3.5-27B-bnb-4bit"
 
 
 def clear_hf_cache(repo_id: str):
@@ -48,20 +48,20 @@ def clear_hf_cache(repo_id: str):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test Qwen3.5-35B-A3B VLM inference")
+    parser = argparse.ArgumentParser(description="Test Qwen3.5-27B VLM inference")
     parser.add_argument("--clear-cache", action="store_true",
                         help="Delete HF Hub cache for the model after inference")
     args = parser.parse_args()
 
     print("=" * 60)
-    print("Qwen3.5-35B-A3B VLM Inference Test")
+    print("Qwen3.5-27B VLM Inference Test")
     print("=" * 60)
 
     # Load model from Hub
     print(f"\nLoading VLM from {HUB_REPO}...")
     t0 = time.time()
 
-    model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
+    model = Qwen3_5ForConditionalGeneration.from_pretrained(
         HUB_REPO,
         device_map="auto",
         torch_dtype=torch.bfloat16,
