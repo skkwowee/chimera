@@ -116,14 +116,14 @@ class Qwen3VLInference:
         prompt: Optional[str] = None,
         max_new_tokens: Optional[int] = None,
         enable_thinking: bool = True,
-        thinking_budget: int = 512,
+        thinking_budget: Optional[int] = None,
     ) -> dict:
         """Analyze a CS2 screenshot."""
         if self.model is None:
             self.load_model()
 
         if max_new_tokens is None:
-            max_new_tokens = 2048 if enable_thinking else 1024
+            max_new_tokens = 4096 if enable_thinking else 1024
 
         image_path = Path(image_path)
         prompt_text = prompt or CS2_USER_PROMPT
@@ -170,7 +170,7 @@ class Qwen3VLInference:
             top_p=top_p,
             top_k=20,
         )
-        if enable_thinking:
+        if enable_thinking and thinking_budget is not None:
             gen_kwargs["logits_processor"] = [
                 ThinkingBudgetProcessor(self.processor, thinking_budget)
             ]
