@@ -2,6 +2,7 @@
 set -eu
 
 REPO_DIR="/workspace/chimera"
+export HF_HOME="/workspace/.cache/huggingface"
 
 echo "=== Chimera RunPod Setup ==="
 
