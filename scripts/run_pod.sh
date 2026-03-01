@@ -43,6 +43,9 @@ if [ -z "$USER_HOST" ]; then
     exit 1
 fi
 
+# Expand tilde in identity path
+[ -n "$IDENTITY" ] && IDENTITY="${IDENTITY/#\~/$HOME}"
+
 # --- Build SSH/SCP helpers ---
 SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10)
 [ -n "$PORT" ] && SSH_OPTS+=(-p "$PORT")
@@ -72,7 +75,6 @@ echo "Connected."
 echo ""
 echo "=== Copying SSH key to pod ==="
 LOCAL_KEY="${IDENTITY:-$HOME/.ssh/id_rsa}"
-LOCAL_KEY="${LOCAL_KEY/#\~/$HOME}"
 if [ ! -f "$LOCAL_KEY" ]; then
     echo "Error: SSH key not found at $LOCAL_KEY"
     exit 1
