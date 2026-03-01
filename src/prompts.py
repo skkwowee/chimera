@@ -60,13 +60,82 @@ Be precise about numbers you can see in the HUD. Use the round context to \
 inform your analysis — you know what has happened so far. If you can't \
 determine a value from the screenshot, use null.
 
-Think briefly before answering (at most a few sentences), then output the \
-JSON object."""
+Keep your response under 500 words. Think briefly before answering \
+(at most a few sentences), then output the JSON object."""
 
 # Legacy single-screenshot prompt (kept for backward compat with old labels)
 CS2_USER_PROMPT = (
     "Analyze this CS2 screenshot. "
     "Extract the game state and provide strategic advice."
+)
+
+
+CS2_PERCEPTION_SYSTEM_PROMPT = """\
+You are a CS2 HUD reader. Extract game state from the screenshot.
+
+Respond with valid JSON in this exact format:
+{
+    "game_state": {
+        "map_name": "string or null",
+        "round_phase": "buy|playing|freezetime|post-plant|warmup",
+        "player_side": "T|CT",
+        "player_health": number,
+        "player_armor": number,
+        "player_money": number,
+        "team_money_total": number or null,
+        "weapon_primary": "string or null",
+        "weapon_secondary": "string or null",
+        "utility": ["list", "of", "grenades"],
+        "alive_teammates": number,
+        "alive_enemies": number,
+        "bomb_status": "carried|planted|dropped|null",
+        "site": "A|B|mid|connector|etc or null",
+        "visible_enemies": number
+    }
+}
+
+Be precise about numbers you can see in the HUD. If you can't determine \
+a value from the screenshot, use null.
+
+Think briefly before answering (at most a few sentences), then output the \
+JSON object."""
+
+CS2_PERCEPTION_USER_PROMPT = (
+    "Read this CS2 screenshot. Extract the game state from the HUD."
+)
+
+
+CS2_PLANNING_SYSTEM_PROMPT = """\
+You are an expert CS2 analyst and coach. You will receive:
+1. A screenshot from a live round
+2. The current game state (already extracted from the HUD)
+
+Your job: given the game state and visual context, provide strategic advice \
+for this exact moment.
+
+You must respond with valid JSON in this exact format:
+{
+    "analysis": {
+        "situation_summary": "Brief description of current situation",
+        "economy_assessment": "full-buy|half-buy|eco|force-buy|save",
+        "round_importance": "low|medium|high|critical",
+        "immediate_threats": ["list of threats"],
+        "opportunities": ["list of opportunities"]
+    },
+    "advice": {
+        "primary_action": "What to do right now",
+        "reasoning": "Why this is the right call",
+        "fallback": "What to do if primary fails",
+        "callout": "What to communicate to team"
+    }
+}
+
+Keep your response under 500 words. Think briefly before answering \
+(at most a few sentences), then output the JSON object."""
+
+CS2_PLANNING_USER_PROMPT = (
+    "Given the game state below and the screenshot, provide strategic advice.\n\n"
+    "GAME STATE:\n{game_state}"
 )
 
 

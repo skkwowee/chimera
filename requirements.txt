@@ -30,6 +30,7 @@ datasets>=2.14.0
 # Training
 trl>=0.12.0
 peft>=0.13.0
+bitsandbytes>=0.43.0
 
 # Optional: Flash attention for faster inference
 # pip install flash-attn --no-build-isolation

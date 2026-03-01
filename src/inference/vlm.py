@@ -1,5 +1,5 @@
 """
-VLM inference for CS2 screenshot analysis using Qwen3.5-35B-A3B MoE.
+VLM inference for CS2 screenshot analysis using Qwen3.5-27B (dense, 4-bit).
 """
 
 import json
@@ -10,7 +10,14 @@ import torch
 from PIL import Image
 from transformers.generation import LogitsProcessor
 
-from src.prompts import CS2_SYSTEM_PROMPT, CS2_USER_PROMPT
+from src.prompts import (
+    CS2_SYSTEM_PROMPT,
+    CS2_USER_PROMPT,
+    CS2_PERCEPTION_SYSTEM_PROMPT,
+    CS2_PERCEPTION_USER_PROMPT,
+    CS2_PLANNING_SYSTEM_PROMPT,
+    CS2_PLANNING_USER_PROMPT,
+)
 
 
 class ThinkingBudgetProcessor(LogitsProcessor):
@@ -76,14 +83,14 @@ def parse_json_response(response: str) -> dict:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3.5-35B-A3B MoE VLM in bf16.
+    Run inference using Qwen3.5-27B dense VLM (4-bit quantized).
 
-    Loads from HuggingFace Hub using Qwen3_5MoeForConditionalGeneration.
+    Loads from HuggingFace Hub using Qwen3_5ForConditionalGeneration.
     """
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3.5-35B-A3B",
+        model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
     ):
@@ -95,11 +102,11 @@ class Qwen3VLInference:
 
     def load_model(self):
         """Load the model and processor from HuggingFace Hub."""
-        from transformers import Qwen3_5MoeForConditionalGeneration, AutoProcessor
+        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
 
         print(f"Loading {self.model_name}...")
 
-        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
+        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
             self.model_name,
             device_map="auto",
             torch_dtype=self.dtype,
@@ -116,29 +123,54 @@ class Qwen3VLInference:
         prompt: Optional[str] = None,
         max_new_tokens: Optional[int] = None,
         enable_thinking: bool = True,
-        thinking_budget: Optional[int] = None,
+        thinking_budget: Optional[int] = 512,
+        phase: Optional[str] = None,
+        system_prompt: Optional[str] = None,
+        game_state: Optional[dict] = None,
     ) -> dict:
-        """Analyze a CS2 screenshot."""
+        """Analyze a CS2 screenshot.
+
+        Args:
+            phase: "perception" for HUD-only extraction (no thinking),
+                   "planning" for strategy given game_state (with thinking),
+                   None for combined analysis+advice (original behavior).
+            system_prompt: Override the system prompt. If None, chosen by phase.
+            game_state: Game state dict to inject into planning prompt.
+                        Required when phase="planning".
+        """
         if self.model is None:
             self.load_model()
+
+        # Phase-based defaults
+        if phase == "perception":
+            enable_thinking = False
+            system_prompt = system_prompt or CS2_PERCEPTION_SYSTEM_PROMPT
+            prompt = prompt or CS2_PERCEPTION_USER_PROMPT
+        elif phase == "planning":
+            system_prompt = system_prompt or CS2_PLANNING_SYSTEM_PROMPT
+            if prompt is None:
+                game_state_str = json.dumps(game_state, indent=2) if game_state else "{}"
+                prompt = CS2_PLANNING_USER_PROMPT.format(game_state=game_state_str)
+        else:
+            system_prompt = system_prompt or CS2_SYSTEM_PROMPT
+            prompt = prompt or CS2_USER_PROMPT
 
         if max_new_tokens is None:
             max_new_tokens = 4096 if enable_thinking else 1024
 
         image_path = Path(image_path)
-        prompt_text = prompt or CS2_USER_PROMPT
 
         # Load image
         image = Image.open(image_path).convert("RGB")
 
         # Qwen3.5 message format — system prompt separate from user message
         messages = [
-            {"role": "system", "content": [{"type": "text", "text": CS2_SYSTEM_PROMPT}]},
+            {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": image},
-                    {"type": "text", "text": prompt_text},
+                    {"type": "text", "text": prompt},
                 ],
             },
         ]
