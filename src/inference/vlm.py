@@ -153,16 +153,22 @@ class Qwen3VLInference:
             enable_thinking=enable_thinking,
         ).to(self.model.device)
 
-        # Build generation kwargs — Qwen3.5 recommended sampling params
-        # (greedy decoding causes repetition/stuck outputs with thinking mode)
+        # Qwen3.5 recommended sampling params (from official model card)
+        # Thinking + structured: temp=0.6, top_p=0.95
+        # Non-thinking general:  temp=0.7, top_p=0.8
+        # Never use greedy (do_sample=False) or repetition_penalty > 1.0
+        if enable_thinking:
+            temperature, top_p = 0.6, 0.95
+        else:
+            temperature, top_p = 0.7, 0.8
+
         gen_kwargs = dict(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=True,
-            temperature=1.0,
-            top_p=0.95,
+            temperature=temperature,
+            top_p=top_p,
             top_k=20,
-            repetition_penalty=1.5,
         )
         if enable_thinking:
             gen_kwargs["logits_processor"] = [
