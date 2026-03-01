@@ -86,7 +86,7 @@ ssh_cmd "chmod 600 ~/.ssh/id_rsa && ssh-keyscan -t ed25519 github.com >> ~/.ssh/
 # --- Setup ---
 echo ""
 echo "=== Setting up pod ==="
-ssh_cmd "bash -lc '
+ssh_cmd -t "bash -lc '
     if [ -d $REPO_DIR ]; then
         echo \"Repo exists, pulling latest...\"
         git -C $REPO_DIR pull
@@ -103,7 +103,7 @@ echo "=== Running inference ==="
 ARGS_STR=""
 [ ${#EXTRA_ARGS[@]} -gt 0 ] && ARGS_STR="${EXTRA_ARGS[*]}"
 
-ssh_cmd "bash -lc 'export HF_HOME=/workspace/.cache/huggingface && cd $REPO_DIR && python scripts/compare_models.py $ARGS_STR'"
+ssh_cmd -t "bash -lc 'export HF_HOME=/workspace/.cache/huggingface && cd $REPO_DIR && python -u scripts/compare_models.py $ARGS_STR'"
 
 # --- Download results ---
 echo ""
