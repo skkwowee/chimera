@@ -23,13 +23,20 @@ if ! git lfs version >/dev/null 2>&1; then
     git lfs install
 fi
 
+# Install uv for fast dependency management
+if ! command -v uv >/dev/null 2>&1; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
 # Install dependencies (RunPod templates have torch/CUDA pre-installed)
 echo "Installing dependencies..."
-pip install -r requirements.txt
+uv pip install --system -r requirements.txt
 
 # Pull data (labels + captures from public Hub repo)
 echo "Pulling data from Hub..."
-python scripts/data.py pull
+python scripts/data.py pull --all
 
 echo ""
 echo "=== Setup complete ==="
