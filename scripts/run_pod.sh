@@ -68,6 +68,19 @@ if ! ssh_cmd "echo ok" >/dev/null 2>&1; then
 fi
 echo "Connected."
 
+# --- Copy SSH key to pod for GitHub access ---
+echo ""
+echo "=== Copying SSH key to pod ==="
+LOCAL_KEY="${IDENTITY:-$HOME/.ssh/id_rsa}"
+LOCAL_KEY="${LOCAL_KEY/#\~/$HOME}"
+if [ ! -f "$LOCAL_KEY" ]; then
+    echo "Error: SSH key not found at $LOCAL_KEY"
+    exit 1
+fi
+ssh_cmd "mkdir -p ~/.ssh && chmod 700 ~/.ssh"
+scp_cmd "$LOCAL_KEY" "$USER_HOST:~/.ssh/id_rsa"
+ssh_cmd "chmod 600 ~/.ssh/id_rsa && ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null"
+
 # --- Setup ---
 echo ""
 echo "=== Setting up pod ==="
