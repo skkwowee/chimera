@@ -17,7 +17,7 @@ from typing import Iterator
 
 from PIL import Image
 
-from ..prompts import build_user_prompt
+from ..prompts import CS2_PERCEPTION_SYSTEM_PROMPT, build_user_prompt
 
 
 SUPPORTED_IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -288,7 +288,10 @@ def prepare_conversation_format(
     # Text prompt with context
     content.append({"type": "text", "text": prompt})
 
-    messages = [{"role": "user", "content": content}]
+    messages = [
+        {"role": "system", "content": CS2_PERCEPTION_SYSTEM_PROMPT},
+        {"role": "user", "content": content},
+    ]
 
     if response is not None:
         messages.append(

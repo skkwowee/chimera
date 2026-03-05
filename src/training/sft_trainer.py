@@ -64,6 +64,7 @@ class CS2SFTConfig:
     output_dir: str = "outputs/sft"
     save_steps: int = 100
     logging_steps: int = 10
+    report_to: str = "none"
 
     def to_dict(self) -> dict:
         """Convert config to dictionary."""
@@ -143,33 +144,74 @@ class CS2SFTTrainer:
             print(f"GPU memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
 
     def _vision_data_collator(self, examples):
-        """Collate multimodal examples using processor."""
-        texts = [
-            self.processor.apply_chat_template(
-                ex["messages"], tokenize=False, add_generation_prompt=False,
-            )
-            for ex in examples
-        ]
-        # Extract images from messages
-        images = []
+        """Collate multimodal examples using processor.
+
+        Uses process_vision_info to properly load PIL images from
+        message image paths. Masks prompt tokens in labels so loss
+        is only computed on the assistant response.
+        """
+        from qwen_vl_utils import process_vision_info
+
+        texts = []
+        all_images = []
         for ex in examples:
-            ex_images = []
-            for msg in ex["messages"]:
-                content = msg.get("content", [])
-                if isinstance(content, list):
-                    for part in content:
-                        if isinstance(part, dict) and part.get("type") == "image":
-                            ex_images.append(part["image"])
-            images.append(ex_images if ex_images else None)
+            messages = json.loads(ex["messages_json"])
+            text = self.processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False,
+            )
+            texts.append(text)
+            image_inputs, _ = process_vision_info(messages)
+            if image_inputs:
+                all_images.extend(image_inputs)
 
         batch = self.processor(
             text=texts,
-            images=images,
+            images=all_images if all_images else None,
             padding=True,
             return_tensors="pt",
         )
-        batch["labels"] = batch["input_ids"].clone()
+
+        # Mask prompt tokens: only compute loss on assistant response.
+        # Find last <|im_start|>assistant\n sequence and mask everything before it.
+        labels = batch["input_ids"].clone()
+        im_start_id = self.processor.tokenizer.convert_tokens_to_ids("<|im_start|>")
+        assistant_token_id = self.processor.tokenizer.encode(
+            "assistant", add_special_tokens=False
+        )[0]
+        newline_token_id = self.processor.tokenizer.encode(
+            "\n", add_special_tokens=False
+        )[0]
+
+        for i in range(labels.shape[0]):
+            seq = labels[i]
+            # Find last occurrence of <|im_start|> assistant \n
+            mask_end = 0
+            for j in range(len(seq) - 2):
+                if (
+                    seq[j].item() == im_start_id
+                    and seq[j + 1].item() == assistant_token_id
+                    and seq[j + 2].item() == newline_token_id
+                ):
+                    mask_end = j + 3  # mask up to and including \n
+            labels[i, :mask_end] = -100
+            # Also mask padding tokens
+            labels[i, seq == self.processor.tokenizer.pad_token_id] = -100
+
+        batch["labels"] = labels
         return batch
+
+    @staticmethod
+    def _serialize_messages(data: list[dict]) -> list[dict]:
+        """Serialize messages to JSON strings for Arrow compatibility.
+
+        HuggingFace Dataset / PyArrow cannot handle the mixed-type content
+        field (string for system, list-of-dicts for user/assistant). Store
+        as a JSON string column instead.
+        """
+        return [
+            {"messages_json": json.dumps(item["messages"]), **{k: v for k, v in item.items() if k != "messages"}}
+            for item in data
+        ]
 
     def prepare_data(
         self,
@@ -185,10 +227,10 @@ class CS2SFTTrainer:
         """
         from datasets import Dataset
 
-        self.train_dataset = Dataset.from_list(train_data)
+        self.train_dataset = Dataset.from_list(self._serialize_messages(train_data))
 
         if val_data:
-            self.val_dataset = Dataset.from_list(val_data)
+            self.val_dataset = Dataset.from_list(self._serialize_messages(val_data))
 
         print(f"Prepared {len(self.train_dataset)} training samples")
         if self.val_dataset:
@@ -244,12 +286,11 @@ class CS2SFTTrainer:
             bf16=self.config.torch_dtype == "bfloat16",
             fp16=self.config.torch_dtype == "float16",
             # SFT-specific settings
-            max_seq_length=self.config.max_seq_length,
-            dataset_text_field="",  # We use messages format
+            max_length=self.config.max_seq_length,
             dataset_kwargs={"skip_prepare_dataset": True},
             remove_unused_columns=False,
             # Reporting
-            report_to="wandb",
+            report_to=self.config.report_to,
         )
 
         # Create SFT trainer

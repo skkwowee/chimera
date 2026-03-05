@@ -19,6 +19,9 @@ Usage:
     # Dry run (load model and check VRAM, no training)
     python scripts/train_sft.py --dry-run
 
+    # Benchmark: time 3 steps and estimate total training time
+    python scripts/train_sft.py --benchmark
+
     # Then use the merged output as GRPO base:
     python scripts/train_grpo.py --model-name outputs/sft/final_model/merged_16bit
 """
@@ -196,6 +199,14 @@ def parse_args():
 
     # Other options
     parser.add_argument(
+        "--benchmark",
+        type=int,
+        nargs="?",
+        const=3,
+        metavar="N",
+        help="Time N forward+backward steps (default: 3) and estimate total training time",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Load model and check VRAM usage without training",
@@ -204,6 +215,11 @@ def parse_args():
         "--eval-only",
         action="store_true",
         help="Run evaluation only (no training)",
+    )
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable Weights & Biases logging",
     )
     parser.add_argument(
         "--seed",
@@ -239,6 +255,7 @@ def main():
         output_dir=args.output,
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
+        report_to="wandb" if args.wandb else "none",
     )
 
     print("=" * 60)
@@ -263,6 +280,87 @@ def main():
         print("Dry run: loading model to check VRAM usage...")
         trainer.load_model()
         print("\nDry run complete. Model loaded successfully.")
+        return
+
+    # Benchmark: time forward+backward steps and estimate total training time
+    if args.benchmark is not None:
+        import time
+        import torch
+
+        n_steps = args.benchmark
+
+        print("Loading data for benchmark...")
+        screenshots_dir = Path(args.screenshots)
+        labels_dir = Path(args.labels)
+        sft_items = convert_labeled_to_sft_format(
+            screenshots_dir=screenshots_dir, labels_dir=labels_dir,
+        )
+        if len(sft_items) == 0:
+            print("Error: No labeled data found!")
+            sys.exit(1)
+        train_data, _ = create_sft_dataset(sft_items, train_ratio=args.train_ratio, seed=args.seed)
+
+        print(f"Benchmark: {len(sft_items)} samples, {n_steps} timed steps")
+        print()
+
+        trainer.load_model()
+        trainer.prepare_data(train_data)
+
+        # Build a batch from the first sample
+        batch = trainer._vision_data_collator([trainer.train_dataset[0]])
+        batch = {k: v.to(trainer.model.device) for k, v in batch.items()}
+
+        seq_len = batch["input_ids"].shape[1]
+        image_token_id = trainer.processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
+        n_vision = (batch["input_ids"] == image_token_id).sum().item()
+        n_text = seq_len - n_vision
+
+        print(f"Sequence: {seq_len} tokens ({n_vision} vision, {n_text} text)")
+        trainer._print_memory_usage()
+        print()
+
+        # Warmup
+        print("Warmup step...")
+        trainer.model.train()
+        out = trainer.model(**batch)
+        out.loss.backward()
+        trainer.model.zero_grad()
+        torch.cuda.synchronize()
+
+        vram_after = torch.cuda.memory_allocated() / 1024**3
+        vram_reserved = torch.cuda.memory_reserved() / 1024**3
+        print(f"VRAM after first step: {vram_after:.2f}GB allocated, {vram_reserved:.2f}GB reserved")
+        print()
+
+        # Timed steps
+        times = []
+        for i in range(n_steps):
+            torch.cuda.synchronize()
+            t0 = time.perf_counter()
+            out = trainer.model(**batch)
+            out.loss.backward()
+            trainer.model.zero_grad()
+            torch.cuda.synchronize()
+            elapsed = time.perf_counter() - t0
+            times.append(elapsed)
+            print(f"  Step {i+1}/{n_steps}: {elapsed:.2f}s (loss={out.loss.item():.4f})")
+
+        avg = sum(times) / len(times)
+        total_steps = len(train_data) * config.num_epochs
+        # With gradient accumulation, optimizer steps = total_steps / grad_accum
+        # but forward+backward happens every step
+        est_hours = (avg * total_steps) / 3600
+
+        print()
+        print("=" * 60)
+        print("Benchmark Results")
+        print("=" * 60)
+        print(f"Avg step time:    {avg:.2f}s")
+        print(f"Steps per epoch:  {len(train_data)}")
+        print(f"Total steps:      {total_steps} ({config.num_epochs} epochs)")
+        print(f"Estimated total:  {est_hours:.1f} hours")
+        print(f"VRAM peak:        {torch.cuda.max_memory_allocated() / 1024**3:.2f}GB")
+        print(f"Inference speed:  ~{1/avg:.2f} samples/sec")
         return
 
     # Load and prepare data
