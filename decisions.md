@@ -992,3 +992,97 @@ D019 rejected MoE because BnB NF4 quantization is incompatible with Qwen3.5's pa
 Quantization scripts deleted (no longer needed without NF4): `scripts/quantize_base_model.py`, `scripts/cloud_quantize.py`, `scripts/harness_quantize.sh`, `scripts/harness_cloud_quantize.sh`.
 
 **Status:** Implemented. Supersedes D019 (27B dense) and D020 (cloud quantization).
+
+---
+
+## D023: Data sparsity diagnosis and hierarchical state bucketing for contrastive rewards (2026-03-13)
+
+**Decision:** Before running GRPO training, implement a sparsity diagnostic that measures whether the dataset has enough state coverage for meaningful reward signals — particularly the negative cases (model disagrees with pro on a losing round). Introduce hierarchical state bucketing to enable contrastive reward pairing as data scales.
+
+### The problem
+
+R_outcome's negative signal is weak by design. The Ω signal matrix at φ=1 gives agree+lose = 0.2 and deviate+lose = 0.5 — a gap of only 0.3. After multiplying by R_decision and φ (often < 1), the actual gradient from "you endorsed a losing play" is tiny. GRPO needs within-group variance across the G=16 completions to learn. If most completions on a losing round score ~0.3, the advantage is near-zero and no learning happens.
+
+The deeper issue: R_decision compares model output against what the pro *did*, but on losing rounds the pro's action is the wrong baseline. We want to compare against what *would have won*. This requires observing the same strategic situation with both outcomes — a **contrastive pair**. Without enough data density, most strategic situations appear only once, making contrastive pairing impossible.
+
+The algorithm and reward architecture (D013-D016) are not wrong. The problem is **data sparsity** — not enough observed states to construct the reward signal the architecture needs to work well on negative cases.
+
+### Keyword extraction compounds the problem
+
+R_decision maps free-text model output to behavioral features via keyword extraction (_classify_movement, _extract_utility_types, etc.). This is lossy and asymmetric:
+
+- Precise model text ("hold angle and wait for info") maps cleanly to features.
+- Vague model text ("play around the situation") returns None for most features, and _score_behavioral_alignment returns 0.0 on an empty feature set.
+- "Unscoreable advice" and "wrong advice" get the same reward. The model learns to be vague.
+
+This is a separate problem (addressed by structured action space — future decision) but it interacts with data sparsity: noisy rewards need *more* data to overcome, not less.
+
+### State bucketing for contrastive rewards
+
+To build contrastive pairs, we need a fingerprint function `f(s) → bucket` that groups strategically equivalent game states. Two samples in the same bucket with opposite round outcomes form a contrastive pair.
+
+**State dimensions that matter for strategic decisions:**
+
+Tier 1 — must match exactly (change optimal play completely):
+- `side`: T or CT
+- `alive_t × alive_ct`: numeric advantage (~15 realistic combinations)
+- `bomb_status`: {not_planted, planted, dropped}
+- `map`: different maps have fundamentally different rotations
+
+Tier 2 — bucket loosely (similar strategies apply across nearby values):
+- `economy_matchup`: collapse 4×4 per-side tiers into ~6 meaningful matchups (eco_vs_full, mirror_eco, mirror_full, force_vs_full, etc.)
+- `round_time_bucket`: {early: <30s, mid: 30-60s, late: >60s, post-plant}
+- `pov_health_tier`: {full: 80-100, damaged: 40-79, critical: <40}
+- `pov_weapon_class`: {rifle, awp, smg_shotgun, pistol, knife_none}
+- `pov_zone`: ~8-12 strategic zones per map (A site, B site, mid, connector, etc.)
+
+Tier 3 — team aggregates:
+- `team_weapon_tier`: {full_rifles, mixed, eco_weapons} × `team_has_awp`: bool
+- `weakened_teammates`: {0, 1, 2+} (count of teammates in damaged/critical health)
+- `team_spread`: {stacked, split, spread} (spatial distribution across zones)
+
+Full state space at maximum granularity: ~57 million buckets. Obviously too sparse for exact matching.
+
+### Hierarchical fallback
+
+Use the finest bucketing level that has ≥K observations (K ≈ 5-10) with each outcome (win and loss). If the finest level is too sparse, fall back to coarser levels:
+
+```
+Level 2 (finest): all tiers → ~57M buckets → viable at 1,000+ demos
+Level 1 (medium): Tier 1 + economy + time + health + weapon → ~15K buckets → viable at 100+ demos
+Level 0 (coarsest): side × advantage_bucket × bomb_status → 30 buckets → viable at any scale
+```
+
+For each training sample, find contrastive pairs at the finest available level. Samples without any contrastive pair fall back to the existing R_decision against the pro's actual behavior.
+
+### Sparsity diagnostic (must run before GRPO)
+
+Before investing GPU hours on GRPO training, run a diagnostic script against the dataset that reports:
+
+1. **Bucket coverage by level:** For each hierarchy level, how many buckets exist, how many have both win+loss outcomes, what % of training samples fall into covered buckets.
+2. **Within-bucket behavioral variance:** For covered buckets, how much do pro behavioral vectors differ between wins and losses? If they don't differ, contrastive pairing adds no signal even with infinite data.
+3. **Simulated reward variance:** Compute R_outcome across samples and measure within-group variance GRPO would see. Near-zero variance = no learning on those samples.
+
+### Coverage math (estimates)
+
+Each demo ≈ 24 rounds × ~8-10 screenshots = ~200 state observations.
+
+| Scale | Observations | Level 0 (30 buckets) | Level 1 (~15K buckets) | Level 2 (~57M buckets) |
+|-------|-------------|---------------------|----------------------|----------------------|
+| 4 demos | ~800 | ~27/bucket avg, some coverage | ~0.05/bucket, dead | dead |
+| 100 demos | ~20,000 | full coverage | ~1.3/bucket, ~20-30% pairs | dead |
+| 500 demos | ~100,000 | full | ~6.7/bucket, ~50% pairs | sparse |
+| 1,000 demos | ~200,000 | full | full | ~0.004/bucket, ~5-10% pairs |
+
+At current 4-demo scale: only Level 0 is viable, and even then barely. The sparsity diagnostic will confirm the exact numbers.
+
+### Implications for training roadmap
+
+1. **Now (4 demos):** Don't attempt contrastive rewards. Focus on structured action space to clean up keyword extraction noise (pure reward quality, data-scale independent). Run the sparsity diagnostic to quantify exact coverage gaps.
+2. **At 100+ demos:** Enable Level 0 + Level 1 contrastive bucketing.
+3. **At 500+ demos:** Full Level 1 coverage, partial Level 2.
+4. **At 1,000+ demos:** Full hierarchical contrastive rewards.
+
+GRPO training (F06) can proceed at 4 demos with the existing reward architecture — the positive signal (agree+win) is strong and R_percept provides clean supervised gradient. But the negative case learning will be limited. The sparsity diagnostic quantifies exactly how limited.
+
+**Status:** Decided. Sparsity diagnostic script needed before F06. Contrastive reward implementation deferred until data scale supports it.
