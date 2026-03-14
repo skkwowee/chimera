@@ -1017,39 +1017,76 @@ R_decision maps free-text model output to behavioral features via keyword extrac
 
 This is a separate problem (addressed by structured action space — future decision) but it interacts with data sparsity: noisy rewards need *more* data to overcome, not less.
 
-### State bucketing for contrastive rewards
+### State schema for contrastive rewards
 
 To build contrastive pairs, we need a fingerprint function `f(s) → bucket` that groups strategically equivalent game states. Two samples in the same bucket with opposite round outcomes form a contrastive pair.
 
-**State dimensions that matter for strategic decisions:**
+#### Sample filter: active fights
 
-Tier 1 — must match exactly (change optimal play completely):
-- `side`: T or CT
-- `alive_t × alive_ct`: numeric advantage (~15 realistic combinations)
-- `bomb_status`: {not_planted, planted, dropped}
-- `map`: different maps have fundamentally different rotations
+Frames with enemies visible on-screen at close/mid range are **active fights**, not planning moments. The "correct advice" is "shoot them" — there's no strategic decision for GRPO to optimize. These frames are:
+- **Included in SFT** (model learns to read game state during fights)
+- **Excluded from GRPO** (no meaningful reward signal for strategic reasoning)
 
-Tier 2 — bucket loosely (similar strategies apply across nearby values):
-- `economy_matchup`: collapse 4×4 per-side tiers into ~6 meaningful matchups (eco_vs_full, mirror_eco, mirror_full, force_vs_full, etc.)
-- `round_time_bucket`: {early: <30s, mid: 30-60s, late: >60s, post-plant}
-- `pov_health_tier`: {full: 80-100, damaged: 40-79, critical: <40}
-- `pov_weapon_class`: {rifle, awp, smg_shotgun, pistol, knife_none}
-- `pov_zone`: ~8-12 strategic zones per map (A site, B site, mid, connector, etc.)
+Only planning frames (no enemies on screen, or 1 enemy at long range not yet engaged) enter the GRPO training set.
 
-Tier 3 — team aggregates:
-- `team_weapon_tier`: {full_rifles, mixed, eco_weapons} × `team_has_awp`: bool
-- `weakened_teammates`: {0, 1, 2+} (count of teammates in damaged/critical health)
-- `team_spread`: {stacked, split, spread} (spatial distribution across zones)
+#### State dimensions
 
-Full state space at maximum granularity: ~57 million buckets. Obviously too sparse for exact matching.
+| # | Dimension | Buckets | Source |
+|---|-----------|---------|--------|
+| 1 | side | T, CT | tick data |
+| 2 | alive_t | 0-5 | tick data |
+| 3 | alive_ct | 0-5 | tick data |
+| 4 | bomb_status | not_planted, planted, dropped | bomb events |
+| 5 | map | per demo | header |
+| 6 | economy_matchup | ~6 categories (eco_vs_full, mirror_eco, mirror_full, force_vs_full, etc.) | round start equipment |
+| 7 | round_time_bucket | early (<30s), mid (30-60s), late (>60s), post-plant | tick data |
+| 8 | pov_health | healthy (≥30), critical (<30) | tick data |
+| 9 | pov_weapon_class | rifle, awp, force_rifle, smg_shotgun, force_angle, pistol | inventory |
+| 10 | pov_zone | ~20 per map (coordinate-defined regions) | tick data positions |
+| 11 | fresh_enemies | [(zone, weapon_class), ...] all known, 0-5s recency | tick data positions |
+| 12 | fresh_allies | [(zone, weapon_class), ...] all known, 0-5s recency | tick data positions |
+| 13 | stale_enemies | {A_area: count, B_area: count, mid: count, spawn: count}, 5-15s recency | tick data positions |
+| 14 | stale_allies | {A_area: count, B_area: count, mid: count, spawn: count}, 5-15s recency | tick data positions |
+
+**Weapon classes (dimension 9, also used in fresh player entries):**
+
+| Class | Weapons | Strategic meaning |
+|-------|---------|-------------------|
+| rifle | AK-47, M4A4, M4A1-S, AUG, SG 553 | Full buy, standard engagement |
+| awp | AWP | Angle holding, one-shot body, team plays around |
+| force_rifle | Galil, FAMAS | Force/half buy, worse stats |
+| smg_shotgun | MAC-10, MP9, MP7, UMP, P90, Nova, MAG-7, XM1014, etc. | Close range, anti-eco |
+| force_angle | Desert Eagle, R8 Revolver, SSG 08 | Force-buy, headshot angles, range |
+| pistol | USP-S, Glock, P250, Five-SeveN, Tec-9, CZ75, Dualies | Eco / default |
+
+**Health bucketing rationale:** Above 30hp, most rifles need 2+ body shots. Below 30, one bullet from anything kills — must play for trade/save, can't take fair fights. Two buckets, not three.
+
+**On-screen vs off-screen distinction:** On-screen spatial reasoning (where enemies are in the frame, distance, angles) is handled by the vision encoder through SFT — it's raw visual input, not discretized. The state schema only captures off-screen knowledge (dimensions 11-14), which comes from minimap, killfeed, and round context.
+
+**Position recency (TTL):** Enemy/ally position info decays fast — players can cross the map in ~15 seconds.
+- **Fresh (0-5s):** Specific zone preserved. Player is likely still there or very near.
+- **Stale (5-15s):** Collapsed to coarse cluster (A area, B area, mid, spawn). Could have moved within the area, specific callout is false precision.
+- **Expired (>15s):** Dropped entirely. Just "alive somewhere" — no zone info.
+
+**Zone definition:** ~20 zones per map, defined as bounding regions in the tick data coordinate space (not community callout names). Zones represent strategically distinct positions with different angles, rotation paths, and site access.
+
+**Stale clusters:** The ~20 zones per map collapse into ~4 clusters for stale entries: A area, B area, mid, spawn/rotate. These represent broad map control regions.
+
+#### State similarity and generalization
+
+The discrete bucketing serves one purpose: finding contrastive pairs to construct better reward signals. The model never sees the buckets — it sees the screenshot + context string and builds its own continuous internal representation of game state through the vision encoder and language layers.
+
+State similarity (knowing that "2 enemies A, force buy" is strategically close to "2 enemies A, full buy") is **emergent from training**, not encoded through heuristic distance functions. The model learns these relationships by training on enough diverse states that it can interpolate. Injecting hand-crafted state distance metrics risks encoding wrong assumptions about which states are similar.
+
+The bucketing is a simple lookup mechanism. The model does the hard work of relating states.
 
 ### Hierarchical fallback
 
 Use the finest bucketing level that has ≥K observations (K ≈ 5-10) with each outcome (win and loss). If the finest level is too sparse, fall back to coarser levels:
 
 ```
-Level 2 (finest): all tiers → ~57M buckets → viable at 1,000+ demos
-Level 1 (medium): Tier 1 + economy + time + health + weapon → ~15K buckets → viable at 100+ demos
+Level 2 (finest): all dimensions → viable at 1,000+ demos
+Level 1 (medium): dims 1-10 (drop fresh/stale player positions) → viable at 100+ demos
 Level 0 (coarsest): side × advantage_bucket × bomb_status → 30 buckets → viable at any scale
 ```
 
@@ -1065,16 +1102,16 @@ Before investing GPU hours on GRPO training, run a diagnostic script against the
 
 ### Coverage math (estimates)
 
-Each demo ≈ 24 rounds × ~8-10 screenshots = ~200 state observations.
+Each demo ≈ 24 rounds × ~8-10 screenshots = ~200 state observations. After filtering active fights, ~60-70% remain as planning frames.
 
-| Scale | Observations | Level 0 (30 buckets) | Level 1 (~15K buckets) | Level 2 (~57M buckets) |
-|-------|-------------|---------------------|----------------------|----------------------|
-| 4 demos | ~800 | ~27/bucket avg, some coverage | ~0.05/bucket, dead | dead |
-| 100 demos | ~20,000 | full coverage | ~1.3/bucket, ~20-30% pairs | dead |
-| 500 demos | ~100,000 | full | ~6.7/bucket, ~50% pairs | sparse |
-| 1,000 demos | ~200,000 | full | full | ~0.004/bucket, ~5-10% pairs |
+| Scale | Planning frames | Level 0 (30 buckets) | Level 1 (dims 1-10) | Level 2 (all dims) |
+|-------|----------------|---------------------|---------------------|-------------------|
+| 4 demos | ~500 | some coverage | too sparse | dead |
+| 100 demos | ~13,000 | full coverage | partial pairs (~20-30%) | dead |
+| 500 demos | ~65,000 | full | good coverage (~50%) | sparse |
+| 1,000 demos | ~130,000 | full | full | partial (~5-10%) |
 
-At current 4-demo scale: only Level 0 is viable, and even then barely. The sparsity diagnostic will confirm the exact numbers.
+At current 4-demo scale: only Level 0 is viable. The sparsity diagnostic will confirm exact numbers.
 
 ### Implications for training roadmap
 

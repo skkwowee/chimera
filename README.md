@@ -46,10 +46,10 @@ See `decisions.md` D013–D015 for the full mathematical formulation, design rat
 
 | Model | Description |
 |-------|-------------|
-| A | Qwen3.5-27B zero-shot (no training) |
-| B | Qwen3.5-27B + SFT only (visual grounding, no GRPO) |
-| C | Qwen3.5-27B + SFT + GRPO (visual grounding + strategic reasoning) |
-| D | Qwen3.5-27B + GRPO only (no SFT, tests whether SFT phase is necessary) |
+| A | Qwen3.5-35B-A3B zero-shot (no training) |
+| B | Qwen3.5-35B-A3B + SFT only (visual grounding, no GRPO) |
+| C | Qwen3.5-35B-A3B + SFT + GRPO (visual grounding + strategic reasoning) |
+| D | Qwen3.5-35B-A3B + GRPO only (no SFT, tests whether SFT phase is necessary) |
 
 If C > B, GRPO improves reasoning beyond what SFT alone provides. If C > D, SFT visual grounding is a necessary foundation for effective GRPO.
 
@@ -61,7 +61,8 @@ Each step is isolated: it reads from defined inputs, writes to defined outputs, 
 - [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs ([cs2-tools](https://github.com/skkwowee/cs2-tools)). Interactive demo viewer ([cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)) with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
 - [ ] **Step 3 — Screenshot capture.** Capture screenshots from the CS2 client using `cs2-capture` with pre-generated capture plans. Each plan specifies tick positions and camera angles derived from demo data. Produces (screenshot, exact_game_state) pairs with engine-accurate ground truth from Parquet tick data.
 - [ ] **Step 4 — Phase 1: Visual grounding (SFT).** SFT on Qwen3.5-27B with screenshot–game state pairs. LoRA on vision + language layers. Model learns to read the HUD accurately. Run zero-shot eval (Model A) to establish baseline.
-- [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro behavioral features (movement, utility, engagement timing from tick data) + round_won + player_contribution (φ).
+- [ ] **Step 5 — GRPO dataset from demos.** Convert demo snapshots into decision training format. Each sample: game state → pro behavioral features (movement, utility, engagement timing from tick data) + round_won + player_contribution (φ). Active fight frames (enemies on screen) filtered to SFT-only; planning frames enter GRPO.
+- [ ] **Step 5a — Data sparsity diagnostic.** Measure state bucket coverage across the dataset before GRPO training (D023). Hierarchical bucketing over 14 state dimensions with contrastive pair availability analysis. Must pass before Step 6.
 - [ ] **Step 6 — Phase 2: Strategic reasoning (GRPO).** Train Models B, C, D. 3 reward signals + multiplicative format gate + KL regularization (see D013). Compare SFT-only vs SFT+GRPO vs GRPO-only.
 - [ ] **Step 7 — Evaluation + analysis.** Per-field accuracy, consistency scores, reasoning quality across all models. Write up findings.
 
@@ -119,7 +120,7 @@ Two components live in their own repositories and are managed as dependencies:
 
 ```
 chimera/
-├── decisions.md                # Design decision log (D001–D020)
+├── decisions.md                # Design decision log (D001–D023)
 ├── paper/                      # NeurIPS 2026 submission
 │   ├── main.tex                # Main paper
 │   ├── references.bib          # Bibliography
@@ -221,9 +222,9 @@ python scripts/generate_review.py --compare --embed
 
 | Task | VRAM | Recommended GPU |
 |------|------|-----------------|
-| Inference (Qwen3.5-27B NF4) | ~15 GB | RTX 4090 (24GB) |
-| SFT Training (NF4 + LoRA) | ~18 GB | RTX 4090 (24GB) |
-| GRPO Training (NF4 + LoRA) | ~20 GB | RTX 4090 (24GB) |
+| Inference (Qwen3.5-35B-A3B bf16) | ~70 GB | H200 SXM (141GB) |
+| SFT Training (bf16 + LoRA) | ~80 GB | H200 SXM (141GB) |
+| GRPO Training (bf16 + LoRA) | ~90 GB | H200 SXM (141GB) |
 
 ## Why This Matters Beyond Games
 
