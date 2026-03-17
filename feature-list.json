@@ -14,13 +14,13 @@
   {
     "id": "F03",
     "name": "Screenshot-demo synchronization",
-    "description": "Sync VOD frames (YouTube/Twitch) to demo ticks to produce (screenshot, exact_game_state) pairs for SFT. Figure out time offset between broadcast and demo. Extract frames at intervals, look up corresponding tick, pair with ground truth game state from Parquet data. Output: dataset of (image, game_state_json) ready for SFT.",
+    "description": "Capture CS2 screenshots via demo playback (netcon TCP automation) and pair with ground truth game state from Parquet. Mirage done (548 screenshots, 1504 labels). Inferno/Nuke/Overpass have capture plans but need CS2 demo playback on Windows.",
     "passes": false
   },
   {
     "id": "F04",
     "name": "SFT training — visual grounding",
-    "description": "SFT on Qwen3.5-27B to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA on vision + language layers. Validates that model can accurately extract health, armor, weapons, player counts, etc.",
+    "description": "SFT on Qwen3.5-35B-A3B MoE to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA on vision + language layers. Validates that model can accurately extract health, armor, weapons, player counts, etc.",
     "passes": false
   },
   {
@@ -32,13 +32,19 @@
   {
     "id": "F05a",
     "name": "Data sparsity diagnostic",
-    "description": "Pre-training diagnostic that measures state bucket coverage across the dataset (D020). Computes hierarchical bucketing (Level 0-2) over game states, reports contrastive pair availability (% of samples with both win+loss in same bucket), within-bucket behavioral variance, and simulated R_outcome within-group variance. Must pass before F06 to confirm reward signal quality. Runs against Parquet tick data and labels.",
+    "description": "Pre-training diagnostic that measures state bucket coverage across the dataset (D023). Computes hierarchical bucketing (Level 0-2) over game states, reports contrastive pair availability, within-bucket behavioral variance, and simulated R_outcome within-group variance. Results at 4 demos: L0 96.2% coverage (23/30 buckets), L1 27.0% (89/2167). L0 marginal, L1 not viable. Script: scripts/sparsity_diagnostic.py.",
+    "passes": true
+  },
+  {
+    "id": "F05b",
+    "name": "Small-scale GRPO smoke test — B-site post-plants",
+    "description": "End-to-end GRPO pipeline test on a small slice: B-site post-plant rounds across all 4 demos (36 rounds, ~200-400 planning frames). Skip SFT, use base Qwen3.5-35B-A3B. Verify: training loop runs, rewards differentiate between completions, gradients flow, loss decreases. Estimate ~20-30 min on H200. Steps: (1) extract B-site post-plant samples from Parquet, (2) build GRPO-format dataset, (3) run training, (4) check reward variance and loss curves.",
     "passes": false
   },
   {
     "id": "F06",
     "name": "GRPO training — strategic reasoning",
-    "description": "GRPO on demo-derived decision data (D013 architecture). Multiplicative format gate + 3 reward signals: R_percept (0.20, merged field accuracy), R_decision (0.30, behavioral feature alignment), R_outcome (0.50, outcome-modulated with player contribution φ). KL regularization (λ=0.02). Sparsity diagnostic (F05a, D020) must run first to quantify reward signal quality at current data scale.",
+    "description": "GRPO on demo-derived decision data (D013 architecture). Multiplicative format gate + 3 reward signals: R_percept (0.20, merged field accuracy), R_decision (0.30, behavioral feature alignment), R_outcome (0.50, outcome-modulated with player contribution φ). KL regularization (λ=0.02). Sparsity diagnostic (F05a, D023) must run first to quantify reward signal quality at current data scale.",
     "passes": false
   },
   {
