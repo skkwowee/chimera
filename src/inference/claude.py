@@ -4,17 +4,16 @@ VLM inference for CS2 screenshot analysis using Claude (Anthropic API).
 
 import base64
 import json
-import os
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
 import anthropic
+from dotenv import load_dotenv
+
+from src.inference.vlm import parse_json_response
+from src.prompts import CS2_SYSTEM_PROMPT, build_user_prompt
 
 load_dotenv()
-
-from src.prompts import CS2_SYSTEM_PROMPT, build_user_prompt
-from src.inference.vlm import parse_json_response
 
 
 class ClaudeVLMInference:
@@ -96,7 +95,7 @@ class ClaudeVLMInference:
 
         for i, image_path in enumerate(image_paths):
             image_path = Path(image_path)
-            print(f"  [{i+1}/{len(image_paths)}] {image_path.name}")
+            print(f"  [{i + 1}/{len(image_paths)}] {image_path.name}")
             result = self.analyze(image_path)
             result["_source_image"] = str(image_path)
             results.append(result)

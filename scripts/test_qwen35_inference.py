@@ -27,7 +27,6 @@ from PIL import Image
 
 HUB_REPO = "skkwowee/Qwen3.5-27B-bnb-4bit"
 
-
 def clear_hf_cache(repo_id: str):
     """Delete cached revisions for a specific HF Hub repo."""
     from huggingface_hub import scan_cache_dir
