@@ -119,7 +119,11 @@ def gate_parse(verbose: bool) -> list[Result]:
                                       f"{stem} (unrecognized map: {map_name})"))
 
         if not failed:
-            n_rounds = len(json.load(open(rounds_path))) if rounds_path.exists() else 0
+            if rounds_path.exists():
+                with open(rounds_path) as rf:
+                    n_rounds = len(json.load(rf))
+            else:
+                n_rounds = 0
             results.append(Result("PASS", "parse",
                                   f"{stem} ({n_rounds} rounds, {n_ticks} ticks)"))
 
@@ -292,7 +296,7 @@ def gate_sync(verbose: bool) -> list[Result]:
                 msgs.append(f"{len(orphan_labels)} labels without screenshots")
             if orphan_screenshots:
                 msgs.append(f"{len(orphan_screenshots)} screenshots without labels")
-            level = "WARN" if not orphan_screenshots else "WARN"
+            level = "WARN"
             results.append(Result(level, "sync",
                                   f"{mdir.name} ({n_screenshots} screenshots, "
                                   f"{n_labels} labels; {'; '.join(msgs)})"))

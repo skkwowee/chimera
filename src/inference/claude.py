@@ -6,17 +6,18 @@ import base64
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import cast
 
 import anthropic
-
-logger = logging.getLogger(__name__)
+from anthropic.types import ImageBlockParam, MessageParam, TextBlock, TextBlockParam
 from dotenv import load_dotenv
 
 from src.inference.vlm import parse_json_response
 from src.prompts import CS2_SYSTEM_PROMPT, build_user_prompt
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 
 class ClaudeVLMInference:
@@ -39,7 +40,7 @@ class ClaudeVLMInference:
     def analyze(
         self,
         image_path: Path | str,
-        prompt: Optional[str] = None,
+        prompt: str | None = None,
     ) -> dict:
         """Analyze a CS2 screenshot via Claude."""
         image_path = Path(image_path)
@@ -47,8 +48,8 @@ class ClaudeVLMInference:
         # Read and base64-encode the image
         try:
             image_data = base64.standard_b64encode(image_path.read_bytes()).decode("utf-8")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Image not found: {image_path}")
+        except FileNotFoundError as err:
+            raise FileNotFoundError(f"Image not found: {image_path}") from err
 
         # Determine media type
         suffix = image_path.suffix.lower()
@@ -63,40 +64,40 @@ class ClaudeVLMInference:
         user_text = prompt or build_user_prompt()
 
         try:
+            messages: list[MessageParam] = [
+                {
+                    "role": "user",
+                    "content": [
+                        cast(ImageBlockParam, {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": media_type,
+                                "data": image_data,
+                            },
+                        }),
+                        TextBlockParam(type="text", text=user_text),
+                    ],
+                }
+            ]
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=self.max_tokens,
                 system=CS2_SYSTEM_PROMPT,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_data,
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": user_text,
-                            },
-                        ],
-                    }
-                ],
+                messages=messages,
             )
         except Exception as e:
             raise RuntimeError(f"Claude API call failed: {e}") from e
 
-        text = response.content[0].text
+        block = response.content[0]
+        assert isinstance(block, TextBlock)
+        text = block.text
         return parse_json_response(text)
 
     def analyze_batch(
         self,
         image_paths: list[Path | str],
-        output_dir: Optional[Path | str] = None,
+        output_dir: Path | str | None = None,
     ) -> list[dict]:
         """Analyze multiple screenshots sequentially."""
         results = []

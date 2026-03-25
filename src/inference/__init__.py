@@ -10,4 +10,4 @@ def __getattr__(name):
         return ClaudeVLMInference
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__all__ = ["Qwen3VLInference", "ClaudeVLMInference", "parse_json_response"]
+__all__ = ["ClaudeVLMInference", "Qwen3VLInference", "parse_json_response"]

@@ -283,6 +283,7 @@ def main():
     # Benchmark: time forward+backward steps and estimate total training time
     if args.benchmark is not None:
         import time
+
         import torch
 
         n_steps = args.benchmark
@@ -303,6 +304,9 @@ def main():
 
         trainer.load_model()
         trainer.prepare_data(train_data)
+        assert trainer.model is not None, "model must be loaded"
+        assert trainer.processor is not None, "processor must be loaded"
+        assert trainer.train_dataset is not None, "train_dataset must be prepared"
 
         # Build a batch from the first sample
         batch = trainer._vision_data_collator([trainer.train_dataset[0]])
@@ -428,7 +432,7 @@ def main():
     print(f"Model saved to: {output_path}")
     if save_merged:
         print(f"Merged model at: {output_path / 'merged_16bit'}")
-        print(f"\nTo use as GRPO base:")
+        print("\nTo use as GRPO base:")
         print(f"  python scripts/train_grpo.py --model-name {output_path / 'merged_16bit'}")
     print(f"\nFinal mean weighted total: {results.get('mean_weighted_total', 'N/A'):.4f}")
     print(f"  Format gate pass rate: {results.get('mean_format_gate', 'N/A'):.4f}")

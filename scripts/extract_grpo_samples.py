@@ -21,7 +21,7 @@ import json
 import math
 import sys
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import polars as pl
@@ -474,8 +474,7 @@ def precompute_round_contributions(
         if evt["round_num"] != round_num:
             continue
         event_type = str(evt.get("event", "")).lower()
-        if event_type in ("plant", "planted", "bomb_planted", "defuse", "defused", "bomb_defused"):
-            if evt.get("name"):
+        if event_type in ("plant", "planted", "bomb_planted", "defuse", "defused", "bomb_defused") and evt.get("name"):
                 bomb_actors.add(evt["name"])
 
     last_alive_name = None
@@ -506,10 +505,7 @@ def precompute_round_contributions(
         damage_dealt = per_player_damage.get(name, 0.0)
 
         dt = death_ticks.get(name)
-        if dt is not None:
-            survival_time = max(0, dt - freeze_end)
-        else:
-            survival_time = round_duration
+        survival_time = max(0, dt - freeze_end) if dt is not None else round_duration
 
         objective_action = name in bomb_actors or name == last_alive_name
 
@@ -770,7 +766,7 @@ def build_manifest(samples: list[dict], num_demos: int) -> dict:
         round_ids.add(first_line)
 
     return {
-        "created": datetime.now(timezone.utc).isoformat(),
+        "created": datetime.now(UTC).isoformat(),
         "demos": num_demos,
         "rounds": len(round_ids),
         "samples": len(samples),
@@ -841,7 +837,7 @@ def main():
 
     # Print stats
     print(f"\n{'='*50}")
-    print(f"GRPO Smoke Test Extraction Complete")
+    print("GRPO Smoke Test Extraction Complete")
     print(f"{'='*50}")
     print(f"Output:         {output_path}")
     print(f"Manifest:       {manifest_path}")

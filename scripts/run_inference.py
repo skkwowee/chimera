@@ -11,8 +11,8 @@ import argparse
 import json
 from pathlib import Path
 
-from src.inference.vlm import Qwen3VLInference
 from src.data import ScreenshotDataset
+from src.inference.vlm import Qwen3VLInference
 
 
 def analyze_single(image_path: str, output_path: str | None = None):
@@ -55,7 +55,8 @@ def analyze_directory(input_dir: str, output_dir: str, labeled_only: bool = Fals
         return
 
     model = Qwen3VLInference()
-    results = model.analyze_batch(image_paths, output_path)
+    paths: list[Path | str] = list(image_paths)
+    results = model.analyze_batch(paths, output_path)
 
     print(f"\nAnalysis complete: {len(results)} screenshots processed")
 

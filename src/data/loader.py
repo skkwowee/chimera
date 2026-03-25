@@ -3,8 +3,9 @@ Data loading utilities for CS2 screenshots and labels.
 """
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import ClassVar
 
 from PIL import Image
 
@@ -12,13 +13,13 @@ from PIL import Image
 class ScreenshotDataset:
     """Dataset of CS2 screenshots with optional labels."""
 
-    SUPPORTED_FORMATS = {".png", ".jpg", ".jpeg", ".webp"}
+    SUPPORTED_FORMATS: ClassVar[set[str]] = {".png", ".jpg", ".jpeg", ".webp"}
 
     def __init__(
         self,
         screenshots_dir: Path | str,
-        labels_dir: Optional[Path | str] = None,
-        manifest_path: Optional[Path | str] = None,
+        labels_dir: Path | str | None = None,
+        manifest_path: Path | str | None = None,
     ):
         """
         Args:

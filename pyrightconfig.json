@@ -1,5 +1,18 @@
 {
   "venvPath": "/home/soone/chimera",
   "venv": ".venv",
-  "extraPaths": ["/home/soone/chimera"]
+  "extraPaths": ["/home/soone/chimera"],
+  "include": ["src", "scripts"],
+  "typeCheckingMode": "standard",
+  "reportMissingTypeArgument": "warning",
+  "reportUnknownVariableType": false,
+  "reportUnknownMemberType": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownParameterType": "warning",
+  "reportUnknownLambdaType": false,
+  "reportAny": false,
+  "reportUnusedCallResult": false,
+  "reportImplicitStringConcatenation": "warning",
+  "reportDeprecated": "warning",
+  "reportUnannotatedClassAttribute": "warning"
 }

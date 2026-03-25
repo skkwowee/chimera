@@ -168,7 +168,6 @@ import json
 import re
 from typing import Any
 
-
 # ---------------------------------------------------------------------------
 # Valid enum values for categorical fields
 # ---------------------------------------------------------------------------
@@ -426,7 +425,7 @@ def _classify_movement(text: str) -> int | None:
     if max_score == 0:
         return None
     # Return the direction with the highest keyword count
-    return max(scores, key=scores.get)
+    return max(scores, key=lambda k: scores[k])
 
 
 def _classify_objective_direction(text: str) -> int | None:
@@ -922,6 +921,8 @@ def outcome_reward(
 
     # Compute player contribution φ
     contribution = ground_truth.get("player_contribution")
+    if not isinstance(contribution, dict):
+        contribution = {}
     phi = compute_player_contribution(contribution)
 
     # Compute outcome modulation Ω

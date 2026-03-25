@@ -19,10 +19,9 @@ from .cs2 import (
 )
 
 __all__ = [
-    "DEFAULT_MODEL_NAME",
-    "load_config",
     "ARMOR_COST",
     "BOMB_ITEM",
+    "DEFAULT_MODEL_NAME",
     "HELMET_COST",
     "UTILITY_ITEMS",
     "WEAPON_CLASS_MAP",
@@ -36,5 +35,6 @@ __all__ = [
     "economy_matchup",
     "estimate_equipment_value",
     "estimate_team_equip",
+    "load_config",
     "parse_inventory",
 ]

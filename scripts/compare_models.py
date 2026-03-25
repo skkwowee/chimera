@@ -15,6 +15,7 @@ Usage:
 import argparse
 import json
 import random
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -199,6 +200,7 @@ def main():
     # Run inference and compare
     all_results = []
     aggregate = {name: {"matches": 0, "total": 0} for name in models}
+    phase: str | None = args.phase if args.phase != "combined" else None
 
     for i, pair in enumerate(samples):
         print(f"\n--- Sample {i+1}/{len(samples)}: {pair['id']} ---")
@@ -209,8 +211,6 @@ def main():
 
         # Run each model
         predictions = {}
-        # Map phase arg to analyze kwarg (None for combined)
-        phase = args.phase if args.phase != "combined" else None
 
         for name, model in models.items():
             print(f"  Running {name}...")

@@ -4,19 +4,19 @@ VLM inference for CS2 screenshot analysis using Qwen3.5-27B (dense, 4-bit).
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import torch
 from PIL import Image
-from transformers.generation import LogitsProcessor
+from transformers import LogitsProcessor
 
 from src.prompts import (
-    CS2_SYSTEM_PROMPT,
-    CS2_USER_PROMPT,
     CS2_PERCEPTION_SYSTEM_PROMPT,
     CS2_PERCEPTION_USER_PROMPT,
     CS2_PLANNING_SYSTEM_PROMPT,
     CS2_PLANNING_USER_PROMPT,
+    CS2_SYSTEM_PROMPT,
+    CS2_USER_PROMPT,
 )
 
 
@@ -102,7 +102,7 @@ class Qwen3VLInference:
 
     def load_model(self):
         """Load the model and processor from HuggingFace Hub."""
-        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
+        from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
         print(f"Loading {self.model_name}...")
 
@@ -120,13 +120,13 @@ class Qwen3VLInference:
     def analyze(
         self,
         image_path: Path | str,
-        prompt: Optional[str] = None,
-        max_new_tokens: Optional[int] = None,
+        prompt: str | None = None,
+        max_new_tokens: int | None = None,
         enable_thinking: bool = True,
-        thinking_budget: Optional[int] = 512,
-        phase: Optional[str] = None,
-        system_prompt: Optional[str] = None,
-        game_state: Optional[dict] = None,
+        thinking_budget: int | None = 512,
+        phase: str | None = None,
+        system_prompt: str | None = None,
+        game_state: dict | None = None,
     ) -> dict:
         """Analyze a CS2 screenshot.
 
@@ -140,6 +140,8 @@ class Qwen3VLInference:
         """
         if self.model is None:
             self.load_model()
+        assert self.model is not None
+        assert self.processor is not None
 
         # Phase-based defaults
         if phase == "perception":
@@ -194,7 +196,7 @@ class Qwen3VLInference:
         else:
             temperature, top_p = 0.7, 0.8
 
-        gen_kwargs = dict(
+        gen_kwargs: dict[str, Any] = dict(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=True,
@@ -209,12 +211,12 @@ class Qwen3VLInference:
 
         # Generate
         with torch.no_grad():
-            output_ids = self.model.generate(**gen_kwargs)
+            output_ids = self.model.generate(**gen_kwargs)  # type: ignore[reportArgumentType]
 
         # Decode only the generated tokens (exclude input)
         generated_ids = [
             out_ids[len(in_ids):]
-            for in_ids, out_ids in zip(inputs.input_ids, output_ids)
+            for in_ids, out_ids in zip(inputs.input_ids, output_ids, strict=False)
         ]
         response = self.processor.batch_decode(
             generated_ids,
@@ -227,13 +229,14 @@ class Qwen3VLInference:
     def analyze_batch(
         self,
         image_paths: list[Path | str],
-        output_dir: Optional[Path | str] = None,
+        output_dir: Path | str | None = None,
     ) -> list[dict]:
         """Analyze multiple screenshots."""
         from tqdm import tqdm
 
         if self.model is None:
             self.load_model()
+        assert self.model is not None
 
         results = []
         output_dir = Path(output_dir) if output_dir else None

@@ -10,18 +10,20 @@ Usage:
     uv run python scripts/test_qwen35_inference.py --clear-cache
 """
 import torch._dynamo
+
 torch._dynamo.config.disable = True
 
 import argparse
 import json
 import time
-import torch
 from pathlib import Path
 
-from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
+import torch
+from PIL import Image
+from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+
 from src.prompts import CS2_SYSTEM_PROMPT
 from src.utils.config import DEFAULT_MODEL_NAME
-from PIL import Image
 
 HUB_REPO = DEFAULT_MODEL_NAME
 

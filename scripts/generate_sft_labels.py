@@ -25,13 +25,9 @@ import polars as pl
 
 from src.utils.cs2 import (
     UTILITY_ITEMS,
-    WEAPON_VALUES,
     classify_team_economy,
-    classify_weapon,
-    estimate_equipment_value,
     parse_inventory,
 )
-
 
 # ---------------------------------------------------------------------------
 # Score and phase helpers
@@ -87,8 +83,7 @@ def determine_round_phase(
     for evt in bomb_events:
         if evt["round_num"] != round_info["round_num"]:
             continue
-        if evt.get("event", "").lower() in ("plant", "planted", "bomb_planted"):
-            if evt["tick"] <= tick:
+        if evt.get("event", "").lower() in ("plant", "planted", "bomb_planted") and evt["tick"] <= tick:
                 return "post-plant"
 
     return "playing"
@@ -274,7 +269,7 @@ def generate_round_context(
 
     # Get players at freeze_end (start of round) for economy assessment
     freeze_snap = ticks_df.filter(
-        (pl.col("round_num") == round_num)
+        pl.col("round_num") == round_num
     )
     available = freeze_snap.select("tick").unique().sort("tick")
     # Get first tick at or after freeze_end
@@ -296,7 +291,7 @@ def generate_round_context(
 
     # Get players at current tick for current state
     curr_snap = ticks_df.filter(
-        (pl.col("round_num") == round_num)
+        pl.col("round_num") == round_num
     )
     curr_available = curr_snap.select("tick").unique().sort("tick")
     curr_ticks = curr_available.filter(pl.col("tick") <= tick)

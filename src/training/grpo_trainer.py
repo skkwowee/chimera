@@ -16,22 +16,18 @@ Legacy/ablation mode (D013 — 3-signal):
 """
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any
 
 import torch
 
 from ..utils.config import DEFAULT_MODEL_NAME
 from .rewards import (
-    REWARD_FUNCTIONS,
-    DEFAULT_REWARD_WEIGHTS,
     SIMPLIFIED_REWARD_FUNCTIONS,
     SIMPLIFIED_REWARD_WEIGHTS,
     format_gate_reward,
-    perceptual_accuracy_reward,
-    decision_alignment_reward,
-    outcome_reward,
 )
 
 
@@ -123,8 +119,8 @@ class CS2GRPOTrainer:
 
     def load_model(self):
         """Load Qwen3.5-27B (4-bit) with LoRA."""
-        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
-        from peft import get_peft_model, LoraConfig
+        from peft import LoraConfig, get_peft_model
+        from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
         dtype = getattr(torch, self.config.torch_dtype)
 
@@ -148,7 +144,8 @@ class CS2GRPOTrainer:
         if self.config.use_lora:
             target_modules = list(self.config.lora_target_modules)
             if not self.config.use_vllm:
-                target_modules = target_modules + [
+                target_modules = [
+                    *target_modules,
                     "visual.*q_proj", "visual.*k_proj", "visual.*v_proj",
                     "visual.*o_proj",
                 ]
@@ -247,7 +244,7 @@ class CS2GRPOTrainer:
                 def wrapper(completions: list[str], **kwargs) -> list[float]:
                     ground_truths = kwargs.get("ground_truth", [None] * len(completions))
                     results = []
-                    for completion, gt in zip(completions, ground_truths):
+                    for completion, gt in zip(completions, ground_truths, strict=False):
                         # Multiplicative format gate: invalid JSON -> 0.0 for all signals
                         gate = format_gate_reward(completion)
                         if gate == 0.0:
@@ -260,7 +257,7 @@ class CS2GRPOTrainer:
 
         return wrappers
 
-    def train(self, resume_from: Optional[str] = None):
+    def train(self, resume_from: str | None = None):
         """
         Run GRPO training.
 
@@ -269,17 +266,20 @@ class CS2GRPOTrainer:
         """
         if self.model is None:
             self.load_model()
+        assert self.model is not None
+        assert self.processor is not None
 
         if self.train_dataset is None:
             raise ValueError("No training data prepared. Call prepare_data() first.")
 
         try:
-            from trl import GRPOConfig, GRPOTrainer
-        except ImportError:
+            from trl.trainer.grpo_config import GRPOConfig
+            from trl.trainer.grpo_trainer import GRPOTrainer
+        except ImportError as err:
             raise ImportError(
                 "TRL is required for GRPO training. Install with:\n"
                 "  pip install trl>=0.12.0"
-            )
+            ) from err
 
         print("Configuring GRPO trainer...")
         print(f"  Reward signals: {len(self.reward_fns)}")
@@ -318,7 +318,7 @@ class CS2GRPOTrainer:
             # GSPO variant for stability
             importance_sampling_level=self.config.importance_sampling_level,
             # KL regularization against SFT reference
-            kl_coef=self.config.kl_coef,
+            beta=self.config.kl_coef,
             # Reward weights for the separate reward functions (2 or 3)
             reward_weights=self.config.reward_weights,
             # Reporting
@@ -327,12 +327,12 @@ class CS2GRPOTrainer:
 
         # Create GRPO trainer with separate reward functions
         trainer = GRPOTrainer(
-            model=self.model,
+            model=self.model,  # type: ignore[reportArgumentType]
             processing_class=self.processor,
             args=grpo_config,
             train_dataset=self.train_dataset,
             eval_dataset=self.val_dataset,
-            reward_funcs=self._create_reward_wrappers(),
+            reward_funcs=self._create_reward_wrappers(),  # type: ignore[reportArgumentType]
         )
 
         print("Starting GRPO training...")
@@ -363,19 +363,21 @@ class CS2GRPOTrainer:
         """
         if self.model is None:
             raise ValueError("No model loaded")
+        if self.processor is None:
+            raise ValueError("No processor loaded")
 
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
         if save_merged and self.config.use_lora:
             print(f"Saving merged model to {output_path / 'merged_16bit'}...")
-            merged = self.model.merge_and_unload()
-            merged.save_pretrained(output_path / "merged_16bit")
-            self.processor.save_pretrained(output_path / "merged_16bit")
+            merged = self.model.merge_and_unload()  # type: ignore[reportCallIssue]
+            merged.save_pretrained(str(output_path / "merged_16bit"))  # type: ignore[reportCallIssue]
+            self.processor.save_pretrained(str(output_path / "merged_16bit"))
         else:
             print(f"Saving LoRA adapter to {output_path / 'lora_adapter'}...")
-            self.model.save_pretrained(output_path / "lora_adapter")
-            self.processor.save_pretrained(output_path / "lora_adapter")
+            self.model.save_pretrained(str(output_path / "lora_adapter"))
+            self.processor.save_pretrained(str(output_path / "lora_adapter"))
 
         print(f"Model saved to {output_path}")
 
@@ -394,6 +396,8 @@ class CS2GRPOTrainer:
         """
         if self.model is None:
             self.load_model()
+        assert self.model is not None
+        assert self.processor is not None
 
         eval_dataset = eval_data or self.val_dataset
         if eval_dataset is None:
@@ -416,16 +420,17 @@ class CS2GRPOTrainer:
                 "decision_alignment",
                 "outcome",
             ]
-        metrics = {name: [] for name in signal_names}
+        metrics: dict[str, list[float]] = {name: [] for name in signal_names}
         metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
-        self.model.eval()
+        self.model.eval()  # type: ignore[reportOptionalMemberAccess]
 
         for sample in tqdm(eval_dataset, desc="Evaluating"):
-            # Generate response
-            messages = sample.get("messages", [])
-            ground_truth = sample.get("ground_truth", {})
+            # Generate response (sample is a dict from either list[dict] or HF Dataset)
+            sample_dict: dict[str, Any] = dict(sample) if not isinstance(sample, dict) else sample
+            messages = sample_dict.get("messages", [])
+            ground_truth = sample_dict.get("ground_truth", {})
 
             # Format for generation
             inputs = self.processor.apply_chat_template(
@@ -460,11 +465,11 @@ class CS2GRPOTrainer:
                 for fn in reward_fns
             ]
 
-            for name, score in zip(signal_names, scores):
+            for name, score in zip(signal_names, scores, strict=False):
                 metrics[name].append(score)
 
             # Weighted total (already gated)
-            weighted = sum(w * s for w, s in zip(weights, scores))
+            weighted = sum(w * s for w, s in zip(weights, scores, strict=False))
             metrics["weighted_total"].append(weighted)
 
         # Compute summary statistics

@@ -12,17 +12,17 @@ loads as its base for reinforcement learning refinement.
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import torch
 
 from ..utils.config import DEFAULT_MODEL_NAME
 from .rewards import (
     DEFAULT_REWARD_WEIGHTS,
-    format_gate_reward,
-    perceptual_accuracy_reward,
     decision_alignment_reward,
+    format_gate_reward,
     outcome_reward,
+    perceptual_accuracy_reward,
 )
 
 
@@ -93,8 +93,8 @@ class CS2SFTTrainer:
 
     def load_model(self):
         """Load Qwen3.5-27B (4-bit) with LoRA."""
-        from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
-        from peft import get_peft_model, LoraConfig
+        from peft import LoraConfig, get_peft_model
+        from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
 
         dtype = getattr(torch, self.config.torch_dtype)
 
@@ -117,7 +117,8 @@ class CS2SFTTrainer:
         if self.config.use_lora:
             target_modules = list(self.config.lora_target_modules)
             if self.config.finetune_vision_layers:
-                target_modules = target_modules + [
+                target_modules = [
+                    *target_modules,
                     "visual.*q_proj", "visual.*k_proj", "visual.*v_proj",
                     "visual.*o_proj",
                 ]
@@ -144,24 +145,25 @@ class CS2SFTTrainer:
             reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
 
-    def _vision_data_collator(self, examples):
+    def _vision_data_collator(self, examples: list[dict[str, Any]]) -> dict[str, Any]:
         """Collate multimodal examples using processor.
 
         Uses process_vision_info to properly load PIL images from
         message image paths. Masks prompt tokens in labels so loss
         is only computed on the assistant response.
         """
+        assert self.processor is not None
         from qwen_vl_utils import process_vision_info
 
-        texts = []
-        all_images = []
+        texts: list[str] = []
+        all_images: list[Any] = []
         for ex in examples:
             messages = json.loads(ex["messages_json"])
             text = self.processor.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False,
             )
             texts.append(text)
-            image_inputs, _ = process_vision_info(messages)
+            image_inputs, _ = process_vision_info(messages)  # type: ignore[reportAssignmentType]
             if image_inputs:
                 all_images.extend(image_inputs)
 
@@ -237,7 +239,7 @@ class CS2SFTTrainer:
         if self.val_dataset:
             print(f"Prepared {len(self.val_dataset)} validation samples")
 
-    def train(self, resume_from: Optional[str] = None):
+    def train(self, resume_from: str | None = None):
         """
         Run SFT training.
 
@@ -246,17 +248,20 @@ class CS2SFTTrainer:
         """
         if self.model is None:
             self.load_model()
+        assert self.model is not None
+        assert self.processor is not None
 
         if self.train_dataset is None:
             raise ValueError("No training data prepared. Call prepare_data() first.")
 
         try:
-            from trl import SFTConfig, SFTTrainer
-        except ImportError:
+            from trl.trainer.sft_config import SFTConfig
+            from trl.trainer.sft_trainer import SFTTrainer
+        except ImportError as err:
             raise ImportError(
                 "TRL is required for SFT training. Install with:\n"
                 "  pip install trl>=0.12.0"
-            )
+            ) from err
 
         print("Configuring SFT trainer...")
         print(f"  Max sequence length: {self.config.max_seq_length}")
@@ -296,7 +301,7 @@ class CS2SFTTrainer:
 
         # Create SFT trainer
         trainer = SFTTrainer(
-            model=self.model,
+            model=self.model,  # type: ignore[reportArgumentType]
             processing_class=self.processor,
             args=sft_config,
             data_collator=self._vision_data_collator,
@@ -333,19 +338,21 @@ class CS2SFTTrainer:
         """
         if self.model is None:
             raise ValueError("No model loaded")
+        if self.processor is None:
+            raise ValueError("No processor loaded")
 
         output_path = Path(output_path)
         output_path.mkdir(parents=True, exist_ok=True)
 
         if save_merged and self.config.use_lora:
             print(f"Saving merged model to {output_path / 'merged_16bit'}...")
-            merged = self.model.merge_and_unload()
-            merged.save_pretrained(output_path / "merged_16bit")
-            self.processor.save_pretrained(output_path / "merged_16bit")
+            merged = self.model.merge_and_unload()  # type: ignore[reportCallIssue]
+            merged.save_pretrained(str(output_path / "merged_16bit"))  # type: ignore[reportCallIssue]
+            self.processor.save_pretrained(str(output_path / "merged_16bit"))
         else:
             print(f"Saving LoRA adapter to {output_path / 'lora_adapter'}...")
-            self.model.save_pretrained(output_path / "lora_adapter")
-            self.processor.save_pretrained(output_path / "lora_adapter")
+            self.model.save_pretrained(str(output_path / "lora_adapter"))
+            self.processor.save_pretrained(str(output_path / "lora_adapter"))
 
         print(f"Model saved to {output_path}")
 
@@ -365,6 +372,8 @@ class CS2SFTTrainer:
         """
         if self.model is None:
             self.load_model()
+        assert self.model is not None
+        assert self.processor is not None
 
         eval_dataset = eval_data or self.val_dataset
         if eval_dataset is None:
@@ -379,11 +388,11 @@ class CS2SFTTrainer:
             "decision_alignment",
             "outcome",
         ]
-        metrics = {name: [] for name in signal_names}
+        metrics: dict[str, list[float]] = {name: [] for name in signal_names}
         metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
-        self.model.eval()
+        self.model.eval()  # type: ignore[reportOptionalMemberAccess]
 
         weights = DEFAULT_REWARD_WEIGHTS
         reward_fns = [
@@ -393,9 +402,10 @@ class CS2SFTTrainer:
         ]
 
         for sample in tqdm(eval_dataset, desc="Evaluating"):
-            # Generate response
-            messages = sample.get("messages", [])
-            ground_truth = sample.get("ground_truth", {})
+            # Generate response (sample is a dict from either list[dict] or HF Dataset)
+            sample_dict: dict[str, Any] = dict(sample) if not isinstance(sample, dict) else sample
+            messages = sample_dict.get("messages", [])
+            ground_truth = sample_dict.get("ground_truth", {})
 
             # Format for generation
             inputs = self.processor.apply_chat_template(
@@ -430,11 +440,11 @@ class CS2SFTTrainer:
                 for fn in reward_fns
             ]
 
-            for name, score in zip(signal_names, scores):
+            for name, score in zip(signal_names, scores, strict=False):
                 metrics[name].append(score)
 
             # Weighted total (already gated)
-            weighted = sum(w * s for w, s in zip(weights, scores))
+            weighted = sum(w * s for w, s in zip(weights, scores, strict=False))
             metrics["weighted_total"].append(weighted)
 
         # Compute summary statistics

@@ -125,7 +125,10 @@ def evaluate(labels_dir: str, predictions_dir: str, verbose: bool = False):
                 field_stats[field]["matches"] += 1
 
     print("\nPer-field accuracy:")
-    for field, stats in sorted(field_stats.items(), key=lambda x: x[1]["matches"]/x[1]["total"] if x[1]["total"] > 0 else 0):
+    def _field_acc(x):
+        return x[1]["matches"] / x[1]["total"] if x[1]["total"] > 0 else 0
+
+    for field, stats in sorted(field_stats.items(), key=_field_acc):
         acc = stats["matches"] / stats["total"] if stats["total"] > 0 else 0
         print(f"  {field}: {acc:.1%} ({stats['matches']}/{stats['total']})")
 

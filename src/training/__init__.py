@@ -1,66 +1,59 @@
-from .rewards import (
-    # Active reward functions (D013 revised architecture)
-    format_gate_reward,
-    perceptual_accuracy_reward,
-    decision_alignment_reward,
-    outcome_reward,
-    simplified_outcome_reward,
-    REWARD_FUNCTIONS,
-    DEFAULT_REWARD_WEIGHTS,
-    SIMPLIFIED_REWARD_FUNCTIONS,
-    SIMPLIFIED_REWARD_WEIGHTS,
-    # Reward math components (exposed for testing / paper figures)
-    compute_player_contribution,
-    compute_outcome_modulation,
-)
 from .data_utils import (
     GRPODataItem,
-    convert_labeled_to_grpo_format,
-    create_grpo_dataset,
     GRPODataLoader,
-)
-from .data_utils import (
+    convert_labeled_to_grpo_format,
     convert_labeled_to_sft_format,
+    create_grpo_dataset,
     create_sft_dataset,
 )
 from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
-from .sft_trainer import CS2SFTConfig, CS2SFTTrainer
 from .recall import (
-    recall_reward,
     RECALLIndex,
-    tactical_embedding,
     action_embedding,
+    recall_reward,
+    tactical_embedding,
 )
+from .rewards import (
+    DEFAULT_REWARD_WEIGHTS,
+    REWARD_FUNCTIONS,
+    SIMPLIFIED_REWARD_FUNCTIONS,
+    SIMPLIFIED_REWARD_WEIGHTS,
+    compute_outcome_modulation,
+    # Reward math components (exposed for testing / paper figures)
+    compute_player_contribution,
+    decision_alignment_reward,
+    # Active reward functions (D013 revised architecture)
+    format_gate_reward,
+    outcome_reward,
+    perceptual_accuracy_reward,
+    simplified_outcome_reward,
+)
+from .sft_trainer import CS2SFTConfig, CS2SFTTrainer
 
 __all__ = [
-    # Active rewards (D024 simplified 2-signal primary; D013 3-signal for ablation)
-    "format_gate_reward",
-    "perceptual_accuracy_reward",
-    "decision_alignment_reward",
-    "outcome_reward",
-    "simplified_outcome_reward",
-    "REWARD_FUNCTIONS",
     "DEFAULT_REWARD_WEIGHTS",
+    "REWARD_FUNCTIONS",
     "SIMPLIFIED_REWARD_FUNCTIONS",
     "SIMPLIFIED_REWARD_WEIGHTS",
-    # Reward math components
-    "compute_player_contribution",
-    "compute_outcome_modulation",
-    # Data utilities
-    "GRPODataItem",
-    "convert_labeled_to_grpo_format",
-    "create_grpo_dataset",
-    "GRPODataLoader",
-    "convert_labeled_to_sft_format",
-    "create_sft_dataset",
-    # Trainers
     "CS2GRPOConfig",
     "CS2GRPOTrainer",
     "CS2SFTConfig",
     "CS2SFTTrainer",
-    # RECALL (retrieval-enhanced advantage)
-    "recall_reward",
+    "GRPODataItem",
+    "GRPODataLoader",
     "RECALLIndex",
-    "tactical_embedding",
     "action_embedding",
+    "compute_outcome_modulation",
+    "compute_player_contribution",
+    "convert_labeled_to_grpo_format",
+    "convert_labeled_to_sft_format",
+    "create_grpo_dataset",
+    "create_sft_dataset",
+    "decision_alignment_reward",
+    "format_gate_reward",
+    "outcome_reward",
+    "perceptual_accuracy_reward",
+    "recall_reward",
+    "simplified_outcome_reward",
+    "tactical_embedding",
 ]

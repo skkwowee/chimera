@@ -13,3 +13,22 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+  "E402",   # module-level import not at top — unavoidable in scripts with sys.path manipulation
+  "E741",   # ambiguous variable name — acceptable in math-heavy code (l, w, etc.)
+  "UP007",  # use X | Y for union types — keep Optional for readability
+  "RUF001", # ambiguous unicode in strings — intentional math notation (×, etc.)
+  "RUF002", # ambiguous unicode in docstrings — intentional math notation (α, β, γ, etc.)
+  "RUF003", # ambiguous unicode in comments — intentional math notation (−, etc.)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/*" = ["E402"]  # scripts often need sys.path before imports
+"scripts/generate_review.py" = ["E402", "E501"]  # HTML template strings

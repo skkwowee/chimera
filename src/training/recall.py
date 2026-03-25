@@ -56,7 +56,7 @@ from typing import Any
 import numpy as np
 
 try:
-    import faiss
+    import faiss  # type: ignore[reportMissingImports]
 except ImportError:
     faiss = None
 
@@ -318,14 +318,14 @@ class RECALLIndex:
                 V_hat: estimated state value (mean win rate of all K neighbors).
                 confident: True if >= k_min action-matched neighbors found.
         """
-        if self._n == 0 or self._state_index is None:
+        if self._n == 0 or self._state_index is None or self._outcomes is None or self._action_embeddings is None:
             return 0.5, 0.5, False
 
         # Clamp k to index size
         k_actual = min(k, self._n)
 
         state_vec = tactical_embedding(state).reshape(1, -1)
-        distances, indices = self._state_index.search(state_vec, k_actual)
+        _distances, indices = self._state_index.search(state_vec, k_actual)
         indices = indices[0]
 
         # Filter out -1 indices (FAISS returns -1 if fewer than k results)
@@ -485,7 +485,7 @@ def _extract_action_from_text(text: str) -> dict:
     hld = sum(1 for kw in hold_kws if kw in text_lower)
     scores = {1: adv, -1: ret, 0: hld}
     max_score = max(scores.values())
-    movement = max(scores, key=scores.get) if max_score > 0 else 0
+    movement = max(scores, key=lambda k: scores[k]) if max_score > 0 else 0
 
     # Objective direction
     toward_kws = ["site", "bomb", "plant", "defuse", "retake", "execute"]

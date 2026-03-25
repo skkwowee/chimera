@@ -11,14 +11,13 @@ Observation model: o_t = (I_{t-k}, ..., I_t, c_t)
 
 import json
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
 
 from PIL import Image
 
 from ..prompts import CS2_PERCEPTION_SYSTEM_PROMPT, build_user_prompt
-
 
 SUPPORTED_IMAGE_FORMATS = {".png", ".jpg", ".jpeg", ".webp"}
 

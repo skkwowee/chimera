@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import polars as pl
@@ -200,7 +200,7 @@ def cmd_registry() -> None:
 
     registry = {
         "demos": demos,
-        "updated": datetime.now(timezone.utc).isoformat(),
+        "updated": datetime.now(UTC).isoformat(),
     }
 
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)

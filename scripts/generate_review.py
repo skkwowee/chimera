@@ -101,10 +101,7 @@ def generate_comparison_html(comparisons: list[dict], embed_images: bool = False
             with open(qwen_path) as f:
                 qwen_data = json.load(f)
 
-        if embed_images:
-            image_src = image_to_data_uri(image_path)
-        else:
-            image_src = str(image_path)
+        image_src = image_to_data_uri(image_path) if embed_images else str(image_path)
 
         items.append({
             "image": image_src,
@@ -513,10 +510,7 @@ def generate_html(pairs: list[tuple[Path, Path]], embed_images: bool = False) ->
         with open(label_path) as f:
             label_data = json.load(f)
 
-        if embed_images:
-            image_src = image_to_data_uri(image_path)
-        else:
-            image_src = str(image_path)
+        image_src = image_to_data_uri(image_path) if embed_images else str(image_path)
 
         items.append({
             "image": image_src,
@@ -969,11 +963,11 @@ def main():
     print(f"Generated {output_path}")
 
     if args.embed:
-        print(f"\nOpen directly in browser:")
+        print("\nOpen directly in browser:")
         print(f"  open {output_path}")
     else:
-        print(f"\nTo view, start a local server:")
-        print(f"  python -m http.server 8000")
+        print("\nTo view, start a local server:")
+        print("  python -m http.server 8000")
         print(f"  Then open http://localhost:8000/{output_path}")
 
     return 0

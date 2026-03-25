@@ -20,13 +20,11 @@ import json
 import sys
 from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
 from src.utils.cs2 import (
-    ARMOR_COST,
-    HELMET_COST,
-    WEAPON_VALUES,
     classify_buy,
     classify_weapon_class,
     economy_matchup,
@@ -104,7 +102,6 @@ def extract_samples(
     for rnd in rounds:
         rnum = rnd["round_num"]
         freeze_end = rnd["freeze_end"]
-        round_end = rnd["end"]
         winner = round_outcomes.get(rnum, "")
 
         # Get unique ticks in this round after freeze
@@ -394,7 +391,9 @@ def main():
     wins = sum(1 for s in all_samples if s["won"])
     losses = len(all_samples) - wins
     print(f"Unique rounds: {unique_rounds}")
-    print(f"Win samples: {wins}, Loss samples: {losses} ({wins/(wins+losses)*100:.1f}% / {losses/(wins+losses)*100:.1f}%)")
+    win_pct = wins / (wins + losses) * 100
+    loss_pct = losses / (wins + losses) * 100
+    print(f"Win samples: {wins}, Loss samples: {losses} ({win_pct:.1f}% / {loss_pct:.1f}%)")
 
     results = {}
 
@@ -423,21 +422,21 @@ def main():
         # Reward variance
         rv = simulate_reward_variance(all_samples, level)
         results[f"{level}_reward"] = rv
-        print(f"\n  Simulated R_outcome variance:")
+        print("\n  Simulated R_outcome variance:")
         print(f"  Overall weighted variance: {rv['overall_weighted_variance']:.4f}")
 
         # Show top/bottom variance buckets
         if rv["bucket_variances"]:
-            print(f"\n  Top 5 highest-variance buckets (best for learning):")
+            print("\n  Top 5 highest-variance buckets (best for learning):")
             for v in rv["bucket_variances"][:5]:
                 print(f"    {v['bucket']:<50} var={v['variance']:.4f} n={v['n']:>4} win_rate={v['win_rate']:.2f}")
-            print(f"\n  Bottom 5 lowest-variance buckets (worst for learning):")
+            print("\n  Bottom 5 lowest-variance buckets (worst for learning):")
             for v in rv["bucket_variances"][-5:]:
                 print(f"    {v['bucket']:<50} var={v['variance']:.4f} n={v['n']:>4} win_rate={v['win_rate']:.2f}")
 
     # Summary
     print(f"\n{'='*60}")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print(f"{'='*60}")
     print(f"  Data scale: {len(parquet_files)} demos, {unique_rounds} rounds, {len(all_samples)} samples")
     print()
@@ -452,7 +451,7 @@ def main():
     l0_var = results["L0_reward"]["overall_weighted_variance"]
     l1_var = results["L1_reward"]["overall_weighted_variance"]
     print(f"\n  R_outcome variance: L0={l0_var:.4f}, L1={l1_var:.4f}")
-    print(f"  (Variance > 0.15 needed for meaningful GRPO learning)")
+    print("  (Variance > 0.15 needed for meaningful GRPO learning)")
 
     # Viability assessment
     print()
@@ -474,7 +473,7 @@ def main():
         # Write full results to JSON
         output_path = Path("outputs/sparsity_diagnostic.json")
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        json_results = {
+        json_results: dict[str, Any] = {
             "demos": len(parquet_files),
             "rounds": unique_rounds,
             "total_samples": len(all_samples),
