@@ -14,6 +14,7 @@ import random
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
@@ -36,7 +37,7 @@ class GRPODataItem:
     """
 
     image_path: Path
-    ground_truth: dict
+    ground_truth: dict[str, Any]
     prior_image_paths: list[Path] = field(default_factory=list)
     context: str | None = None
     image: Image.Image | None = field(default=None, repr=False)
@@ -69,7 +70,7 @@ def _find_image(directory: Path, stem: str) -> Path | None:
 def convert_labeled_to_grpo_format(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
-    manifest: dict[str, dict] | None = None,
+    manifest: dict[str, dict[str, Any]] | None = None,
 ) -> list[GRPODataItem]:
     """
     Convert existing labeled data to GRPO training format.
@@ -131,7 +132,7 @@ def convert_labeled_to_grpo_format(
     return items
 
 
-def _build_prompt_content(item: GRPODataItem) -> list[dict]:
+def _build_prompt_content(item: GRPODataItem) -> list[dict[str, Any]]:
     """
     Build Qwen3.5 multimodal content list for a training item.
 
@@ -160,7 +161,7 @@ def create_grpo_dataset(
     items: list[GRPODataItem],
     train_ratio: float = 0.9,
     seed: int = 42,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Create dataset from GRPO items.
 
@@ -183,7 +184,7 @@ def create_grpo_dataset(
     train_items = shuffled[:split_idx]
     val_items = shuffled[split_idx:]
 
-    def format_item(item: GRPODataItem) -> dict:
+    def format_item(item: GRPODataItem) -> dict[str, Any]:
         """Format item for TRL GRPO training."""
         return {
             "prompt": _build_prompt_content(item),
@@ -211,16 +212,16 @@ class GRPODataLoader:
         shuffle: bool = True,
         seed: int = 42,
     ):
-        self.items = items
-        self.batch_size = batch_size
-        self.shuffle = shuffle
-        self.seed = seed
-        self._rng = random.Random(seed)
+        self.items: list[GRPODataItem] = items
+        self.batch_size: int = batch_size
+        self.shuffle: bool = shuffle
+        self.seed: int = seed
+        self._rng: random.Random = random.Random(seed)
 
     def __len__(self) -> int:
         return (len(self.items) + self.batch_size - 1) // self.batch_size
 
-    def __iter__(self) -> Iterator[list[dict]]:
+    def __iter__(self) -> Iterator[list[dict[str, Any]]]:
         indices = list(range(len(self.items)))
 
         if self.shuffle:
@@ -258,7 +259,7 @@ def prepare_conversation_format(
     prompt: str,
     response: str | None = None,
     prior_image_paths: list[str | Path] | None = None,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Prepare input in Qwen3.5 conversation format.
 
@@ -300,7 +301,7 @@ def prepare_conversation_format(
     return messages
 
 
-def format_ground_truth_as_json(ground_truth: dict) -> str:
+def format_ground_truth_as_json(ground_truth: dict[str, Any]) -> str:
     """Format ground truth dict as JSON string for training targets.
 
     Excludes context and metadata — only the fields the model should output.
@@ -319,7 +320,7 @@ def format_ground_truth_as_json(ground_truth: dict) -> str:
 def convert_labeled_to_sft_format(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
-    manifest: dict[str, dict] | None = None,
+    manifest: dict[str, dict[str, Any]] | None = None,
 ) -> list[GRPODataItem]:
     """
     Convert existing labeled data to SFT training format.
@@ -333,7 +334,7 @@ def create_sft_dataset(
     items: list[GRPODataItem],
     train_ratio: float = 0.9,
     seed: int = 42,
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Create SFT dataset from labeled items.
 
@@ -348,7 +349,7 @@ def create_sft_dataset(
     train_items = shuffled[:split_idx]
     val_items = shuffled[split_idx:]
 
-    def format_train_item(item: GRPODataItem) -> dict:
+    def format_train_item(item: GRPODataItem) -> dict[str, Any]:
         messages = prepare_conversation_format(
             image_path=item.image_path,
             prompt=item.prompt,
@@ -357,7 +358,7 @@ def create_sft_dataset(
         )
         return {"messages": messages}
 
-    def format_val_item(item: GRPODataItem) -> dict:
+    def format_val_item(item: GRPODataItem) -> dict[str, Any]:
         messages = prepare_conversation_format(
             image_path=item.image_path,
             prompt=item.prompt,

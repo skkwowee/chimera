@@ -73,12 +73,12 @@ def advantage_bucket(alive_t: int, alive_ct: int) -> str:
 
 def extract_samples(
     ticks_df: pl.DataFrame,
-    rounds: list[dict],
-    bomb_events: list[dict],
-    header: dict,
+    rounds: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
+    header: dict[str, Any],
     demo_stem: str,
     sample_interval_ticks: int = 192,  # ~3 seconds at 64 tick
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Extract planning-frame samples from tick data.
 
@@ -223,7 +223,7 @@ def extract_samples(
 # Diagnostic analysis
 # ---------------------------------------------------------------------------
 
-def analyze_coverage(samples: list[dict], level: str, min_k: int = 5):
+def analyze_coverage(samples: list[dict[str, Any]], level: str, min_k: int = 5) -> dict[str, Any]:
     """
     Analyze bucket coverage at a given hierarchy level.
 
@@ -285,7 +285,7 @@ def analyze_coverage(samples: list[dict], level: str, min_k: int = 5):
     }
 
 
-def simulate_reward_variance(samples: list[dict], level: str):
+def simulate_reward_variance(samples: list[dict[str, Any]], level: str) -> dict[str, Any]:
     """
     Simulate R_outcome variance within GRPO groups.
 
@@ -444,9 +444,9 @@ def main():
     l0 = results["L0"]
     l1 = results["L1"]
     print(f"  Level 0: {l0['covered_buckets']}/{l0['total_buckets']} buckets covered, "
-          f"{l0['coverage_pct']:.1f}% samples")
+          + f"{l0['coverage_pct']:.1f}% samples")
     print(f"  Level 1: {l1['covered_buckets']}/{l1['total_buckets']} buckets covered, "
-          f"{l1['coverage_pct']:.1f}% samples")
+          + f"{l1['coverage_pct']:.1f}% samples")
 
     l0_var = results["L0_reward"]["overall_weighted_variance"]
     l1_var = results["L1_reward"]["overall_weighted_variance"]

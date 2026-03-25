@@ -84,7 +84,7 @@ class CS2GRPOConfig:
     save_steps: int = 100
     logging_steps: int = 10
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
         return {
             k: v if not callable(v) else str(v)
@@ -110,12 +110,12 @@ class CS2GRPOTrainer:
     """
 
     def __init__(self, config: CS2GRPOConfig | None = None):
-        self.config = config or CS2GRPOConfig()
-        self.model = None
-        self.processor = None
-        self.reward_fns: list[Callable] = list(SIMPLIFIED_REWARD_FUNCTIONS)
-        self.train_dataset = None
-        self.val_dataset = None
+        self.config: CS2GRPOConfig = config or CS2GRPOConfig()
+        self.model: Any = None
+        self.processor: Any = None
+        self.reward_fns: list[Callable[..., Any]] = list(SIMPLIFIED_REWARD_FUNCTIONS)
+        self.train_dataset: Any = None
+        self.val_dataset: Any = None
 
     def load_model(self):
         """Load Qwen3.5-27B (4-bit) with LoRA."""
@@ -174,8 +174,8 @@ class CS2GRPOTrainer:
 
     def prepare_data(
         self,
-        train_data: list[dict],
-        val_data: list[dict] | None = None,
+        train_data: list[dict[str, Any]],
+        val_data: list[dict[str, Any]] | None = None,
     ):
         """
         Prepare datasets for GRPO training.
@@ -186,7 +186,7 @@ class CS2GRPOTrainer:
         """
         from datasets import Dataset
 
-        def format_sample(sample: dict) -> dict:
+        def format_sample(sample: dict[str, Any]) -> dict[str, Any]:
             """Format a sample for GRPO training."""
             prompt_content = sample["prompt"]
             if isinstance(prompt_content, list):
@@ -214,7 +214,7 @@ class CS2GRPOTrainer:
 
     def set_reward_functions(
         self,
-        reward_fns: list[Callable] | None = None,
+        reward_fns: list[Callable[..., Any]] | None = None,
     ):
         """
         Override the default reward functions.
@@ -227,7 +227,7 @@ class CS2GRPOTrainer:
             self.reward_fns = reward_fns
         print(f"Reward functions configured: {len(self.reward_fns)} signals")
 
-    def _create_reward_wrappers(self) -> list[Callable]:
+    def _create_reward_wrappers(self) -> list[Callable[..., Any]]:
         """
         Wrap each reward function for TRL's GRPOTrainer batch interface.
 
@@ -240,8 +240,8 @@ class CS2GRPOTrainer:
         wrappers = []
 
         for fn in self.reward_fns:
-            def make_wrapper(reward_fn):
-                def wrapper(completions: list[str], **kwargs) -> list[float]:
+            def make_wrapper(reward_fn: Callable[..., Any]) -> Callable[..., Any]:
+                def wrapper(completions: list[str], **kwargs: Any) -> list[float]:
                     ground_truths = kwargs.get("ground_truth", [None] * len(completions))
                     results = []
                     for completion, gt in zip(completions, ground_truths, strict=False):
@@ -277,8 +277,7 @@ class CS2GRPOTrainer:
             from trl.trainer.grpo_trainer import GRPOTrainer
         except ImportError as err:
             raise ImportError(
-                "TRL is required for GRPO training. Install with:\n"
-                "  pip install trl>=0.12.0"
+                "TRL is required for GRPO training. Install with: pip install trl>=0.12.0"
             ) from err
 
         print("Configuring GRPO trainer...")
@@ -381,7 +380,7 @@ class CS2GRPOTrainer:
 
         print(f"Model saved to {output_path}")
 
-    def evaluate(self, eval_data: list[dict] | None = None) -> dict:
+    def evaluate(self, eval_data: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """
         Evaluate the model on validation data.
 

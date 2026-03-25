@@ -131,11 +131,11 @@ def main():
 
         messages = [{"role": "user", "content": [
             {"type": "text", "text": CS2_SYSTEM_PROMPT + "\n\n"
-                "You are watching a CS2 match on de_inferno. "
-                "The CT player has $4700, an M4A4, full armor+helmet, "
-                "one smoke and one flashbang. Score is 8-7 in favor of T side. "
-                "3 CTs alive, 4 Ts alive. Bomb has not been spotted yet. "
-                "Provide your analysis as JSON."
+                + "You are watching a CS2 match on de_inferno. "
+                + "The CT player has $4700, an M4A4, full armor+helmet, "
+                + "one smoke and one flashbang. Score is 8-7 in favor of T side. "
+                + "3 CTs alive, 4 Ts alive. Bomb has not been spotted yet. "
+                + "Provide your analysis as JSON."
             },
         ]}]
 

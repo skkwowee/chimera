@@ -8,6 +8,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -121,8 +122,10 @@ def cmd_status() -> None:
     print("=== Chimera Pipeline Status ===\n")
     print(f"Demos:        {n_demos} parsed")
     print(f"Rounds:       {total_rounds} total ({bomb_rounds} with bomb plants)")
-    print(f"Captures:     {maps_with_captures}/{n_demos} maps "
-          f"({total_screenshots} screenshots, {total_labels} labels)")
+    print(
+        f"Captures:     {maps_with_captures}/{n_demos} maps "
+        + f"({total_screenshots} screenshots, {total_labels} labels)"
+    )
     print(f"Training:     {training_status}")
     print(f"Models:       {model_status}")
     print()
@@ -141,10 +144,10 @@ def cmd_status() -> None:
 
 def cmd_registry() -> None:
     stems = _get_demo_stems()
-    demos: list[dict] = []
+    demos: list[dict[str, Any]] = []
 
     for stem in stems:
-        entry: dict = {"stem": stem}
+        entry: dict[str, Any] = {"stem": stem}
 
         # Header / map
         header_path = DEMOS_DIR / f"{stem}_header.json"

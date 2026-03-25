@@ -6,6 +6,8 @@ Shared constants and functions used across training scripts and diagnostics.
 
 from __future__ import annotations
 
+from typing import Any
+
 # ---------------------------------------------------------------------------
 # Weapon sets
 # ---------------------------------------------------------------------------
@@ -98,7 +100,7 @@ def classify_weapon(item: str) -> str:
     return "melee"
 
 
-def classify_weapon_class(inventory: list | None) -> str:
+def classify_weapon_class(inventory: list[Any] | None) -> str:
     """Get weapon class of best weapon in inventory (for sparsity bucketing)."""
     if not inventory:
         return "pistol"
@@ -115,9 +117,9 @@ def classify_weapon_class(inventory: list | None) -> str:
     return best_class
 
 
-def parse_inventory(inventory: list | None) -> dict:
+def parse_inventory(inventory: list[Any] | None) -> dict[str, Any]:
     """Parse inventory list into weapon_primary, weapon_secondary, utility."""
-    result: dict = {"weapon_primary": None, "weapon_secondary": None, "utility": []}
+    result: dict[str, Any] = {"weapon_primary": None, "weapon_secondary": None, "utility": []}
     if not inventory:
         return result
 
@@ -138,7 +140,7 @@ def parse_inventory(inventory: list | None) -> dict:
 # Economy classification
 # ---------------------------------------------------------------------------
 
-def estimate_equipment_value(player: dict) -> int:
+def estimate_equipment_value(player: dict[str, Any]) -> int:
     """Estimate a player's equipment value from inventory and armor."""
     value = 0
     inventory = player.get("inventory") or []
@@ -152,7 +154,7 @@ def estimate_equipment_value(player: dict) -> int:
     return value
 
 
-def estimate_team_equip(players: list[dict], side: str) -> float:
+def estimate_team_equip(players: list[dict[str, Any]], side: str) -> float:
     """Average equipment value for alive players on a side."""
     team = [p for p in players if p.get("side", "").lower() == side.lower()
             and (p.get("health") or 0) > 0]
@@ -174,7 +176,7 @@ def classify_buy(avg_equip: float) -> str:
         return "eco"
 
 
-def classify_team_economy(players: list[dict], side: str) -> tuple[str, int]:
+def classify_team_economy(players: list[dict[str, Any]], side: str) -> tuple[str, int]:
     """Classify a team's buy as full-buy/half-buy/eco/force-buy with total value.
 
     Returns (buy_type, total_equipment_value).

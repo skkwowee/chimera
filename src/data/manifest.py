@@ -13,11 +13,12 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
-def append_to_manifest(manifest_path: Path | str, entry: dict) -> None:
+def append_to_manifest(manifest_path: Path | str, entry: dict[str, Any]) -> None:
     """Append one entry to the manifest JSONL file.
 
     Args:
@@ -31,7 +32,7 @@ def append_to_manifest(manifest_path: Path | str, entry: dict) -> None:
         f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def load_manifest(manifest_path: Path | str) -> dict[str, dict]:
+def load_manifest(manifest_path: Path | str) -> dict[str, dict[str, Any]]:
     """Load manifest into {id: metadata} dict.
 
     Args:
@@ -60,7 +61,7 @@ def load_manifest(manifest_path: Path | str) -> dict[str, dict]:
     return entries
 
 
-def filter_manifest(manifest: dict[str, dict], **kwargs) -> dict[str, dict]:
+def filter_manifest(manifest: dict[str, dict[str, Any]], **kwargs: Any) -> dict[str, dict[str, Any]]:
     """Filter manifest entries by field values.
 
     Supports filtering by any field. For string fields, checks equality.

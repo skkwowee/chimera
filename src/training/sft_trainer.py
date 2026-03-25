@@ -67,7 +67,7 @@ class CS2SFTConfig:
     logging_steps: int = 10
     report_to: str = "none"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
         return {
             k: v if not callable(v) else str(v)
@@ -85,11 +85,11 @@ class CS2SFTTrainer:
     """
 
     def __init__(self, config: CS2SFTConfig | None = None):
-        self.config = config or CS2SFTConfig()
-        self.model = None
-        self.processor = None
-        self.train_dataset = None
-        self.val_dataset = None
+        self.config: CS2SFTConfig = config or CS2SFTConfig()
+        self.model: Any = None
+        self.processor: Any = None
+        self.train_dataset: Any = None
+        self.val_dataset: Any = None
 
     def load_model(self):
         """Load Qwen3.5-27B (4-bit) with LoRA."""
@@ -204,7 +204,7 @@ class CS2SFTTrainer:
         return batch
 
     @staticmethod
-    def _serialize_messages(data: list[dict]) -> list[dict]:
+    def _serialize_messages(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Serialize messages to JSON strings for Arrow compatibility.
 
         HuggingFace Dataset / PyArrow cannot handle the mixed-type content
@@ -218,8 +218,8 @@ class CS2SFTTrainer:
 
     def prepare_data(
         self,
-        train_data: list[dict],
-        val_data: list[dict] | None = None,
+        train_data: list[dict[str, Any]],
+        val_data: list[dict[str, Any]] | None = None,
     ):
         """
         Prepare datasets for SFT training.
@@ -259,8 +259,7 @@ class CS2SFTTrainer:
             from trl.trainer.sft_trainer import SFTTrainer
         except ImportError as err:
             raise ImportError(
-                "TRL is required for SFT training. Install with:\n"
-                "  pip install trl>=0.12.0"
+                "TRL is required for SFT training. Install with: pip install trl>=0.12.0"
             ) from err
 
         print("Configuring SFT trainer...")
@@ -356,7 +355,7 @@ class CS2SFTTrainer:
 
         print(f"Model saved to {output_path}")
 
-    def evaluate(self, eval_data: list[dict] | None = None) -> dict:
+    def evaluate(self, eval_data: list[dict[str, Any]] | None = None) -> dict[str, Any]:
         """
         Evaluate the model on validation data.
 

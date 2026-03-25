@@ -23,6 +23,7 @@ import sys
 from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -73,18 +74,18 @@ def find_nearest_tick(available_ticks: list[int], target: int) -> int:
     return best
 
 
-def distance_2d(x1, y1, x2, y2) -> float:
+def distance_2d(x1: float, y1: float, x2: float, y2: float) -> float:
     return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
 
-def get_snap_dicts(ticks_df: pl.DataFrame, round_num: int, tick: int) -> list[dict]:
+def get_snap_dicts(ticks_df: pl.DataFrame, round_num: int, tick: int) -> list[dict[str, Any]]:
     """Get player snapshots at a specific tick."""
     return ticks_df.filter(
         (pl.col("round_num") == round_num) & (pl.col("tick") == tick)
     ).to_dicts()
 
 
-def get_bomb_plant_pos(bomb_events: list[dict], round_num: int) -> tuple[float, float, float] | None:
+def get_bomb_plant_pos(bomb_events: list[dict[str, Any]], round_num: int) -> tuple[float, float, float] | None:
     """Get bomb plant XYZ from bomb events for this round."""
     for evt in bomb_events:
         if evt["round_num"] != round_num:
@@ -99,11 +100,11 @@ def get_bomb_plant_pos(bomb_events: list[dict], round_num: int) -> tuple[float, 
 # ---------------------------------------------------------------------------
 
 def precompute_round_events(
-    kills: list[dict],
-    bomb_events: list[dict],
+    kills: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
     round_num: int,
     freeze_end: int,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Precompute round events from kills and bomb events JSON (fast path).
 
@@ -162,13 +163,13 @@ def build_context_fast(
     round_num: int,
     pov_name: str,
     pov_side: str,
-    current_players: list[dict],
-    rounds: list[dict],
-    bomb_events: list[dict],
-    header: dict,
-    round_info: dict,
-    precomputed_events: list[dict],
-    start_snap: list[dict],
+    current_players: list[dict[str, Any]],
+    rounds: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
+    header: dict[str, Any],
+    round_info: dict[str, Any],
+    precomputed_events: list[dict[str, Any]],
+    start_snap: list[dict[str, Any]],
 ) -> str:
     """
     Fast version of generate_round_context that avoids re-scanning tick data.
@@ -236,8 +237,8 @@ def build_context_fast(
         util_str = ", ".join(inv["utility"]) if inv["utility"] else "none"
         lines.append(
             f"  POV: {pov_name} ({pov_side.upper()}), "
-            f"{pov.get('health', 0)}hp/{pov.get('armor', 0)}armor, "
-            f"{weapon}, utility: {util_str}"
+            + f"{pov.get('health', 0)}hp/{pov.get('armor', 0)}armor, "
+            + f"{weapon}, utility: {util_str}"
         )
 
     # Teammate states
@@ -269,9 +270,9 @@ def build_context_fast(
 # ---------------------------------------------------------------------------
 
 def compute_movement_direction(
-    player_t: dict,
-    player_t_delta: dict | None,
-    enemies_t: list[dict],
+    player_t: dict[str, Any],
+    player_t_delta: dict[str, Any] | None,
+    enemies_t: list[dict[str, Any]],
 ) -> int:
     """Compute d_move: -1=retreat, 0=hold, 1=advance relative to enemies."""
     if not enemies_t or player_t_delta is None:
@@ -296,8 +297,8 @@ def compute_movement_direction(
 
 
 def compute_objective_direction(
-    player_t: dict,
-    player_t_delta: dict | None,
+    player_t: dict[str, Any],
+    player_t_delta: dict[str, Any] | None,
     bomb_pos: tuple[float, float, float] | None,
 ) -> int:
     """Compute d_obj: -1=away, 0=neutral, 1=toward bomb."""
@@ -316,7 +317,7 @@ def compute_objective_direction(
     return 0
 
 
-def compute_utility_used(player_t: dict, player_t_delta: dict | None) -> list[str]:
+def compute_utility_used(player_t: dict[str, Any], player_t_delta: dict[str, Any] | None) -> list[str]:
     """Detect grenades that disappeared from inventory between t and t+delta."""
     if player_t_delta is None:
         return []
@@ -332,7 +333,7 @@ def compute_engagement_features(
     player_name: str,
     tick: int,
     delta: int,
-    round_damages: list[dict],
+    round_damages: list[dict[str, Any]],
 ) -> tuple[bool, float]:
     """
     Compute initiated_engagement and engagement_delay.
@@ -439,14 +440,14 @@ def describe_action(
 
 def precompute_round_contributions(
     round_num: int,
-    damages: list[dict],
-    bomb_events: list[dict],
-    kills: list[dict],
+    damages: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
+    kills: list[dict[str, Any]],
     freeze_end: int,
     round_end: int,
     winner: str,
-    end_snap: list[dict],
-) -> tuple[dict, float, float]:
+    end_snap: list[dict[str, Any]],
+) -> tuple[dict[str, Any], float, float]:
     """Precompute player contribution for all players in a round."""
 
     round_damages = [
@@ -529,7 +530,7 @@ def extract_grpo_samples(
     delta: int = DEFAULT_DELTA,
     sample_interval: int = DEFAULT_SAMPLE_INTERVAL,
     all_rounds: bool = False,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Extract GRPO samples from all demos in demo_data_dir."""
 
     parquet_files = sorted(demo_data_dir.glob("*_ticks.parquet"))
@@ -743,7 +744,7 @@ def extract_grpo_samples(
 # Manifest
 # ---------------------------------------------------------------------------
 
-def build_manifest(samples: list[dict], num_demos: int) -> dict:
+def build_manifest(samples: list[dict[str, Any]], num_demos: int) -> dict[str, Any]:
     """Build manifest summary."""
     t_count = ct_count = t_wins = ct_wins = 0
 

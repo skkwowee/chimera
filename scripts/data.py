@@ -16,6 +16,7 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -26,7 +27,7 @@ CAPTURES = DATA / "captures"
 HF_CACHE = DATA / ".hf_cache"
 
 
-def _load_config():
+def _load_config() -> dict[str, Any]:
     """Load hub config from config/config.yaml."""
     import yaml
 
@@ -37,7 +38,7 @@ def _load_config():
         return yaml.safe_load(f) or {}
 
 
-def _get_repo(args, config, key="dataset_repo"):
+def _get_repo(args: argparse.Namespace, config: dict[str, Any], key: str = "dataset_repo") -> str:
     """Resolve repo ID from CLI --repo or config."""
     if getattr(args, "repo", None):
         return args.repo
@@ -49,7 +50,7 @@ def _get_repo(args, config, key="dataset_repo"):
     return repo
 
 
-def _count_files(directory, patterns=("*.json", "*.png", "*.jpg", "*.jpeg", "*.webp")):
+def _count_files(directory: Path, patterns: tuple[str, ...] = ("*.json", "*.png", "*.jpg", "*.jpeg", "*.webp")) -> int:
     """Count files matching patterns in a directory."""
     if not directory.exists():
         return 0
@@ -59,7 +60,7 @@ def _count_files(directory, patterns=("*.json", "*.png", "*.jpg", "*.jpeg", "*.w
     return count
 
 
-def _dir_size_mb(directory):
+def _dir_size_mb(directory: Path) -> float:
     """Total size of a directory in MB."""
     if not directory.exists():
         return 0.0
@@ -70,7 +71,7 @@ def _dir_size_mb(directory):
 # ── status ──────────────────────────────────────────────────────────────
 
 
-def cmd_status(args):
+def cmd_status(args: argparse.Namespace) -> None:
     config = _load_config()
 
     print("=== Local data ===")
@@ -132,7 +133,7 @@ def cmd_status(args):
 # ── pull ────────────────────────────────────────────────────────────────
 
 
-def _git_clone_or_pull(repo_id, cache_path):
+def _git_clone_or_pull(repo_id: str, cache_path: Path) -> None:
     """Clone or pull a HF dataset repo using git (avoids per-file API rate limits)."""
     import subprocess
 
@@ -158,7 +159,7 @@ def _git_clone_or_pull(repo_id, cache_path):
         print("  Warning: git-lfs not installed, LFS files may be pointers")
 
 
-def cmd_pull(args):
+def cmd_pull(args: argparse.Namespace) -> None:
     config = _load_config()
     repo_id = _get_repo(args, config, "dataset_repo")
 
@@ -261,7 +262,7 @@ def _assemble_captures():
     return total_labels, total_screenshots
 
 
-def _generate_dataset_card(repo_id, label_count, screenshot_count):
+def _generate_dataset_card(repo_id: str, label_count: int, screenshot_count: int) -> str:
     """Generate a dataset card README."""
     return f"""---
 license: mit
@@ -311,7 +312,7 @@ ds = load_dataset("{repo_id}")
 """
 
 
-def cmd_push(args):
+def cmd_push(args: argparse.Namespace) -> None:
     from huggingface_hub import HfApi, create_repo
 
     config = _load_config()
@@ -405,7 +406,7 @@ def cmd_push(args):
     print(f"Dataset pushed: https://huggingface.co/datasets/{repo_id}")
 
 
-def _push_model(model_path, repo_id):
+def _push_model(model_path: str | Path, repo_id: str) -> None:
     """Upload trained model weights to HF Hub."""
     from huggingface_hub import HfApi, create_repo
 
@@ -483,7 +484,7 @@ processor = AutoProcessor.from_pretrained("{repo_id}")
 # ── clean ───────────────────────────────────────────────────────────────
 
 
-def cmd_clean(args):
+def cmd_clean(args: argparse.Namespace) -> None:
     dirs_to_clean = [RAW, LABELED, HF_CACHE]
 
     if args.all:

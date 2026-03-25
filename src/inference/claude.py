@@ -6,7 +6,7 @@ import base64
 import json
 import logging
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import anthropic
 from anthropic.types import ImageBlockParam, MessageParam, TextBlock, TextBlockParam
@@ -33,15 +33,15 @@ class ClaudeVLMInference:
         model: str = "claude-opus-4-6",
         max_tokens: int = 1024,
     ):
-        self.model = model
-        self.max_tokens = max_tokens
-        self.client = anthropic.Anthropic()
+        self.model: str = model
+        self.max_tokens: int = max_tokens
+        self.client: anthropic.Anthropic = anthropic.Anthropic()
 
     def analyze(
         self,
         image_path: Path | str,
         prompt: str | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Analyze a CS2 screenshot via Claude."""
         image_path = Path(image_path)
 
@@ -98,7 +98,7 @@ class ClaudeVLMInference:
         self,
         image_paths: list[Path | str],
         output_dir: Path | str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Analyze multiple screenshots sequentially."""
         results = []
         output_dir = Path(output_dir) if output_dir else None

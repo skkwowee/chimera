@@ -23,6 +23,7 @@ import argparse
 import base64
 import json
 from pathlib import Path
+from typing import Any
 
 
 def image_to_data_uri(image_path: Path) -> str:
@@ -60,7 +61,7 @@ def find_pairs(images_dir: Path, labels_dir: Path) -> list[tuple[Path, Path]]:
 
 def find_comparison_data(
     images_dir: Path, claude_dir: Path, predictions_dir: Path
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Find matching image, Claude label, and Qwen prediction for comparison."""
     comparisons = []
     image_extensions = {".png", ".jpg", ".jpeg", ".webp"}
@@ -83,7 +84,7 @@ def find_comparison_data(
     return sorted(comparisons, key=lambda x: x["image"].name)
 
 
-def generate_comparison_html(comparisons: list[dict], embed_images: bool = False) -> str:
+def generate_comparison_html(comparisons: list[dict[str, Any]], embed_images: bool = False) -> str:
     """Generate HTML for comparing Claude vs Qwen predictions."""
 
     # Build data array

@@ -20,6 +20,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -33,7 +34,7 @@ from src.utils.cs2 import (
 # Score and phase helpers
 # ---------------------------------------------------------------------------
 
-def compute_scores(rounds: list[dict], round_num: int) -> tuple[int, int]:
+def compute_scores(rounds: list[dict[str, Any]], round_num: int) -> tuple[int, int]:
     """Compute T and CT scores at the start of a round."""
     score_t = 0
     score_ct = 0
@@ -48,7 +49,7 @@ def compute_scores(rounds: list[dict], round_num: int) -> tuple[int, int]:
     return score_t, score_ct
 
 
-def determine_bomb_status(bomb_events: list[dict], round_num: int, tick: int) -> str | None:
+def determine_bomb_status(bomb_events: list[dict[str, Any]], round_num: int, tick: int) -> str | None:
     """Determine bomb status at a given tick."""
     last_event = None
     for evt in bomb_events:
@@ -73,7 +74,7 @@ def determine_bomb_status(bomb_events: list[dict], round_num: int, tick: int) ->
 
 
 def determine_round_phase(
-    tick: int, round_info: dict, bomb_events: list[dict]
+    tick: int, round_info: dict[str, Any], bomb_events: list[dict[str, Any]]
 ) -> str:
     """Determine round phase at a given tick."""
     freeze_end = round_info["freeze_end"]
@@ -98,8 +99,8 @@ def detect_round_events(
     round_num: int,
     up_to_tick: int,
     freeze_end: int,
-    bomb_events: list[dict],
-) -> list[dict]:
+    bomb_events: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
     """
     Detect game events within a round up to a given tick.
 
@@ -231,9 +232,9 @@ def generate_round_context(
     pov_name: str,
     pov_side: str,
     ticks_df: pl.DataFrame,
-    rounds: list[dict],
-    bomb_events: list[dict],
-    header: dict,
+    rounds: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
+    header: dict[str, Any],
 ) -> str:
     """
     Generate the round context string c_t for a decision point.
@@ -361,8 +362,8 @@ def generate_round_context(
         util_str = ", ".join(inv["utility"]) if inv["utility"] else "none"
         lines.append(
             f"  POV: {pov_name} ({pov_side.upper()}), "
-            f"{pov.get('health', 0)}hp/{pov.get('armor', 0)}armor, "
-            f"{weapon}, utility: {util_str}"
+            + f"{pov.get('health', 0)}hp/{pov.get('armor', 0)}armor, "
+            + f"{weapon}, utility: {util_str}"
         )
 
     # Teammate states
@@ -398,8 +399,8 @@ def generate_round_context(
 # ---------------------------------------------------------------------------
 
 def find_prior_screenshots(
-    current_cap: dict,
-    all_captures: list[dict],
+    current_cap: dict[str, Any],
+    all_captures: list[dict[str, Any]],
     max_prior: int = 2,
 ) -> list[str]:
     """
@@ -430,13 +431,13 @@ def find_prior_screenshots(
 # ---------------------------------------------------------------------------
 
 def generate_label(
-    cap: dict,
+    cap: dict[str, Any],
     ticks_df: pl.DataFrame,
-    rounds: list[dict],
-    bomb_events: list[dict],
-    header: dict,
-    all_captures: list[dict] | None = None,
-) -> dict | None:
+    rounds: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
+    header: dict[str, Any],
+    all_captures: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     """Generate a game_state label + context for a single capture."""
     tick = cap["tick"]
     round_num = cap["round_num"]

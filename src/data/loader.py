@@ -5,7 +5,7 @@ Data loading utilities for CS2 screenshots and labels.
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from PIL import Image
 
@@ -27,15 +27,15 @@ class ScreenshotDataset:
             labels_dir: Optional directory containing JSON label files
             manifest_path: Optional path to manifest.jsonl for metadata
         """
-        self.screenshots_dir = Path(screenshots_dir)
-        self.labels_dir = Path(labels_dir) if labels_dir else None
-        self._manifest = None
+        self.screenshots_dir: Path = Path(screenshots_dir)
+        self.labels_dir: Path | None = Path(labels_dir) if labels_dir else None
+        self._manifest: dict[str, dict[str, Any]] | None = None
 
         if manifest_path:
             from .manifest import load_manifest
             self._manifest = load_manifest(manifest_path)
 
-        self.image_paths = self._find_images()
+        self.image_paths: list[Path] = self._find_images()
 
     def _find_images(self) -> list[Path]:
         """Find all valid image files in the screenshots directory."""
@@ -52,7 +52,7 @@ class ScreenshotDataset:
     def __len__(self) -> int:
         return len(self.image_paths)
 
-    def __getitem__(self, idx: int) -> dict:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         """Get a screenshot and its label (if available)."""
         image_path = self.image_paths[idx]
 
@@ -76,7 +76,7 @@ class ScreenshotDataset:
 
         return item
 
-    def filter(self, **kwargs) -> "ScreenshotDataset":
+    def filter(self, **kwargs: Any) -> "ScreenshotDataset":
         """Return a new dataset filtered by manifest fields.
 
         Requires a manifest to be loaded. Uses the same filter semantics
@@ -105,7 +105,7 @@ class ScreenshotDataset:
         ]
         return new_dataset
 
-    def __iter__(self) -> Iterator[dict]:
+    def __iter__(self) -> Iterator[dict[str, Any]]:
         for idx in range(len(self)):
             yield self[idx]
 
@@ -135,7 +135,7 @@ class ScreenshotDataset:
 
         return labeled
 
-    def stats(self) -> dict:
+    def stats(self) -> dict[str, int]:
         """Return dataset statistics."""
         return {
             "total_screenshots": len(self.image_paths),
@@ -147,7 +147,7 @@ class ScreenshotDataset:
 def load_labeled_data(
     screenshots_dir: Path | str,
     labels_dir: Path | str,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Load all labeled screenshots with their labels.
 

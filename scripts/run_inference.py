@@ -10,12 +10,13 @@ Usage:
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from src.data import ScreenshotDataset
 from src.inference.vlm import Qwen3VLInference
 
 
-def analyze_single(image_path: str, output_path: str | None = None):
+def analyze_single(image_path: str, output_path: str | None = None) -> dict[str, Any]:
     """Analyze a single screenshot."""
     model = Qwen3VLInference()
     model.load_model()
@@ -32,7 +33,9 @@ def analyze_single(image_path: str, output_path: str | None = None):
     return result
 
 
-def analyze_directory(input_dir: str, output_dir: str, labeled_only: bool = False, labels_dir: str = "data/labeled"):
+def analyze_directory(
+    input_dir: str, output_dir: str, labeled_only: bool = False, labels_dir: str = "data/labeled",
+) -> list[dict[str, Any]] | None:
     """Analyze all screenshots in a directory."""
     input_path = Path(input_dir)
     output_path = Path(output_dir)

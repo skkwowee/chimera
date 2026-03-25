@@ -77,7 +77,7 @@ _ACTION_SIM_THRESHOLD = 0.5
 # Helpers (shared with rewards.py)
 # ---------------------------------------------------------------------------
 
-def _extract_json_from_response(response: str) -> dict | None:
+def _extract_json_from_response(response: str) -> dict[str, Any] | None:
     """Extract JSON object from model response."""
     code_block_pattern = r"```(?:json)?\s*(\{[\s\S]*?\})\s*```"
     match = re.search(code_block_pattern, response)
@@ -102,7 +102,7 @@ def _extract_json_from_response(response: str) -> dict | None:
 # Embedding functions
 # ---------------------------------------------------------------------------
 
-def tactical_embedding(game_state: dict) -> np.ndarray:
+def tactical_embedding(game_state: dict[str, Any]) -> np.ndarray:
     """
     Convert a game state dict to a flat tactical embedding vector.
 
@@ -181,7 +181,7 @@ def tactical_embedding(game_state: dict) -> np.ndarray:
     return vec
 
 
-def action_embedding(behavior: dict) -> np.ndarray:
+def action_embedding(behavior: dict[str, Any]) -> np.ndarray:
     """
     Convert behavioral features to a flat action embedding vector.
 
@@ -233,17 +233,17 @@ class RECALLIndex:
     """
 
     def __init__(self):
-        self._state_index = None  # faiss.IndexFlatL2
-        self._action_embeddings = None  # np.ndarray (N, d_a)
-        self._outcomes = None  # np.ndarray (N,) float32
-        self._n = 0
+        self._state_index: Any = None  # faiss.IndexFlatL2
+        self._action_embeddings: np.ndarray | None = None  # np.ndarray (N, d_a)
+        self._outcomes: np.ndarray | None = None  # np.ndarray (N,) float32
+        self._n: int = 0
 
     @property
     def size(self) -> int:
         """Number of samples in the index."""
         return self._n
 
-    def build_from_samples(self, samples: list[dict]) -> None:
+    def build_from_samples(self, samples: list[dict[str, Any]]) -> None:
         """
         Build the index from GRPO sample dicts.
 
@@ -257,8 +257,7 @@ class RECALLIndex:
         """
         if faiss is None:
             raise ImportError(
-                "faiss is required for RECALLIndex. "
-                "Install with: pip install faiss-cpu"
+                "faiss is required for RECALLIndex. Install with: pip install faiss-cpu"
             )
 
         state_vecs = []
@@ -297,8 +296,8 @@ class RECALLIndex:
 
     def query(
         self,
-        state: dict,
-        action: dict,
+        state: dict[str, Any],
+        action: dict[str, Any],
         k: int = 32,
         k_min: int = 5,
     ) -> tuple[float, float, bool]:
@@ -371,8 +370,8 @@ class RECALLIndex:
 
     def recall_advantage(
         self,
-        state: dict,
-        action: dict,
+        state: dict[str, Any],
+        action: dict[str, Any],
         k: int = 32,
         k_min: int = 5,
     ) -> float:
@@ -405,7 +404,7 @@ def recall_reward(
     response: str,
     ground_truth: dict[str, Any] | None = None,
     recall_index: RECALLIndex | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> float:
     r"""
     RECALL advantage reward.
@@ -453,7 +452,7 @@ def recall_reward(
     return recall_index.recall_advantage(game_state, model_action)
 
 
-def _extract_action_from_text(text: str) -> dict:
+def _extract_action_from_text(text: str) -> dict[str, Any]:
     """
     Extract behavioral action features from model advice text.
 
@@ -523,7 +522,7 @@ def _extract_action_from_text(text: str) -> dict:
 def simplified_outcome_reward(
     response: str,
     ground_truth: dict[str, Any] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> float:
     r"""
     Simplified outcome reward for ablation baseline.

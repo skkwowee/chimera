@@ -33,15 +33,15 @@ class ThinkingBudgetProcessor(LogitsProcessor):
     - After </think>: no intervention, model generates freely
     """
 
-    def __init__(self, processor, max_thinking_tokens: int):
-        self.max_thinking_tokens = max_thinking_tokens
+    def __init__(self, processor: Any, max_thinking_tokens: int):
+        self.max_thinking_tokens: int = max_thinking_tokens
         # Processor wraps tokenizer — use .tokenizer for encode
         tok = getattr(processor, "tokenizer", processor)
-        self.think_end_token = tok.encode("</think>", add_special_tokens=False)[0]
-        self.nl_token = tok.encode("\n", add_special_tokens=False)[0]
-        self.tokens_generated = 0
-        self.stopped_thinking = False
-        self.neg_inf = float("-inf")
+        self.think_end_token: int = tok.encode("</think>", add_special_tokens=False)[0]
+        self.nl_token: int = tok.encode("\n", add_special_tokens=False)[0]
+        self.tokens_generated: int = 0
+        self.stopped_thinking: bool = False
+        self.neg_inf: float = float("-inf")
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         self.tokens_generated += 1
@@ -69,7 +69,7 @@ class ThinkingBudgetProcessor(LogitsProcessor):
         return scores
 
 
-def parse_json_response(response: str) -> dict:
+def parse_json_response(response: str) -> dict[str, Any]:
     """Try to extract JSON from model response."""
     try:
         start = response.find("{")
@@ -94,11 +94,11 @@ class Qwen3VLInference:
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
     ):
-        self.model_name = model_name
-        self.device = device
-        self.dtype = getattr(torch, torch_dtype)
-        self.model = None
-        self.processor = None
+        self.model_name: str = model_name
+        self.device: str = device
+        self.dtype: torch.dtype = getattr(torch, torch_dtype)
+        self.model: Any = None
+        self.processor: Any = None
 
     def load_model(self):
         """Load the model and processor from HuggingFace Hub."""
@@ -126,8 +126,8 @@ class Qwen3VLInference:
         thinking_budget: int | None = 512,
         phase: str | None = None,
         system_prompt: str | None = None,
-        game_state: dict | None = None,
-    ) -> dict:
+        game_state: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Analyze a CS2 screenshot.
 
         Args:
@@ -230,7 +230,7 @@ class Qwen3VLInference:
         self,
         image_paths: list[Path | str],
         output_dir: Path | str | None = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Analyze multiple screenshots."""
         from tqdm import tqdm
 

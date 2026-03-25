@@ -18,6 +18,7 @@ import random
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 # Fields to compare (same as scripts/evaluate.py)
 COMPARE_FIELDS = [
@@ -35,7 +36,7 @@ COMPARE_FIELDS = [
 ]
 
 
-def find_pairs(labeled_dir: Path, captures_dir: Path) -> list[dict]:
+def find_pairs(labeled_dir: Path, captures_dir: Path) -> list[dict[str, Any]]:
     """Find label/screenshot pairs where both files exist."""
     pairs = []
     for label_path in sorted(labeled_dir.glob("*.json")):
@@ -51,7 +52,7 @@ def find_pairs(labeled_dir: Path, captures_dir: Path) -> list[dict]:
     return pairs
 
 
-def compare_fields(label: dict, prediction: dict) -> dict:
+def compare_fields(label: dict[str, Any], prediction: dict[str, Any]) -> dict[str, Any]:
     """Compare game_state fields between label and prediction."""
     label_state = label.get("game_state", {})
     pred_state = prediction.get("game_state", {})
@@ -77,7 +78,7 @@ def compare_fields(label: dict, prediction: dict) -> dict:
     return {"matches": matches, "total": total, "details": details}
 
 
-def format_val(val) -> str:
+def format_val(val: Any) -> str:
     """Format a value for table display."""
     if val is None:
         return "null"
@@ -86,7 +87,9 @@ def format_val(val) -> str:
     return str(val)
 
 
-def print_sample_table(sample_id: str, label: dict, predictions: dict[str, dict]):
+def print_sample_table(
+    sample_id: str, label: dict[str, Any], predictions: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
     """Print a per-sample comparison table."""
     print(f"\n=== {sample_id} ===\n")
 

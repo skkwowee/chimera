@@ -283,7 +283,7 @@ _WAIT_KEYWORDS = [
 ]
 
 
-def _extract_json_from_response(response: str) -> dict | None:
+def _extract_json_from_response(response: str) -> dict[str, Any] | None:
     """
     Extract JSON object from model response.
 
@@ -315,8 +315,8 @@ def _extract_json_from_response(response: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 def _score_numeric_field(
-    predicted: dict,
-    gt_state: dict,
+    predicted: dict[str, Any],
+    gt_state: dict[str, Any],
     field: str,
     tolerance: float = 0.1,
 ) -> float | None:
@@ -347,7 +347,7 @@ def _score_numeric_field(
     return max(0.0, 1.0 - (rel_error - tolerance) / tolerance)
 
 
-def _score_string_field(predicted: dict, gt_state: dict, field: str) -> float | None:
+def _score_string_field(predicted: dict[str, Any], gt_state: dict[str, Any], field: str) -> float | None:
     """Score a string field (case-insensitive). Returns None if missing from GT."""
     if field not in gt_state:
         return None
@@ -364,8 +364,8 @@ def _score_string_field(predicted: dict, gt_state: dict, field: str) -> float | 
 
 
 def _score_categorical_field(
-    predicted: dict,
-    gt_state: dict,
+    predicted: dict[str, Any],
+    gt_state: dict[str, Any],
     field: str,
 ) -> float | None:
     """Score a categorical field. Returns None if missing from GT."""
@@ -380,7 +380,7 @@ def _score_categorical_field(
     return 1.0 if gt_val == pred_val else 0.0
 
 
-def _score_list_field(predicted: dict, gt_state: dict, field: str) -> float | None:
+def _score_list_field(predicted: dict[str, Any], gt_state: dict[str, Any], field: str) -> float | None:
     """Score a list field via Jaccard similarity. Returns None if missing from GT."""
     if field not in gt_state:
         return None
@@ -474,7 +474,7 @@ def _classify_engagement_timing(text: str) -> int | None:
     return None
 
 
-def _extract_model_behavior(parsed: dict) -> dict:
+def _extract_model_behavior(parsed: dict[str, Any]) -> dict[str, Any]:
     """
     Extract behavioral feature vector from model's advice text.
 
@@ -539,7 +539,7 @@ def _action_similarity(model_cats: set[str], pro_cats: set[str]) -> float:
     return len(model_cats & pro_cats) / len(model_cats | pro_cats)
 
 
-def _get_model_action_text(parsed: dict) -> str:
+def _get_model_action_text(parsed: dict[str, Any]) -> str:
     """Extract combined action text from parsed model output."""
     advice = parsed.get("advice", {})
     if not isinstance(advice, dict):
@@ -547,7 +547,7 @@ def _get_model_action_text(parsed: dict) -> str:
     return f"{advice.get('primary_action', '')} {advice.get('fallback', '')}"
 
 
-def _get_pro_categories(ground_truth: dict) -> set[str] | None:
+def _get_pro_categories(ground_truth: dict[str, Any]) -> set[str] | None:
     """Extract pro action categories from ground truth (fallback path)."""
     pro_action = ground_truth.get("pro_action", {})
     if not isinstance(pro_action, dict):
@@ -563,8 +563,8 @@ def _get_pro_categories(ground_truth: dict) -> set[str] | None:
 # ---------------------------------------------------------------------------
 
 def _score_behavioral_alignment(
-    model_behavior: dict,
-    pro_behavior: dict,
+    model_behavior: dict[str, Any],
+    pro_behavior: dict[str, Any],
 ) -> float:
     r"""
     Score alignment between model and pro behavioral feature vectors.
@@ -634,7 +634,7 @@ def _score_behavioral_alignment(
 # Player contribution φ
 # ---------------------------------------------------------------------------
 
-def compute_player_contribution(contribution: dict) -> float:
+def compute_player_contribution(contribution: dict[str, Any]) -> float:
     r"""
     Compute player contribution metric φ ∈ [0, 1].
 
@@ -730,7 +730,7 @@ def compute_outcome_modulation(
 # Format gate — multiplicative mask, NOT a weighted signal
 # ---------------------------------------------------------------------------
 
-def format_gate_reward(response: str, **kwargs) -> float:
+def format_gate_reward(response: str, **kwargs: Any) -> float:
     """
     Binary gate: 1.0 if response contains valid JSON with expected top-level
     keys, 0.0 otherwise.
@@ -758,7 +758,7 @@ def format_gate_reward(response: str, **kwargs) -> float:
 def perceptual_accuracy_reward(
     response: str,
     ground_truth: dict[str, Any] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> float:
     r"""
     Merged hard and soft field accuracy.
@@ -838,7 +838,7 @@ def perceptual_accuracy_reward(
 def decision_alignment_reward(
     response: str,
     ground_truth: dict[str, Any] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> float:
     r"""
     Behavioral decision alignment.
@@ -887,7 +887,7 @@ def decision_alignment_reward(
 def outcome_reward(
     response: str,
     ground_truth: dict[str, Any] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> float:
     r"""
     Decision alignment modulated by round outcome and player contribution.
@@ -939,7 +939,7 @@ def outcome_reward(
 def simplified_outcome_reward(
     response: str,
     ground_truth: dict[str, Any] | None = None,
-    **kwargs,
+    **kwargs: Any,
 ) -> float:
     """
     Simplified outcome reward: a·w + (1-a)·(1-w).

@@ -11,9 +11,10 @@ Usage:
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 
-def load_json_files(directory: Path) -> dict[str, dict]:
+def load_json_files(directory: Path) -> dict[str, dict[str, Any]]:
     """Load all JSON files from a directory, keyed by stem."""
     results = {}
     for path in directory.glob("*.json"):
@@ -22,7 +23,7 @@ def load_json_files(directory: Path) -> dict[str, dict]:
     return results
 
 
-def compare_game_state(label: dict, prediction: dict) -> dict:
+def compare_game_state(label: dict[str, Any], prediction: dict[str, Any]) -> dict[str, Any]:
     """Compare game state fields between label and prediction."""
     label_state = label.get("game_state", {})
     pred_state = prediction.get("game_state", {})
@@ -125,7 +126,7 @@ def evaluate(labels_dir: str, predictions_dir: str, verbose: bool = False):
                 field_stats[field]["matches"] += 1
 
     print("\nPer-field accuracy:")
-    def _field_acc(x):
+    def _field_acc(x: tuple[str, dict[str, int]]) -> float:
         return x[1]["matches"] / x[1]["total"] if x[1]["total"] > 0 else 0
 
     for field, stats in sorted(field_stats.items(), key=_field_acc):

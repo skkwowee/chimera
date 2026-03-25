@@ -216,7 +216,7 @@ def parse_args():
         default="simplified",
         choices=list(REWARD_MODES.keys()),
         help="Reward architecture: simplified (2-signal, default), "
-             "recall (2-signal w/ recall, pending), legacy (original 3-signal)",
+             + "recall (2-signal w/ recall, pending), legacy (original 3-signal)",
     )
     reward_group.add_argument(
         "--reward-weights",
@@ -224,7 +224,7 @@ def parse_args():
         nargs="+",
         default=None,
         help="Override reward weights (must match number of signals in selected mode). "
-             "If not set, uses the mode's default weights.",
+             + "If not set, uses the mode's default weights.",
     )
 
     # Checkpointing
@@ -286,7 +286,7 @@ def main():
 
     if len(reward_weights) != len(reward_fns):
         print(f"Error: --reward-weights expects {len(reward_fns)} values for "
-              f"mode '{args.reward_mode}', got {len(reward_weights)}")
+              + f"mode '{args.reward_mode}', got {len(reward_weights)}")
         sys.exit(1)
 
     # Create config from args

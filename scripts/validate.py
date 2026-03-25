@@ -27,6 +27,10 @@ CRITICAL_PARQUET_COLS = {"health", "side", "name", "tick"}
 class Result:
     """A single validation result."""
 
+    level: str
+    gate: str
+    msg: str
+
     def __init__(self, level: str, gate: str, msg: str):
         self.level = level  # PASS / WARN / FAIL
         self.gate = gate
@@ -209,7 +213,7 @@ def gate_training(verbose: bool) -> list[Result]:
         return results
 
     for jf in jsonl_files:
-        seen_keys: set[tuple] = set()
+        seen_keys: set[tuple[str | None, ...]] = set()
         n_samples = 0
         errors: list[str] = []
 
@@ -299,7 +303,7 @@ def gate_sync(verbose: bool) -> list[Result]:
             level = "WARN"
             results.append(Result(level, "sync",
                                   f"{mdir.name} ({n_screenshots} screenshots, "
-                                  f"{n_labels} labels; {'; '.join(msgs)})"))
+                                  + f"{n_labels} labels; {'; '.join(msgs)})"))
         else:
             results.append(Result("PASS", "sync",
                                   f"{mdir.name} ({n_screenshots} screenshots, {n_labels} labels, fully synced)"))
@@ -335,7 +339,7 @@ def gate_sparsity(verbose: bool) -> list[Result]:
     # Quick L0 coverage: count unique (map, side, phase, weapon_class) tuples
     from src.utils.cs2 import classify_weapon_class
 
-    coverage: set[tuple] = set()
+    coverage: set[tuple[str, ...]] = set()
     n_total = 0
     for jf in jsonl_files:
         for line in jf.open():
@@ -367,15 +371,15 @@ def gate_sparsity(verbose: bool) -> list[Result]:
     if pct >= 50:
         results.append(Result("PASS", "sparsity",
                               f"{n_buckets}/{max_buckets} buckets covered ({pct:.0f}%), "
-                              f"{n_total} samples"))
+                              + f"{n_total} samples"))
     elif pct >= 20:
         results.append(Result("WARN", "sparsity",
                               f"{n_buckets}/{max_buckets} buckets covered ({pct:.0f}%), "
-                              f"{n_total} samples"))
+                              + f"{n_total} samples"))
     else:
         results.append(Result("FAIL", "sparsity",
                               f"{n_buckets}/{max_buckets} buckets covered ({pct:.0f}%), "
-                              f"{n_total} samples — very sparse"))
+                              + f"{n_total} samples — very sparse"))
 
     return results
 
