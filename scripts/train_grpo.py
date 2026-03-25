@@ -37,8 +37,36 @@ from src.training import (
     CS2GRPOTrainer,
     convert_labeled_to_grpo_format,
     create_grpo_dataset,
+    REWARD_FUNCTIONS,
+    DEFAULT_REWARD_WEIGHTS,
+    SIMPLIFIED_REWARD_FUNCTIONS,
+    SIMPLIFIED_REWARD_WEIGHTS,
 )
 from src.utils.config import DEFAULT_MODEL_NAME
+
+
+# ---------------------------------------------------------------------------
+# Reward mode presets
+# ---------------------------------------------------------------------------
+REWARD_MODES = {
+    "simplified": {
+        "functions": SIMPLIFIED_REWARD_FUNCTIONS,
+        "weights": SIMPLIFIED_REWARD_WEIGHTS,
+        "description": "2-signal: R_percept (0.20) + R_outcome_simple (0.80)",
+    },
+    "recall": {
+        # Placeholder — R_RECALL will be added when recall.py is ready.
+        # For now, falls back to simplified.
+        "functions": SIMPLIFIED_REWARD_FUNCTIONS,
+        "weights": SIMPLIFIED_REWARD_WEIGHTS,
+        "description": "2-signal: R_percept + R_RECALL (pending recall.py)",
+    },
+    "legacy": {
+        "functions": REWARD_FUNCTIONS,
+        "weights": DEFAULT_REWARD_WEIGHTS,
+        "description": "3-signal: R_percept (0.20) + R_decision (0.30) + R_outcome (0.50)",
+    },
+}
 
 
 def parse_args():
@@ -181,16 +209,23 @@ def parse_args():
         help="KL divergence penalty coefficient (prevents mode collapse)",
     )
 
-    # Reward weights: [R_percept, R_decision, R_outcome]
-    # Format gate is multiplicative (not a weighted signal)
-    reward_group = parser.add_argument_group("Reward weights")
+    # Reward configuration
+    reward_group = parser.add_argument_group("Reward settings")
+    reward_group.add_argument(
+        "--reward-mode",
+        type=str,
+        default="simplified",
+        choices=list(REWARD_MODES.keys()),
+        help="Reward architecture: simplified (2-signal, default), "
+             "recall (2-signal w/ recall, pending), legacy (original 3-signal)",
+    )
     reward_group.add_argument(
         "--reward-weights",
         type=float,
-        nargs=3,
-        default=[0.20, 0.30, 0.50],
-        metavar=("PERCEPT", "DECISION", "OUTCOME"),
-        help="Weights for the 3 reward signals (format gate is multiplicative)",
+        nargs="+",
+        default=None,
+        help="Override reward weights (must match number of signals in selected mode). "
+             "If not set, uses the mode's default weights.",
     )
 
     # Checkpointing
@@ -245,6 +280,16 @@ def parse_args():
 def main():
     args = parse_args()
 
+    # Resolve reward mode
+    mode = REWARD_MODES[args.reward_mode]
+    reward_fns = mode["functions"]
+    reward_weights = args.reward_weights if args.reward_weights is not None else list(mode["weights"])
+
+    if len(reward_weights) != len(reward_fns):
+        print(f"Error: --reward-weights expects {len(reward_fns)} values for "
+              f"mode '{args.reward_mode}', got {len(reward_weights)}")
+        sys.exit(1)
+
     # Create config from args
     config = CS2GRPOConfig(
         model_name=args.model_name,
@@ -263,7 +308,7 @@ def main():
         max_new_tokens=args.max_tokens,
         temperature=args.temperature,
         kl_coef=args.kl_coef,
-        reward_weights=args.reward_weights,
+        reward_weights=reward_weights,
         output_dir=args.output,
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
@@ -273,19 +318,19 @@ def main():
     print("CS2 GRPO Training")
     print("=" * 60)
     print(f"Model: {config.model_name}")
+    print(f"Reward mode: {args.reward_mode} — {mode['description']}")
     print(f"LoRA: {config.use_lora}")
     if config.use_lora:
         print(f"  - rank: {config.lora_r}")
         print(f"  - alpha: {config.lora_alpha}")
     print(f"KL coefficient: {config.kl_coef}")
-    print(f"Reward weights: percept={config.reward_weights[0]}, "
-          f"decision={config.reward_weights[1]}, "
-          f"outcome={config.reward_weights[2]}")
+    print(f"Reward weights: {config.reward_weights}")
     print(f"Output: {config.output_dir}")
     print()
 
     # Create trainer
     trainer = CS2GRPOTrainer(config)
+    trainer.set_reward_functions(reward_fns)
 
     # Dry run: just load model and check memory
     if args.dry_run:

@@ -917,10 +917,58 @@ def outcome_reward(
     return alignment * omega
 
 
+# ---------------------------------------------------------------------------
+# R_outcome_simple: Simplified outcome reward (2-signal architecture)
+# ---------------------------------------------------------------------------
+
+def simplified_outcome_reward(
+    response: str,
+    ground_truth: dict[str, Any] | None = None,
+    **kwargs,
+) -> float:
+    """
+    Simplified outcome reward: a·w + (1-a)·(1-w).
+
+    Rewards agreement with winners and disagreement with losers.
+    No Ω, no φ — just the clean asymmetric signal.
+
+    Signal matrix:
+        |              | Pro wins (w=1) | Pro loses (w=0) |
+        |--------------|----------------|-----------------|
+        | Agree (a=1)  |      1.0       |       0.0       |
+        | Deviate (a=0)|      0.0       |       1.0       |
+    """
+    if ground_truth is None:
+        return 0.0
+
+    parsed = _extract_json_from_response(response)
+    if parsed is None:
+        return 0.0
+
+    # Decision alignment a ∈ [0, 1]
+    a = decision_alignment_reward(response, ground_truth=ground_truth)
+
+    # Round outcome w ∈ {0, 1}
+    round_won = ground_truth.get("round_won")
+    if round_won is None:
+        return a  # no outcome data → fall back to pure alignment
+    w = 1.0 if round_won else 0.0
+
+    return a * w + (1.0 - a) * (1.0 - w)
+
+
 # ===================================================================
 # Reward function registry and weights
 # ===================================================================
 
+# --- Simplified 2-signal architecture (primary) ---
+SIMPLIFIED_REWARD_FUNCTIONS = [
+    perceptual_accuracy_reward,   # R_percept (α)
+    simplified_outcome_reward,    # R_outcome_simple (1-α)
+]
+SIMPLIFIED_REWARD_WEIGHTS = [0.20, 0.80]
+
+# --- Original 3-signal architecture (ablation baseline) ---
 # The three reward signals (format gate is separate, multiplicative)
 REWARD_FUNCTIONS = [
     perceptual_accuracy_reward,   # R_percept  (α = 0.20)

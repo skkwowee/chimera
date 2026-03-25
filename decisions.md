@@ -1133,3 +1133,82 @@ At current 4-demo scale: only Level 0 is viable. The sparsity diagnostic will co
 GRPO training (F06) can proceed at 4 demos with the existing reward architecture — the positive signal (agree+win) is strong and R_percept provides clean supervised gradient. But the negative case learning will be limited. The sparsity diagnostic quantifies exactly how limited.
 
 **Status:** Decided. Sparsity diagnostic script needed before F06. Contrastive reward implementation deferred until data scale supports it.
+
+---
+
+## D024: RECALL — Retrieval-Enhanced Counterfactual Advantage Learning & Reward Simplification (2026-03-25)
+
+**Decision:** Simplify the reward architecture from 4 weighted signals to 2. Replace R_decision and R_outcome with a single retrieval-based advantage signal (RECALL). The new reward is:
+
+```
+r(y, s) = 𝟙[valid_json(y)] · (α · R_percept + (1-α) · R_strategy)
+```
+
+where R_strategy is either:
+- **R_outcome (simplified asymmetric):** `a·w + (1-a)·(1-w)` for the baseline
+- **R_RECALL:** `Q̂(s,a) - V̂(s)` via kNN retrieval for the novel contribution
+
+α ≈ 0.2.
+
+**Why:** The previous 4-signal architecture (D013) accumulated complexity through iterative design. Council review identified that R_decision (imitation) and R_outcome (outcome-weighted imitation) are both subsumed by R_RECALL (retrieval advantage over historical outcomes). Four signals competing for weight obscures each signal's contribution. Two signals is cleaner: a perception anchor plus a strategy signal.
+
+### RECALL mechanism
+
+Encode game states as ~25-dimensional tactical embeddings (the state dimensions from D023: side, alive counts, bomb status, economy, round time, health, weapon class, zone, fresh/stale player positions). Index ~20K+ historical transitions in a FAISS index.
+
+During GRPO, for each proposed action in a given state:
+
+1. **Retrieve** K nearest neighbors from the FAISS index based on state embedding similarity.
+2. **Q̂(s,a)** = mean win rate of neighbors whose recorded action is similar to the proposed action.
+3. **V̂(s)** = mean win rate of all neighbors regardless of action.
+4. **A(s,a) = Q̂(s,a) - V̂(s)** — the retrieval advantage.
+5. **Abstain** when fewer than K_min action-matched neighbors are found (insufficient evidence). Fall back to simplified R_outcome.
+
+This is structurally an advantage function: "how much better is this action than what people typically do in this state, as measured by historical outcomes?"
+
+### Key properties
+
+1. **Stationary reward.** The FAISS database is fixed before training. No moving target for GRPO to chase.
+2. **Proper advantage.** Zero-mean over the historical action distribution in each state — actions that match the average outcome get zero reward, better-than-average actions get positive, worse get negative.
+3. **Automatic annealing.** As the policy diverges from demonstration behavior, fewer neighbors match the proposed action, confidence drops, and the system falls back to R_outcome. The signal self-regulates without a manual schedule.
+4. **Hierarchically safe.** R_percept is independent and gated by α. RECALL cannot override the perception anchor — a model that hallucinates game state gets penalized regardless of strategy quality.
+5. **Implicitly pessimistic for OOD actions.** Novel actions not represented in the database trigger the abstention threshold. The model cannot earn high reward by proposing strategies never seen in pro play — it must earn trust through actions with empirical support.
+
+### Simplified R_outcome baseline
+
+The R_outcome baseline is also simplified from D013's Ω signal matrix:
+
+```
+R_outcome = a·w + (1-a)·(1-w)
+```
+
+where `a` = alignment with pro action, `w` = round outcome (win=1, loss=0).
+
+In plain language: "Reward agreement with winners and disagreement with losers." No magic numbers — the 0.5/0.3 coefficients from D004/D013 are dropped. This becomes the ablation baseline against RECALL.
+
+### What was dropped from D013
+
+- **R_decision as a separate signal.** Imitation reward is subsumed by RECALL's advantage computation (actions similar to what pros did in similar states get credit via Q̂).
+- **Complex Ω signal matrix.** The `won ? 0.4 + 0.6*a : 0.6 - 0.4*a` asymmetry with its hand-tuned coefficients is replaced by the symmetric `a·w + (1-a)·(1-w)`.
+- **4-way weight tuning.** α/β/γ/δ across four signals → single α between perception and strategy.
+
+These become ablation baselines: D013-style 4-signal vs D024-style 2-signal, and R_outcome-only vs R_RECALL.
+
+### Relationship to prior work
+
+RECALL is a novel combination of three lines of work:
+
+- **kNN episodic control (NEC/MFEC, Pritzel 2017, Blundell 2016):** Use nearest-neighbor lookup over past experiences for value estimation. RECALL uses retrieval for reward computation, not as a policy or value function.
+- **Retrieval-augmented RL (Goyal et al. 2022):** Retrieve past trajectories to augment the agent's context. RECALL retrieves for reward shaping, not for policy augmentation — the model never sees the retrieved neighbors.
+- **GRPO (Shao et al. 2024):** Group-relative policy optimization. RECALL provides the reward signal that GRPO optimizes against.
+
+The key distinction from all prior work: retrieval is used to compute a reward signal for RL training, not to augment the policy or value function at inference time. The FAISS index is a training-time artifact that does not exist at deployment.
+
+### Implementation plan
+
+- State encoder: reuse the tactical embedding from D023's state schema (~25 dimensions).
+- FAISS index: built offline from all parsed demo data. One index per map or a single index with map as a dimension.
+- Integration point: `src/training/recall.py` — called by the GRPO reward function to compute R_RECALL for each completion.
+- Abstention threshold K_min: tuned empirically, likely ~5-10 action-matched neighbors.
+
+**Status:** Planned. Implementation in `src/training/recall.py`. Pending F05b validation of basic GRPO pipeline before integration.

@@ -4,8 +4,11 @@ from .rewards import (
     perceptual_accuracy_reward,
     decision_alignment_reward,
     outcome_reward,
+    simplified_outcome_reward,
     REWARD_FUNCTIONS,
     DEFAULT_REWARD_WEIGHTS,
+    SIMPLIFIED_REWARD_FUNCTIONS,
+    SIMPLIFIED_REWARD_WEIGHTS,
     # Reward math components (exposed for testing / paper figures)
     compute_player_contribution,
     compute_outcome_modulation,
@@ -29,8 +32,11 @@ __all__ = [
     "perceptual_accuracy_reward",
     "decision_alignment_reward",
     "outcome_reward",
+    "simplified_outcome_reward",
     "REWARD_FUNCTIONS",
     "DEFAULT_REWARD_WEIGHTS",
+    "SIMPLIFIED_REWARD_FUNCTIONS",
+    "SIMPLIFIED_REWARD_WEIGHTS",
     # Reward math components
     "compute_player_contribution",
     "compute_outcome_modulation",
