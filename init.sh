@@ -13,10 +13,11 @@ if [ ! -d .venv ]; then
 fi
 source .venv/bin/activate
 
-# Python deps (pip may not exist in venv — skip if already installed)
+# Python deps (skip if already installed)
 python3 -c "import polars, pyarrow, awpy" 2>/dev/null || {
   echo "Installing Python deps..."
-  python3 -m pip install -q -r requirements.txt
+  uv pip install -q -r requirements.txt
+  uv pip install -q -e .
 }
 
 # Ensure output dirs exist

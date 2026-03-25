@@ -19,6 +19,7 @@ from typing import Callable, Optional
 
 import torch
 
+from ..utils.config import DEFAULT_MODEL_NAME
 from .rewards import (
     REWARD_FUNCTIONS,
     DEFAULT_REWARD_WEIGHTS,
@@ -34,7 +35,7 @@ class CS2GRPOConfig:
     """Configuration for GRPO training."""
 
     # Model settings
-    model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit"
+    model_name: str = DEFAULT_MODEL_NAME
     use_vllm: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
@@ -135,7 +136,7 @@ class CS2GRPOTrainer:
 
         # Apply LoRA if enabled
         # GRPO freezes vision layers when using vLLM
-        base_model = self.model
+        has_vision = hasattr(self.model.model, "visual")
         if self.config.use_lora:
             target_modules = list(self.config.lora_target_modules)
             if not self.config.use_vllm:
@@ -156,7 +157,7 @@ class CS2GRPOTrainer:
             self.model = get_peft_model(self.model, lora_config)
             self.model.print_trainable_parameters()
 
-        print(f"Model loaded | vision encoder: {hasattr(base_model.model, 'visual')}")
+        print(f"Model loaded | vision encoder: {has_vision}")
         self._print_memory_usage()
 
     def _print_memory_usage(self):

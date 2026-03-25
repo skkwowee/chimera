@@ -15,11 +15,8 @@ Usage:
 import argparse
 import json
 import random
-import sys
 from datetime import datetime
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Fields to compare (same as scripts/evaluate.py)
 COMPARE_FIELDS = [

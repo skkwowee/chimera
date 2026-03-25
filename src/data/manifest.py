@@ -11,7 +11,10 @@ Required fields:
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def append_to_manifest(manifest_path: Path | str, entry: dict) -> None:
@@ -47,7 +50,11 @@ def load_manifest(manifest_path: Path | str) -> dict[str, dict]:
             line = line.strip()
             if not line:
                 continue
-            entry = json.loads(line)
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                logger.warning("Skipping malformed manifest line: %s", line[:80])
+                continue
             entries[entry["id"]] = entry
 
     return entries

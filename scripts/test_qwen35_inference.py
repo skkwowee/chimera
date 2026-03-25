@@ -13,19 +13,17 @@ import torch._dynamo
 torch._dynamo.config.disable = True
 
 import argparse
-import sys
 import json
 import time
 import torch
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from transformers import Qwen3_5ForConditionalGeneration, AutoProcessor
 from src.prompts import CS2_SYSTEM_PROMPT
+from src.utils.config import DEFAULT_MODEL_NAME
 from PIL import Image
 
-HUB_REPO = "skkwowee/Qwen3.5-27B-bnb-4bit"
+HUB_REPO = DEFAULT_MODEL_NAME
 
 def clear_hf_cache(repo_id: str):
     """Delete cached revisions for a specific HF Hub repo."""

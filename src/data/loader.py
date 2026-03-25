@@ -161,19 +161,3 @@ def load_labeled_data(
             labeled_items.append(item)
 
     return labeled_items
-
-
-def split_dataset(
-    image_paths: list[Path],
-    train_ratio: float = 0.8,
-    seed: int = 42,
-) -> tuple[list[Path], list[Path]]:
-    """Split image paths into train and validation sets."""
-    import random
-
-    random.seed(seed)
-    paths = image_paths.copy()
-    random.shuffle(paths)
-
-    split_idx = int(len(paths) * train_ratio)
-    return paths[:split_idx], paths[split_idx:]

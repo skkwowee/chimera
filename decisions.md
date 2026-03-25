@@ -38,6 +38,8 @@ Technical decisions, alternatives considered, and rationale. For the paper write
 
 ## D003: Tournament VOD screenshots vs demo playback screenshots (2026-02-20)
 
+> **Status: Superseded** — Referenced scripts were removed when the capture pipeline was replaced by direct demo parsing.
+
 **Decision:** Capture screenshots by playing back .dem files in CS2's built-in demo viewer, not by extracting frames from tournament broadcast VODs.
 
 **Why:** Tournament broadcasts have custom overlays (ESL/BLAST HUD, caster cameras, replays, picture-in-picture) that differ from the standard CS2 HUD. A model trained on broadcast frames wouldn't generalize to what a real player sees. Demo playback uses the standard CS2 HUD — the same one any player would see in-game.
@@ -205,6 +207,8 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 
 ## D009: Capture plan sampling strategy (2026-02-20)
 
+> **Status: Superseded** — Referenced scripts were removed when the capture pipeline was replaced by direct demo parsing.
+
 **Decision:** Sample screenshots every ~3 seconds during active rounds (freeze_end to round_end), plus event ticks (first kill, bomb plant, post-plant). For each tick, capture 1 T-side + 1 CT-side POV.
 
 **Why 3 seconds:** Balances coverage vs redundancy. Game state changes meaningfully every 2-5 seconds. Faster sampling adds near-duplicate frames. Slower sampling misses important moments.
@@ -220,6 +224,8 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 ---
 
 ## D010: Unified extraction harness for two repos (2026-02-26)
+
+> **Status: Superseded** — Referenced scripts were removed when the capture pipeline was replaced by direct demo parsing.
 
 **Decision:** Merge `viewer-harness/` into a new `harness/` directory that covers both the cs2-demo-viewer extraction and a new cs2-tools extraction. Add cs2-tools scope (5 features: T01–T05) alongside the existing viewer features (F01–F05).
 
@@ -244,6 +250,8 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 
 ## D011: Conditional manifest import in parse_demos.py (2026-02-26)
 
+> **Status: Superseded** — Referenced scripts were removed when the capture pipeline was replaced by direct demo parsing.
+
 **Decision:** Wrap `from src.data.manifest import append_to_manifest` in a `try/except ImportError`, setting it to `None` when unavailable. Guard the call site with `if append_to_manifest is not None`.
 
 **Why:** `parse_demos.py` is being extracted into cs2-tools where `src.data.manifest` won't exist. The manifest is only used in the legacy `--snapshots` write path — the default parquet mode never calls it. Making it conditional lets the script work identically in chimera (manifest available) and standalone (manifest absent, snapshots just skip manifest logging).
@@ -257,6 +265,8 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 ---
 
 ## D012: Git subtree split for cs2-demo-viewer extraction (2026-02-26)
+
+> **Status: Superseded** — Referenced scripts were removed when the capture pipeline was replaced by direct demo parsing.
 
 **Decision:** Use `git subtree split --prefix=site -b demo-viewer` to extract `site/` into `~/cs2-demo-viewer/` as a standalone repo with `main` branch.
 

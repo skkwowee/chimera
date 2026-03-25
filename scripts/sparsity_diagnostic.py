@@ -23,45 +23,15 @@ from pathlib import Path
 
 import polars as pl
 
-# ---------------------------------------------------------------------------
-# Constants from D023
-# ---------------------------------------------------------------------------
-
-WEAPON_CLASS_MAP = {
-    # rifle
-    "AK-47": "rifle", "M4A4": "rifle", "M4A1-S": "rifle",
-    "AUG": "rifle", "SG 553": "rifle",
-    # awp
-    "AWP": "awp",
-    # force_rifle
-    "Galil AR": "force_rifle", "FAMAS": "force_rifle",
-    # smg_shotgun
-    "MAC-10": "smg_shotgun", "MP9": "smg_shotgun", "MP7": "smg_shotgun",
-    "UMP-45": "smg_shotgun", "PP-Bizon": "smg_shotgun", "P90": "smg_shotgun",
-    "Nova": "smg_shotgun", "XM1014": "smg_shotgun", "Sawed-Off": "smg_shotgun",
-    "MAG-7": "smg_shotgun", "M249": "smg_shotgun", "Negev": "smg_shotgun",
-    # force_angle
-    "Desert Eagle": "force_angle", "R8 Revolver": "force_angle",
-    "SSG 08": "force_angle",
-    # pistol
-    "USP-S": "pistol", "Glock-18": "pistol", "P2000": "pistol",
-    "P250": "pistol", "Five-SeveN": "pistol", "Tec-9": "pistol",
-    "CZ75-Auto": "pistol", "Dual Berettas": "pistol",
-}
-
-WEAPON_VALUES = {
-    "AK-47": 2700, "M4A4": 3100, "M4A1-S": 2900, "AWP": 4750,
-    "SSG 08": 1700, "Galil AR": 1800, "FAMAS": 2050, "SG 553": 3000,
-    "AUG": 3300, "MAC-10": 1050, "MP9": 1250, "MP7": 1500,
-    "UMP-45": 1200, "PP-Bizon": 1400, "P90": 2350, "Nova": 1050,
-    "XM1014": 2000, "Sawed-Off": 1100, "MAG-7": 1300, "M249": 5200,
-    "Negev": 1700, "Glock-18": 200, "USP-S": 200, "P2000": 200,
-    "P250": 300, "Five-SeveN": 500, "Tec-9": 500, "CZ75-Auto": 500,
-    "Dual Berettas": 300, "Desert Eagle": 700, "R8 Revolver": 600,
-}
-
-ARMOR_COST = 650
-HELMET_COST = 350
+from src.utils.cs2 import (
+    ARMOR_COST,
+    HELMET_COST,
+    WEAPON_VALUES,
+    classify_buy,
+    classify_weapon_class,
+    economy_matchup,
+    estimate_team_equip,
+)
 
 # Omega signal matrix from D013 (phi=1)
 OMEGA = {
@@ -70,68 +40,6 @@ OMEGA = {
     ("deviate", "win"): 0.6,
     ("deviate", "lose"): 0.5,
 }
-
-
-# ---------------------------------------------------------------------------
-# Feature extraction
-# ---------------------------------------------------------------------------
-
-def classify_weapon_class(inventory: list | None) -> str:
-    """Get weapon class of best weapon in inventory."""
-    if not inventory:
-        return "pistol"
-    # Priority: awp > rifle > force_rifle > smg_shotgun > force_angle > pistol
-    priority = {"awp": 6, "rifle": 5, "force_rifle": 4,
-                "smg_shotgun": 3, "force_angle": 2, "pistol": 1}
-    best_class = "pistol"
-    best_priority = 0
-    for item in inventory:
-        item_str = str(item)
-        wc = WEAPON_CLASS_MAP.get(item_str)
-        if wc and priority.get(wc, 0) > best_priority:
-            best_class = wc
-            best_priority = priority[wc]
-    return best_class
-
-
-def estimate_team_equip(players: list[dict], side: str) -> float:
-    """Average equipment value for alive players on a side."""
-    team = [p for p in players if p.get("side", "").lower() == side.lower()
-            and (p.get("health") or 0) > 0]
-    if not team:
-        return 0
-    total = 0
-    for p in team:
-        for item in (p.get("inventory") or []):
-            total += WEAPON_VALUES.get(str(item), 0)
-        if (p.get("armor") or 0) > 0:
-            total += ARMOR_COST
-            if p.get("has_helmet"):
-                total += HELMET_COST
-    return total / len(team)
-
-
-def classify_buy(avg_equip: float) -> str:
-    if avg_equip >= 3500:
-        return "full"
-    elif avg_equip >= 2000:
-        return "half"
-    elif avg_equip >= 1000:
-        return "force"
-    else:
-        return "eco"
-
-
-def economy_matchup(t_buy: str, ct_buy: str) -> str:
-    """Classify economy matchup into ~6 categories."""
-    if t_buy == ct_buy:
-        return f"mirror_{t_buy}"
-    # Order by strength
-    strength = {"eco": 0, "force": 1, "half": 2, "full": 3}
-    if strength[t_buy] < strength[ct_buy]:
-        return f"{t_buy}_vs_{ct_buy}"
-    else:
-        return f"{ct_buy}_vs_{t_buy}"
 
 
 def round_time_bucket(tick: int, freeze_end: int, tickrate: int = 64) -> str:

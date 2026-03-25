@@ -4,10 +4,13 @@ VLM inference for CS2 screenshot analysis using Claude (Anthropic API).
 
 import base64
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
 import anthropic
+
+logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
 
 from src.inference.vlm import parse_json_response
@@ -42,7 +45,10 @@ class ClaudeVLMInference:
         image_path = Path(image_path)
 
         # Read and base64-encode the image
-        image_data = base64.standard_b64encode(image_path.read_bytes()).decode("utf-8")
+        try:
+            image_data = base64.standard_b64encode(image_path.read_bytes()).decode("utf-8")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Image not found: {image_path}")
 
         # Determine media type
         suffix = image_path.suffix.lower()
@@ -56,30 +62,33 @@ class ClaudeVLMInference:
 
         user_text = prompt or build_user_prompt()
 
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=CS2_SYSTEM_PROMPT,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": media_type,
-                                "data": image_data,
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                system=CS2_SYSTEM_PROMPT,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image",
+                                "source": {
+                                    "type": "base64",
+                                    "media_type": media_type,
+                                    "data": image_data,
+                                },
                             },
-                        },
-                        {
-                            "type": "text",
-                            "text": user_text,
-                        },
-                    ],
-                }
-            ],
-        )
+                            {
+                                "type": "text",
+                                "text": user_text,
+                            },
+                        ],
+                    }
+                ],
+            )
+        except Exception as e:
+            raise RuntimeError(f"Claude API call failed: {e}") from e
 
         text = response.content[0].text
         return parse_json_response(text)

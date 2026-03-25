@@ -23,101 +23,14 @@ from pathlib import Path
 
 import polars as pl
 
-# ---------------------------------------------------------------------------
-# Weapon classification
-# ---------------------------------------------------------------------------
-
-WEAPON_PRIMARY = {
-    "AK-47", "M4A4", "M4A1-S", "AWP", "SSG 08", "Scout",
-    "Galil AR", "FAMAS", "SG 553", "AUG",
-    "MAC-10", "MP9", "MP7", "UMP-45", "PP-Bizon", "P90",
-    "Nova", "XM1014", "Sawed-Off", "MAG-7",
-    "M249", "Negev",
-}
-
-WEAPON_SECONDARY = {
-    "Glock-18", "USP-S", "P2000", "P250", "Five-SeveN", "Tec-9",
-    "CZ75-Auto", "Dual Berettas", "Desert Eagle", "R8 Revolver",
-}
-
-UTILITY_ITEMS = {
-    "Smoke Grenade", "Flashbang", "Molotov", "Incendiary Grenade",
-    "HE Grenade", "High Explosive Grenade", "Decoy Grenade",
-}
-
-BOMB_ITEM = "C4 Explosive"
-
-# Approximate weapon values for economy classification
-WEAPON_VALUES = {
-    "AK-47": 2700, "M4A4": 3100, "M4A1-S": 2900, "AWP": 4750,
-    "SSG 08": 1700, "Galil AR": 1800, "FAMAS": 2050, "SG 553": 3000,
-    "AUG": 3300, "MAC-10": 1050, "MP9": 1250, "MP7": 1500,
-    "UMP-45": 1200, "PP-Bizon": 1400, "P90": 2350, "Nova": 1050,
-    "XM1014": 2000, "Sawed-Off": 1100, "MAG-7": 1300, "M249": 5200,
-    "Negev": 1700, "Glock-18": 200, "USP-S": 200, "P2000": 200,
-    "P250": 300, "Five-SeveN": 500, "Tec-9": 500, "CZ75-Auto": 500,
-    "Dual Berettas": 300, "Desert Eagle": 700, "R8 Revolver": 600,
-}
-
-ARMOR_COST = 650  # vest
-HELMET_COST = 350  # helmet addon
-
-
-def classify_weapon(item: str) -> str:
-    """Classify an inventory item as primary/secondary/utility/melee/bomb."""
-    if item in WEAPON_PRIMARY:
-        return "primary"
-    if item in WEAPON_SECONDARY:
-        return "secondary"
-    if item in UTILITY_ITEMS:
-        return "utility"
-    if "C4" in item:
-        return "bomb"
-    if "Knife" in item or "Bayonet" in item or "Dagger" in item:
-        return "melee"
-    for w in WEAPON_PRIMARY:
-        if w in item or item in w:
-            return "primary"
-    for w in WEAPON_SECONDARY:
-        if w in item or item in w:
-            return "secondary"
-    for u in UTILITY_ITEMS:
-        if u in item or item in u:
-            return "utility"
-    return "melee"
-
-
-def parse_inventory(inventory: list | None) -> dict:
-    """Parse inventory list into weapon_primary, weapon_secondary, utility."""
-    result = {"weapon_primary": None, "weapon_secondary": None, "utility": []}
-    if not inventory:
-        return result
-
-    for item in inventory:
-        item_str = str(item)
-        cat = classify_weapon(item_str)
-        if cat == "primary" and result["weapon_primary"] is None:
-            result["weapon_primary"] = item_str
-        elif cat == "secondary" and result["weapon_secondary"] is None:
-            result["weapon_secondary"] = item_str
-        elif cat == "utility":
-            result["utility"].append(item_str)
-
-    return result
-
-
-def estimate_equipment_value(player: dict) -> int:
-    """Estimate a player's equipment value from inventory and armor."""
-    value = 0
-    inventory = player.get("inventory") or []
-    for item in inventory:
-        item_str = str(item)
-        value += WEAPON_VALUES.get(item_str, 0)
-    if (player.get("armor") or 0) > 0:
-        value += ARMOR_COST
-        if player.get("has_helmet"):
-            value += HELMET_COST
-    return value
+from src.utils.cs2 import (
+    UTILITY_ITEMS,
+    WEAPON_VALUES,
+    classify_team_economy,
+    classify_weapon,
+    estimate_equipment_value,
+    parse_inventory,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -311,40 +224,6 @@ def detect_round_events(
 def _tick_to_time(tick: int, freeze_end: int, tickrate: int = 64) -> float:
     """Convert tick to seconds since freeze end (round start)."""
     return max(0.0, (tick - freeze_end) / tickrate)
-
-
-# ---------------------------------------------------------------------------
-# Economy classification
-# ---------------------------------------------------------------------------
-
-def classify_team_economy(players: list[dict], side: str) -> tuple[str, int]:
-    """
-    Classify a team's buy as full-buy/half-buy/eco/force-buy and compute
-    total equipment value.
-
-    Returns (buy_type, total_equipment_value).
-    """
-    team = [p for p in players if (p.get("side") or "").lower() == side.lower()]
-    if not team:
-        return "unknown", 0
-
-    total_value = sum(estimate_equipment_value(p) for p in team)
-    alive_count = sum(1 for p in team if (p.get("health") or 0) > 0)
-
-    if alive_count == 0:
-        return "eliminated", 0
-
-    avg_value = total_value / alive_count
-
-    # Rough thresholds based on CS2 economy
-    if avg_value >= 3500:
-        return "full-buy", total_value
-    elif avg_value >= 2000:
-        return "half-buy", total_value
-    elif avg_value >= 1000:
-        return "force-buy", total_value
-    else:
-        return "eco", total_value
 
 
 # ---------------------------------------------------------------------------

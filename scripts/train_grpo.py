@@ -32,15 +32,13 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
 from src.training import (
     CS2GRPOConfig,
     CS2GRPOTrainer,
     convert_labeled_to_grpo_format,
     create_grpo_dataset,
 )
+from src.utils.config import DEFAULT_MODEL_NAME
 
 
 def parse_args():
@@ -81,7 +79,7 @@ def parse_args():
     model_group.add_argument(
         "--model-name",
         type=str,
-        default="skkwowee/Qwen3.5-27B-bnb-4bit",
+        default=DEFAULT_MODEL_NAME,
         help="Model name or path (use SFT merged output for SFT->GRPO handoff)",
     )
     model_group.add_argument(
