@@ -641,7 +641,7 @@ def compute_player_contribution(contribution: dict) -> float:
         φ ∈ [0, 1]
     """
     if not contribution or not isinstance(contribution, dict):
-        return 1.0  # no contribution data → assume full relevance (conservative)
+        return 0.5  # no contribution data → uncertain, moderate signal
 
     damage = float(contribution.get("damage_dealt", 0))
     max_damage = float(contribution.get("max_round_damage", 1))

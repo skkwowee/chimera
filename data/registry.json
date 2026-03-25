@@ -1,0 +1,65 @@
+{
+  "demos": [
+    {
+      "stem": "furia-vs-vitality-m1-mirage",
+      "map": "de_mirage",
+      "rounds": 24,
+      "has_parquet": true,
+      "has_rounds": true,
+      "has_bomb": true,
+      "has_kills": true,
+      "has_damages": true,
+      "has_header": true,
+      "has_captures": true,
+      "has_labels": true,
+      "label_count": 1504,
+      "screenshot_count": 548
+    },
+    {
+      "stem": "furia-vs-vitality-m2-inferno",
+      "map": "de_inferno",
+      "rounds": 21,
+      "has_parquet": true,
+      "has_rounds": true,
+      "has_bomb": true,
+      "has_kills": true,
+      "has_damages": true,
+      "has_header": true,
+      "has_captures": false,
+      "has_labels": false,
+      "label_count": 0,
+      "screenshot_count": 0
+    },
+    {
+      "stem": "furia-vs-vitality-m3-nuke",
+      "map": "de_nuke",
+      "rounds": 15,
+      "has_parquet": true,
+      "has_rounds": true,
+      "has_bomb": true,
+      "has_kills": true,
+      "has_damages": true,
+      "has_header": true,
+      "has_captures": false,
+      "has_labels": false,
+      "label_count": 0,
+      "screenshot_count": 0
+    },
+    {
+      "stem": "furia-vs-vitality-m4-overpass",
+      "map": "de_overpass",
+      "rounds": 23,
+      "has_parquet": true,
+      "has_rounds": true,
+      "has_bomb": true,
+      "has_kills": true,
+      "has_damages": true,
+      "has_header": true,
+      "has_captures": false,
+      "has_labels": false,
+      "label_count": 0,
+      "screenshot_count": 0
+    }
+  ],
+  "updated": "2026-03-25T19:40:59.165522+00:00"
+}
