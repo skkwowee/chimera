@@ -3,13 +3,16 @@ GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
 Uses transformers + peft for QLoRA training of Qwen3.5-27B (4-bit).
 
-Revised reward architecture (D013):
+Reward architecture (D024 — simplified 2-signal, primary):
   - Multiplicative format gate (invalid JSON -> zero total reward)
-  - 3 weighted reward signals passed to TRL's GRPOTrainer:
-      1. R_percept  (alpha=0.20) -- merged hard+soft field accuracy
-      2. R_decision (beta=0.30) -- behavioral feature alignment
-      3. R_outcome  (gamma=0.50) -- outcome-modulated decision reward
+  - 2 weighted reward signals passed to TRL's GRPOTrainer:
+      1. R_percept   (alpha=0.20) -- merged hard+soft field accuracy
+      2. R_strategy   (1-alpha=0.80) -- simplified outcome: a*w + (1-a)*(1-w)
   - KL regularization (lambda_KL=0.02) prevents mode collapse
+
+Legacy/ablation mode (D013 — 3-signal):
+  - 3 weighted reward signals: R_percept (0.20), R_decision (0.30), R_outcome (0.50)
+  - Selectable via REWARD_FUNCTIONS / DEFAULT_REWARD_WEIGHTS from rewards.py
 """
 
 import json
@@ -23,6 +26,8 @@ from ..utils.config import DEFAULT_MODEL_NAME
 from .rewards import (
     REWARD_FUNCTIONS,
     DEFAULT_REWARD_WEIGHTS,
+    SIMPLIFIED_REWARD_FUNCTIONS,
+    SIMPLIFIED_REWARD_WEIGHTS,
     format_gate_reward,
     perceptual_accuracy_reward,
     decision_alignment_reward,
@@ -71,10 +76,11 @@ class CS2GRPOConfig:
     # that scores well across diverse game states (D013)
     kl_coef: float = 0.02
 
-    # Reward weights: [R_percept, R_decision, R_outcome]
+    # Reward weights: [R_percept, R_strategy] (D024 simplified 2-signal)
+    # Legacy 3-signal (D013): [0.20, 0.30, 0.50] for [R_percept, R_decision, R_outcome]
     # Format gate is multiplicative (applied inside reward wrappers), not here.
     reward_weights: list[float] = field(
-        default_factory=lambda: list(DEFAULT_REWARD_WEIGHTS)
+        default_factory=lambda: list(SIMPLIFIED_REWARD_WEIGHTS)
     )
 
     # Output settings
@@ -96,20 +102,22 @@ class CS2GRPOTrainer:
 
     Uses QLoRA (4-bit + LoRA) via peft.
 
-    Revised reward architecture (D013):
+    Reward architecture (D024 — simplified 2-signal, primary):
       - Multiplicative format gate: invalid JSON -> all signals return 0.0
-      - 3 reward signals passed to TRL for per-signal advantage computation:
+      - 2 reward signals passed to TRL for per-signal advantage computation:
           1. R_percept  (0.20) -- perceptual accuracy (merged hard+soft fields)
-          2. R_decision (0.30) -- behavioral feature alignment with pro play
-          3. R_outcome  (0.50) -- outcome-modulated decision reward (Omega function)
+          2. R_strategy (0.80) -- simplified outcome: a*w + (1-a)*(1-w)
       - KL penalty (lambda=0.02) regularizes against SFT reference
+
+    Legacy/ablation mode (D013 — 3-signal) available via set_reward_functions()
+    with REWARD_FUNCTIONS / DEFAULT_REWARD_WEIGHTS from rewards.py.
     """
 
     def __init__(self, config: CS2GRPOConfig | None = None):
         self.config = config or CS2GRPOConfig()
         self.model = None
         self.processor = None
-        self.reward_fns: list[Callable] = list(REWARD_FUNCTIONS)
+        self.reward_fns: list[Callable] = list(SIMPLIFIED_REWARD_FUNCTIONS)
         self.train_dataset = None
         self.val_dataset = None
 
@@ -309,9 +317,9 @@ class CS2GRPOTrainer:
             temperature=self.config.temperature,
             # GSPO variant for stability
             importance_sampling_level=self.config.importance_sampling_level,
-            # KL regularization against SFT reference (D013)
+            # KL regularization against SFT reference
             kl_coef=self.config.kl_coef,
-            # Reward weights for the 3 separate reward functions
+            # Reward weights for the separate reward functions (2 or 3)
             reward_weights=self.config.reward_weights,
             # Reporting
             report_to="wandb",
@@ -375,8 +383,8 @@ class CS2GRPOTrainer:
         """
         Evaluate the model on validation data.
 
-        Reports both the 3 active reward signals and the multiplicative
-        format gate pass rate.
+        Reports the active reward signals (2 for simplified, 3 for legacy)
+        and the multiplicative format gate pass rate.
 
         Args:
             eval_data: Evaluation samples (uses val_dataset if not provided)
@@ -395,23 +403,24 @@ class CS2GRPOTrainer:
 
         print("Evaluating model...")
 
-        signal_names = [
-            "perceptual_accuracy",
-            "decision_alignment",
-            "outcome",
-        ]
+        # Derive signal names from configured reward functions
+        # Default (D024): 2 signals [R_percept, R_strategy]
+        # Legacy (D013):  3 signals [R_percept, R_decision, R_outcome]
+        reward_fns = list(self.reward_fns)
+        weights = self.config.reward_weights
+        if len(reward_fns) == 2:
+            signal_names = ["perceptual_accuracy", "strategy"]
+        else:
+            signal_names = [
+                "perceptual_accuracy",
+                "decision_alignment",
+                "outcome",
+            ]
         metrics = {name: [] for name in signal_names}
         metrics["format_gate"] = []
         metrics["weighted_total"] = []
 
         self.model.eval()
-
-        weights = self.config.reward_weights
-        reward_fns = [
-            perceptual_accuracy_reward,
-            decision_alignment_reward,
-            outcome_reward,
-        ]
 
         for sample in tqdm(eval_dataset, desc="Evaluating"):
             # Generate response

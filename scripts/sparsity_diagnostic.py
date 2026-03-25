@@ -33,13 +33,15 @@ from src.utils.cs2 import (
     estimate_team_equip,
 )
 
-# Omega signal matrix from D013 (phi=1)
+# Simplified Omega signal matrix (D024): Ω = a·w + (1−a)·(1−w)
+# where a = agreement ∈ {0,1}, w = win ∈ {0,1}
 OMEGA = {
-    ("agree", "win"): 1.0,
-    ("agree", "lose"): 0.2,
-    ("deviate", "win"): 0.6,
-    ("deviate", "lose"): 0.5,
+    ("agree", "win"): 1.0,     # a=1, w=1: 1·1 + 0·0 = 1.0
+    ("agree", "lose"): 0.0,    # a=1, w=0: 1·0 + 0·1 = 0.0
+    ("deviate", "win"): 0.0,   # a=0, w=1: 0·1 + 1·0 = 0.0
+    ("deviate", "lose"): 1.0,  # a=0, w=0: 0·0 + 1·1 = 1.0
 }
+# Legacy D013 values (phi=1): agree+win=1.0, agree+lose=0.2, deviate+win=0.6, deviate+lose=0.5
 
 
 def round_time_bucket(tick: int, freeze_end: int, tickrate: int = 64) -> str:
@@ -297,8 +299,8 @@ def simulate_reward_variance(samples: list[dict], level: str):
     buckets = defaultdict(list)
     for s in samples:
         key = s[level]
-        # Simulate: agree with pro (R_decision ~ 0.7 avg), compute R_outcome
-        # On wins: agree+win = 1.0, on losses: agree+lose = 0.2
+        # Simulate: agree with pro (R_decision ~ 0.7 avg), compute R_strategy
+        # D024 simplified Ω: agree+win = 1.0, agree+lose = 0.0
         r_outcome = OMEGA[("agree", "win")] if s["won"] else OMEGA[("agree", "lose")]
         buckets[key].append(r_outcome)
 

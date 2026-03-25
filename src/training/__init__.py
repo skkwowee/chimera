@@ -25,9 +25,15 @@ from .data_utils import (
 )
 from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
 from .sft_trainer import CS2SFTConfig, CS2SFTTrainer
+from .recall import (
+    recall_reward,
+    RECALLIndex,
+    tactical_embedding,
+    action_embedding,
+)
 
 __all__ = [
-    # Active rewards (D013)
+    # Active rewards (D024 simplified 2-signal primary; D013 3-signal for ablation)
     "format_gate_reward",
     "perceptual_accuracy_reward",
     "decision_alignment_reward",
@@ -52,4 +58,9 @@ __all__ = [
     "CS2GRPOTrainer",
     "CS2SFTConfig",
     "CS2SFTTrainer",
+    # RECALL (retrieval-enhanced advantage)
+    "recall_reward",
+    "RECALLIndex",
+    "tactical_embedding",
+    "action_embedding",
 ]

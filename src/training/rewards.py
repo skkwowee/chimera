@@ -1,5 +1,5 @@
 r"""
-CS2 reward functions for GRPO training — revised formulation.
+CS2 reward functions for GRPO training.
 
 =============================================================================
 Mathematical Formulation (for NeurIPS submission)
@@ -20,17 +20,31 @@ never sees: the pro player's actual state s_t, their subsequent behavior
 τ_{t:t+Δ}^{pro} over the next Δ ticks, round outcome W ∈ {0,1}, and
 per-player contribution metrics φ_i.
 
-Reward function
----------------
-The total reward decomposes into three weighted signals gated by a
+Reward architecture (D024 — simplified 2-signal, primary)
+---------------------------------------------------------
+The total reward decomposes into two weighted signals gated by a
 multiplicative format constraint:
+
+    r(y, o_t) = 𝟙[valid_json(y)] · (α·R_percept + (1−α)·R_strategy)
+
+where α = 0.20, and 𝟙[·] is a hard format gate — invalid JSON receives zero
+total reward regardless of other signal quality. This is multiplicative, not
+additive: the gate enforces structure as a prerequisite, not a soft nudge.
+
+R_strategy uses the simplified outcome formula:
+    R_strategy = a·w + (1−a)·(1−w)
+where a = decision alignment ∈ [0,1], w = round_won ∈ {0,1}.
+
+Legacy/ablation reward architecture (D013 — 3-signal)
+------------------------------------------------------
+The original 3-signal formulation is retained for ablation baselines:
 
     r(y, o_t) = 𝟙[valid_json(y)] · (α·R_percept + β·R_decision + γ·R_outcome)
 
-where α = 0.20, β = 0.30, γ = 0.50, and 𝟙[·] is a hard format gate — invalid
-JSON receives zero total reward regardless of other signal quality. This is
-multiplicative, not additive: the gate enforces structure as a prerequisite,
-not a soft nudge.
+where α = 0.20, β = 0.30, γ = 0.50. R_decision measures behavioral alignment
+with pro play, and R_outcome modulates it by round outcome and player
+contribution (Ω function with φ weighting). See REWARD_FUNCTIONS and
+DEFAULT_REWARD_WEIGHTS for the legacy constants.
 
 Component 1: Perceptual accuracy R_percept (weight α = 0.20)
 -------------------------------------------------------------
@@ -44,8 +58,8 @@ directly HUD-readable) and soft fields (money, map, bomb status — require
 inference). match(·) is exact for categoricals, tolerance-based for numerics
 (±10% relative error), and Jaccard for lists (utility inventory).
 
-Component 2: Decision alignment R_decision (weight β = 0.30)
--------------------------------------------------------------
+Component 2 (legacy): Decision alignment R_decision (weight β = 0.30)
+----------------------------------------------------------------------
 Compares the model's advised action against the pro's actual behavioral
 signature extracted from the next Δ ≈ 10–15 seconds of tick data
 (~900–1350 ticks at 90Hz).
@@ -75,8 +89,8 @@ For binary/categorical features this is exact match; for δ_engage we use a
 tolerance window of ±0.2. When behavioral features are unavailable (pre-F05),
 falls back to Jaccard similarity over coarse action categories.
 
-Component 3: Outcome-modulated decision reward R_outcome (weight γ = 0.50)
----------------------------------------------------------------------------
+Component 3 (legacy): Outcome-modulated decision reward R_outcome (weight γ = 0.50)
+------------------------------------------------------------------------------------
 The core learning signal. Modulates decision alignment by round outcome,
 weighted by how much the spectated player actually influenced the result:
 

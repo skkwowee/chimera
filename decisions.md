@@ -284,6 +284,8 @@ These sum to 0.85 (with format as multiplicative). Renormalize the remaining 6 t
 
 ## D013: Revised reward architecture — 3 signals + multiplicative gate (2026-02-26)
 
+> **Note (2026-03-25):** This architecture was simplified in D024. The current default is 2 signals (R_percept + R_strategy via RECALL). R_decision and R_outcome from D013 are retained as ablation baselines. See D024 for the current design.
+
 **Decision:** Replace the 7 additive reward signals with a cleaner 3-signal architecture plus a multiplicative format gate. Drop consistency and reasoning quality entirely. Introduce behavioral feature vectors for decision alignment, continuous outcome modulation with player contribution weighting, and KL regularization.
 
 **Why:** The original 7-signal design (D005/D006) had several problems identified through detailed analysis:
@@ -460,6 +462,8 @@ Key property: GRPO only needs correct relative ordering within the group, not ca
 ---
 
 ## D014: Why the two-phase reward architecture works — design rationale (2026-02-26)
+
+> **Note (2026-03-25):** The reward architecture described here (from D013) was simplified in D024 to 2 signals (R_percept + R_strategy). The design rationale below still applies to the ablation baselines. See D024 for the current architecture.
 
 This decision records the reasoning behind D013's design, tracing each component to the information structure of the problem and the failure modes it addresses.
 

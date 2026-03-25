@@ -94,8 +94,9 @@ training:
   temperature: 0.7
   importance_sampling_level: "sequence"  # GSPO variant
 
-  # Reward weights: R_percept, R_decision, R_outcome (D013)
-  reward_weights: [0.20, 0.30, 0.50]
+  # Reward weights: R_percept, R_strategy (D024 simplified 2-signal)
+  reward_weights: [0.20, 0.80]
+  # Legacy/ablation (D013 3-signal): [0.20, 0.30, 0.50] for [R_percept, R_decision, R_outcome]
 
   # Output
   output_dir: "outputs/grpo"

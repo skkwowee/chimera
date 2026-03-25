@@ -67,37 +67,48 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 \subsection{Phase 2: Strategic Reasoning via GRPO}
 \label{sec:grpo}
 
-% TODO: Explain Phase 2: GRPO with 3 reward signals + multiplicative format gate (D013)
-% TODO: R_percept (0.20) prevents SFT regression; vision layers frozen
-% TODO: R_decision (0.30) — behavioral feature alignment with pro play from tick data
-% TODO: R_outcome (0.50) — outcome-modulated decision reward with player contribution φ
+% TODO: Explain Phase 2: GRPO with 2 reward signals + multiplicative format gate (D024)
+% TODO: R_percept (α≈0.20) prevents SFT regression; vision layers frozen
+% TODO: R_strategy (1-α≈0.80) — RECALL kNN advantage estimation over tactical embeddings
+% TODO: R_decision and R_outcome available as ablation baselines (D013)
 % TODO: KL regularization (λ=0.02) prevents mode collapse
 % TODO: Describe outcome reward asymmetry: deviating from winning play not penalized hard, endorsing losing play is
 
 \subsection{Reward Design}
 \label{sec:reward}
 
-% TODO: Detail the 3 reward functions + multiplicative format gate (D013)
+% TODO: Detail the 2 reward functions + multiplicative format gate (D024)
 %   Format gate: multiplicative mask — invalid JSON → zero total reward
-%   R_percept (α=0.20): merged hard+soft field accuracy (prevents SFT regression)
-%   R_decision (β=0.30): behavioral feature alignment (d_move, d_obj, u_type, e_timing, δ_engage)
-%   R_outcome (γ=0.50): R_decision · Ω(W, φ, a) — outcome-modulated with player contribution
+%   R_percept (α≈0.20): merged hard+soft field accuracy (prevents SFT regression)
+%   R_strategy (1-α≈0.80): RECALL — kNN retrieval over tactical state embeddings
+%     Encode game states as ~25-dim vectors, index in FAISS
+%     Retrieve K neighbors, compute A(s,a) = Q̂(s,a) - V̂(s)
+%   Ablation baselines: R_decision (behavioral alignment), R_outcome (outcome-modulated with φ)
 %   KL penalty (λ=0.02): regularization against SFT reference
-% TODO: Explain behavioral feature vectors extracted from tick data
-% TODO: Describe Ω function and signal matrix (agree+win, agree+lose, deviate+win, deviate+lose)
-% TODO: Explain player contribution φ for credit assignment
+%   Simplified Ω baseline: a·w + (1-a)·(1-w) — clean, no magic numbers
+% TODO: Explain player contribution φ for credit assignment (used in R_outcome ablation)
 % TODO: Address the challenge of evaluating open-ended strategic suggestions
-% TODO: Discuss mechanical skill (aim) as a latent confound in R_outcome (D015)
+% TODO: Discuss mechanical skill (aim) as a latent confound in R_outcome ablation (D015)
 %   - φ attenuates outcome signal when mechanics dominate (good decision + bad aim → low φ → damped)
-%   - R_decision provides aim-independent 30% signal (strategic features orthogonal to execution)
+%   - R_strategy (RECALL) provides aim-independent signal via counterfactual advantage
 %   - Population averaging over multiple pros washes out mechanically-dependent plays
 %   - Vulnerability: bad decision + good aim → high φ → amplified bad signal; mitigated by population averaging
 %   - The model learns E[outcome | decision, game_state] averaged over pro-level aim distribution
 
+\subsection{RECALL: Retrieval-Based Advantage Estimation}
+\label{sec:recall}
+
+% TODO: Describe RECALL mechanism — kNN retrieval over tactical game state embeddings
+% TODO: Encode states as ~25-dim vectors (side, alive counts, economy, bomb status, etc.)
+% TODO: Index in FAISS, retrieve K neighbors from training set
+% TODO: Compute advantage A(s,a) = Q̂(s,a) - V̂(s) as counterfactual reward
+% TODO: Connects to MemRL literature (retrieval-based RL)
+% TODO: Simplified outcome baseline Ω = a·w + (1-a)·(1-w) for comparison
+
 \begin{figure}[t]
 \centering
 \fbox{\parbox{0.9\linewidth}{\centering\vspace{2in}[Placeholder: System Architecture Diagram]}}
-\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on screenshot--game state pairs to learn visual grounding (reading the HUD). Phase 2 applies GRPO with 3 reward signals gated by a multiplicative format constraint: $R_\text{percept}$ (perceptual accuracy), $R_\text{decision}$ (behavioral alignment with pro play), and $R_\text{outcome}$ (outcome-modulated decision reward with player contribution weighting). Vision layers are frozen in Phase 2; KL regularization prevents mode collapse.}
+\caption{Overview of the Chimera training pipeline. Phase 1 performs SFT on screenshot--game state pairs to learn visual grounding (reading the HUD). Phase 2 applies GRPO with 2 reward signals gated by a multiplicative format constraint: $R_\text{percept}$ (perceptual accuracy, prevents SFT regression) and $R_\text{strategy}$ (RECALL: kNN retrieval-based advantage estimation over tactical state embeddings). Vision layers are frozen in Phase 2; KL regularization prevents mode collapse.}
 \label{fig:architecture}
 \end{figure}
 
@@ -137,15 +148,16 @@ Vision-language models (VLMs) struggle with domain-specific visual grounding tas
 \centering
 \caption{Performance comparison on CS2 screenshot analysis. Two-phase training (SFT + GRPO) outperforms single-phase approaches across all metrics.}
 \label{tab:results}
-\begin{tabular}{lcccc}
+\begin{tabular}{lccccc}
 \toprule
-\textbf{Method} & $\mathbf{R_\text{percept}}$ & $\mathbf{R_\text{decision}}$ & $\mathbf{R_\text{outcome}}$ & \textbf{Weighted Total} \\
+\textbf{Method} & $\mathbf{R_\text{percept}}$ & $\mathbf{R_\text{strategy}}$ & $\mathbf{R_\text{decision}^\dagger}$ & $\mathbf{R_\text{outcome}^\dagger}$ & \textbf{Weighted Total} \\
 \midrule
-Zero-shot (A) & -- & -- & -- & -- \\
-SFT only (B) & -- & -- & -- & -- \\
-SFT + GRPO (C, Ours) & -- & -- & -- & -- \\
-GRPO only (D) & -- & -- & -- & -- \\
+Zero-shot (A) & -- & -- & -- & -- & -- \\
+SFT only (B) & -- & -- & -- & -- & -- \\
+SFT + GRPO (C, Ours) & -- & -- & -- & -- & -- \\
+GRPO only (D) & -- & -- & -- & -- & -- \\
 \bottomrule
+\multicolumn{6}{l}{\small $^\dagger$ Ablation baselines (D013); not part of default reward.} \\
 \end{tabular}
 \end{table}
 
@@ -157,9 +169,10 @@ GRPO only (D) & -- & -- & -- & -- \\
 % TODO: Discuss failure cases and limitations
 % TODO: Mechanical skill confound analysis (D015):
 %   - Round outcome = f(decision_quality, mechanical_skill, teammate, opponent, randomness)
-%   - Architecture handles via 3 layers: φ attenuation, aim-independent R_decision, population averaging
+%   - Architecture handles via: RECALL advantage estimation (aim-independent R_strategy), φ attenuation (ablation), population averaging
+%   - R_strategy (RECALL) mitigates aim confound by computing counterfactual advantage over similar game states
 %   - Limitation: small dataset (4 demos, ~3000 samples) limits statistical power for noise averaging
-%   - Limitation: φ conflates aim and decisions (damage correlates with both)
+%   - Limitation: φ conflates aim and decisions (damage correlates with both) — relevant for R_outcome ablation
 %   - The "donk problem": unconventional plays decompose into superior game reading (learnable) vs purely mechanical (noise)
 %   - Model learns expected value at pro skill level, not universal strategic truth
 %   - Primary mitigation is more diverse demos, not architectural change
