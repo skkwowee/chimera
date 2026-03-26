@@ -235,6 +235,7 @@ def generate_round_context(
     rounds: list[dict[str, Any]],
     bomb_events: list[dict[str, Any]],
     header: dict[str, Any],
+    strip_current_state: bool = False,
 ) -> str:
     """
     Generate the round context string c_t for a decision point.
@@ -252,6 +253,9 @@ def generate_round_context(
         rounds: Rounds metadata list.
         bomb_events: Bomb event list.
         header: Demo header dict (contains map_name).
+        strip_current_state: When True, omit the CURRENT STATE section (alive
+            counts, bomb status, POV player state, teammate states). Use this
+            for GRPO training where current state must come from the screenshot.
 
     Returns:
         Formatted context string.
@@ -290,22 +294,24 @@ def generate_round_context(
     t_buy, t_equip = classify_team_economy(start_snap, "t")
     ct_buy, ct_equip = classify_team_economy(start_snap, "ct")
 
-    # Get players at current tick for current state
-    curr_snap = ticks_df.filter(
-        pl.col("round_num") == round_num
-    )
-    curr_available = curr_snap.select("tick").unique().sort("tick")
-    curr_ticks = curr_available.filter(pl.col("tick") <= tick)
-    if not curr_ticks.is_empty():
-        actual_tick = curr_ticks.item(-1, 0)
-    elif not curr_available.is_empty():
-        actual_tick = curr_available.item(0, 0)
-    else:
-        actual_tick = tick
+    # Get players at current tick for current state (only needed when not stripped)
+    current_players = []
+    if not strip_current_state:
+        curr_snap = ticks_df.filter(
+            pl.col("round_num") == round_num
+        )
+        curr_available = curr_snap.select("tick").unique().sort("tick")
+        curr_ticks = curr_available.filter(pl.col("tick") <= tick)
+        if not curr_ticks.is_empty():
+            actual_tick = curr_ticks.item(-1, 0)
+        elif not curr_available.is_empty():
+            actual_tick = curr_available.item(0, 0)
+        else:
+            actual_tick = tick
 
-    current_players = ticks_df.filter(
-        (pl.col("tick") == actual_tick) & (pl.col("round_num") == round_num)
-    ).to_dicts()
+        current_players = ticks_df.filter(
+            (pl.col("tick") == actual_tick) & (pl.col("round_num") == round_num)
+        ).to_dicts()
 
     # Detect events up to this tick
     events = detect_round_events(
@@ -334,62 +340,63 @@ def generate_round_context(
             lines.append(f"  {evt['time_s']:5.1f}s — {evt['description']}")
         lines.append("")
 
-    # Current state
-    alive_t = sum(
-        1 for p in current_players
-        if (p.get("side") or "").lower() == "t" and (p.get("health") or 0) > 0
-    )
-    alive_ct = sum(
-        1 for p in current_players
-        if (p.get("side") or "").lower() == "ct" and (p.get("health") or 0) > 0
-    )
-
-    bomb_status = determine_bomb_status(bomb_events, round_num, tick)
-
-    pov = None
-    for p in current_players:
-        if p["name"] == pov_name:
-            pov = p
-            break
-
-    lines.append("CURRENT STATE:")
-    lines.append(f"  Alive: {alive_t}T vs {alive_ct}CT")
-    lines.append(f"  Bomb: {bomb_status}")
-
-    if pov:
-        inv = parse_inventory(pov.get("inventory"))
-        weapon = inv["weapon_primary"] or inv["weapon_secondary"] or "knife"
-        util_str = ", ".join(inv["utility"]) if inv["utility"] else "none"
-        lines.append(
-            f"  POV: {pov_name} ({pov_side.upper()}), "
-            + f"{pov.get('health', 0)}hp/{pov.get('armor', 0)}armor, "
-            + f"{weapon}, utility: {util_str}"
+    # Current state (omitted when strip_current_state=True for GRPO training)
+    if not strip_current_state:
+        alive_t = sum(
+            1 for p in current_players
+            if (p.get("side") or "").lower() == "t" and (p.get("health") or 0) > 0
+        )
+        alive_ct = sum(
+            1 for p in current_players
+            if (p.get("side") or "").lower() == "ct" and (p.get("health") or 0) > 0
         )
 
-    # Teammate states
-    teammates = [
-        p for p in current_players
-        if (p.get("side") or "").lower() == pov_side.lower()
-        and p["name"] != pov_name
-    ]
-    if teammates:
-        alive_mates = [
-            t for t in teammates if (t.get("health") or 0) > 0
-        ]
-        dead_mates = [
-            t for t in teammates if (t.get("health") or 0) == 0
-        ]
-        if alive_mates:
-            mate_strs = []
-            for t in alive_mates:
-                t_inv = parse_inventory(t.get("inventory"))
-                t_weapon = t_inv["weapon_primary"] or t_inv["weapon_secondary"] or "knife"
-                mate_strs.append(f"{t['name']} ({t.get('health', 0)}hp, {t_weapon})")
-            lines.append(f"  Teammates alive: {', '.join(mate_strs)}")
-        if dead_mates:
+        bomb_status = determine_bomb_status(bomb_events, round_num, tick)
+
+        pov = None
+        for p in current_players:
+            if p["name"] == pov_name:
+                pov = p
+                break
+
+        lines.append("CURRENT STATE:")
+        lines.append(f"  Alive: {alive_t}T vs {alive_ct}CT")
+        lines.append(f"  Bomb: {bomb_status}")
+
+        if pov:
+            inv = parse_inventory(pov.get("inventory"))
+            weapon = inv["weapon_primary"] or inv["weapon_secondary"] or "knife"
+            util_str = ", ".join(inv["utility"]) if inv["utility"] else "none"
             lines.append(
-                f"  Teammates dead: {', '.join(t['name'] for t in dead_mates)}"
+                f"  POV: {pov_name} ({pov_side.upper()}), "
+                + f"{pov.get('health', 0)}hp/{pov.get('armor', 0)}armor, "
+                + f"{weapon}, utility: {util_str}"
             )
+
+        # Teammate states
+        teammates = [
+            p for p in current_players
+            if (p.get("side") or "").lower() == pov_side.lower()
+            and p["name"] != pov_name
+        ]
+        if teammates:
+            alive_mates = [
+                t for t in teammates if (t.get("health") or 0) > 0
+            ]
+            dead_mates = [
+                t for t in teammates if (t.get("health") or 0) == 0
+            ]
+            if alive_mates:
+                mate_strs = []
+                for t in alive_mates:
+                    t_inv = parse_inventory(t.get("inventory"))
+                    t_weapon = t_inv["weapon_primary"] or t_inv["weapon_secondary"] or "knife"
+                    mate_strs.append(f"{t['name']} ({t.get('health', 0)}hp, {t_weapon})")
+                lines.append(f"  Teammates alive: {', '.join(mate_strs)}")
+            if dead_mates:
+                lines.append(
+                    f"  Teammates dead: {', '.join(t['name'] for t in dead_mates)}"
+                )
 
     return "\n".join(lines)
 
@@ -437,8 +444,21 @@ def generate_label(
     bomb_events: list[dict[str, Any]],
     header: dict[str, Any],
     all_captures: list[dict[str, Any]] | None = None,
+    strip_current_state: bool = False,
 ) -> dict[str, Any] | None:
-    """Generate a game_state label + context for a single capture."""
+    """Generate a game_state label + context for a single capture.
+
+    Args:
+        cap: Capture metadata dict.
+        ticks_df: Full ticks DataFrame for the demo.
+        rounds: Rounds metadata list.
+        bomb_events: Bomb event list.
+        header: Demo header dict.
+        all_captures: All captures in the plan (for prior screenshot lookup).
+        strip_current_state: When True, omit CURRENT STATE from the context
+            string c_t. Use for GRPO training where current state must come
+            from the screenshot, not the context.
+    """
     tick = cap["tick"]
     round_num = cap["round_num"]
     pov_name = cap["player_name"]
@@ -515,6 +535,7 @@ def generate_label(
     context = generate_round_context(
         tick, round_num, pov_name, pov_side,
         ticks_df, rounds, bomb_events, header,
+        strip_current_state=strip_current_state,
     )
 
     # Find prior screenshots for multi-image input

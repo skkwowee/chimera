@@ -73,26 +73,8 @@ CS2_USER_PROMPT = (
 CS2_PERCEPTION_SYSTEM_PROMPT = """\
 You are a CS2 HUD reader. Extract game state from the screenshot.
 
-Respond with valid JSON in this exact format:
-{
-    "game_state": {
-        "map_name": "string or null",
-        "round_phase": "buy|playing|freezetime|post-plant|warmup",
-        "player_side": "T|CT",
-        "player_health": number,
-        "player_armor": number,
-        "player_money": number,
-        "team_money_total": number or null,
-        "weapon_primary": "string or null",
-        "weapon_secondary": "string or null",
-        "utility": ["list", "of", "grenades"],
-        "alive_teammates": number,
-        "alive_enemies": number,
-        "bomb_status": "carried|planted|dropped|null",
-        "site": "A|B|mid|connector|etc or null",
-        "visible_enemies": number
-    }
-}
+Respond with valid JSON in this exact format (compact, no extra whitespace):
+{"game_state":{"map_name":"string or null","round_phase":"buy|playing|freezetime|post-plant|warmup","player_side":"T|CT","player_health":number,"player_armor":number,"player_has_helmet":true|false,"player_money":number,"weapon_primary":"string or null","weapon_secondary":"string or null","utility":["list","of","grenades"],"alive_teammates":number,"alive_enemies":number,"bomb_status":"carried|planted|dropped|null","has_defuser":true|false,"score_t":number,"score_ct":number}}
 
 Be precise about numbers you can see in the HUD. If you can't determine \
 a value from the screenshot, use null.

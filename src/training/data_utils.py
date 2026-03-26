@@ -302,19 +302,19 @@ def prepare_conversation_format(
 
 
 def format_ground_truth_as_json(ground_truth: dict[str, Any]) -> str:
-    """Format ground truth dict as JSON string for training targets.
+    """Format ground truth dict as compact JSON string for SFT training targets.
 
-    Excludes context and metadata — only the fields the model should output.
+    Outputs only the game_state dict with irrelevant fields removed.
+    The SFT dataset builder generates the full schema (game_state/analysis/advice)
+    separately; this function targets the perception-only output.
+
+    Removed fields: site, visible_enemies, team_money_total, round_num, player_name.
     """
-    output = {}
-    for key in ("game_state", "analysis", "advice"):
-        if key in ground_truth:
-            output[key] = ground_truth[key]
-    # If label only has game_state (SFT labels without analysis/advice),
-    # return just what's there
-    if not output:
-        output = ground_truth
-    return json.dumps(output, indent=2)
+    _REMOVE_FIELDS = {"site", "visible_enemies", "team_money_total", "round_num", "player_name"}
+
+    gs_raw = ground_truth.get("game_state", ground_truth)
+    gs = {k: v for k, v in gs_raw.items() if k not in _REMOVE_FIELDS}
+    return json.dumps({"game_state": gs}, separators=(',', ':'))
 
 
 def convert_labeled_to_sft_format(

@@ -37,9 +37,9 @@ class CS2SFTConfig:
 
     # LoRA settings
     use_lora: bool = True
-    lora_r: int = 16
-    lora_alpha: int = 32
-    lora_dropout: float = 0.05
+    lora_r: int = 32
+    lora_alpha: int = 64
+    lora_dropout: float = 0.0
     lora_target_modules: list[str] = field(
         default_factory=lambda: [
             "q_proj", "k_proj", "v_proj", "o_proj",
@@ -48,17 +48,17 @@ class CS2SFTConfig:
     )
 
     # Training settings
-    num_epochs: int = 3
+    num_epochs: int = 5
     batch_size: int = 1
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 2e-5
+    learning_rate: float = 5e-5
     warmup_ratio: float = 0.1
     max_grad_norm: float = 1.0
     weight_decay: float = 0.01
     max_new_tokens: int = 1024
 
     # SFT-specific settings
-    max_seq_length: int = 2048
+    max_seq_length: int = 3072
     finetune_vision_layers: bool = True  # SFT trains vision; GRPO freezes it for vLLM
 
     # Output settings

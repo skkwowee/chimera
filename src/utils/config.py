@@ -8,7 +8,7 @@ from typing import Any
 import yaml
 
 # Single source of truth for the default model name.
-DEFAULT_MODEL_NAME = "skkwowee/Qwen3.5-27B-bnb-4bit"
+DEFAULT_MODEL_NAME = "Qwen/Qwen3.5-35B-A3B"
 
 
 def load_config(config_path: Path | str = "config/config.yaml") -> dict[str, Any]:

@@ -730,7 +730,7 @@ def compute_outcome_modulation(
 # Format gate — multiplicative mask, NOT a weighted signal
 # ---------------------------------------------------------------------------
 
-def format_gate_reward(response: str, **kwargs: Any) -> float:
+def format_gate_reward(response: str, perception_only: bool = False, **kwargs: Any) -> float:
     """
     Binary gate: 1.0 if response contains valid JSON with expected top-level
     keys, 0.0 otherwise.
@@ -739,12 +739,22 @@ def format_gate_reward(response: str, **kwargs: Any) -> float:
         total = format_gate * (α·R_percept + β·R_decision + γ·R_outcome)
 
     Invalid JSON → zero total reward. The gate is a hard constraint.
+
+    Args:
+        response: Model response string to evaluate.
+        perception_only: If True, only require game_state key (for SFT
+            evaluation of the perception-only output format). If False
+            (default), require all three keys: game_state, analysis, advice.
     """
     parsed = _extract_json_from_response(response)
     if parsed is None:
         return 0.0
 
     has_game_state = isinstance(parsed.get("game_state"), dict)
+
+    if perception_only:
+        return 1.0 if has_game_state else 0.0
+
     has_analysis = isinstance(parsed.get("analysis"), dict)
     has_advice = isinstance(parsed.get("advice"), dict)
 
@@ -829,6 +839,128 @@ def perceptual_accuracy_reward(
         return 0.0
 
     return sum(scores) / len(scores)
+
+
+# ---------------------------------------------------------------------------
+# R_percept split: visual vs context components
+# ---------------------------------------------------------------------------
+
+# Fields that REQUIRE the image to determine accurately
+_VISUAL_FIELDS = {
+    "numeric": ["player_health", "player_armor", "alive_teammates", "alive_enemies"],
+    "string": ["weapon_primary", "weapon_secondary"],
+    "list": ["utility"],
+    "bool": ["player_has_helmet", "has_defuser"],
+}
+
+# Fields derivable from c_t (temporal context string)
+_CONTEXT_FIELDS = {
+    "numeric": ["player_money", "score_t", "score_ct"],
+    "string": ["map_name"],
+    "categorical": [("round_phase", VALID_ROUND_PHASES), ("player_side", VALID_PLAYER_SIDES),
+                    ("bomb_status", VALID_BOMB_STATUSES)],
+}
+
+
+def split_perceptual_accuracy_reward(
+    response: str,
+    ground_truth: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, float]:
+    """
+    Split R_percept into visual and context components.
+
+    Returns a dict with three scores:
+      - "visual":   accuracy on fields that REQUIRE the image
+                    (player_health, player_armor, weapon_primary,
+                     weapon_secondary, utility, alive_teammates,
+                     alive_enemies, player_has_helmet, has_defuser)
+      - "context":  accuracy on fields derivable from c_t
+                    (map_name, round_phase, player_side, bomb_status,
+                     player_money, score_t, score_ct)
+      - "combined": unweighted average of visual and context (equivalent to
+                    perceptual_accuracy_reward when both sets are populated)
+
+    Uses the same field-scoring logic as perceptual_accuracy_reward.
+
+    Args:
+        response: Raw model response string (JSON expected).
+        ground_truth: Ground-truth dict with a "game_state" sub-dict.
+
+    Returns:
+        {"visual": float, "context": float, "combined": float}
+    """
+    null_result: dict[str, float] = {"visual": 0.0, "context": 0.0, "combined": 0.0}
+
+    if ground_truth is None:
+        return null_result
+
+    parsed = _extract_json_from_response(response)
+    if parsed is None or "game_state" not in parsed:
+        return null_result
+
+    predicted = parsed["game_state"]
+    gt_state = ground_truth.get("game_state", ground_truth)
+
+    if not isinstance(predicted, dict) or not isinstance(gt_state, dict):
+        return null_result
+
+    # --- Visual scores ---
+    visual_scores: list[float] = []
+
+    for field in _VISUAL_FIELDS["numeric"]:
+        score = _score_numeric_field(predicted, gt_state, field)
+        if score is not None:
+            visual_scores.append(score)
+
+    for field in _VISUAL_FIELDS["string"]:
+        score = _score_string_field(predicted, gt_state, field)
+        if score is not None:
+            visual_scores.append(score)
+
+    for field in _VISUAL_FIELDS["list"]:
+        score = _score_list_field(predicted, gt_state, field)
+        if score is not None:
+            visual_scores.append(score)
+
+    for field in _VISUAL_FIELDS["bool"]:
+        # Boolean fields: treat as categorical (True/False exact match)
+        if field in gt_state:
+            gt_val = gt_state[field]
+            pred_val = predicted.get(field)
+            if gt_val is None:
+                visual_scores.append(1.0 if pred_val is None else 0.0)
+            elif pred_val is None:
+                visual_scores.append(0.0)
+            else:
+                visual_scores.append(1.0 if bool(gt_val) == bool(pred_val) else 0.0)
+
+    # --- Context scores ---
+    context_scores: list[float] = []
+
+    for field in _CONTEXT_FIELDS["numeric"]:
+        score = _score_numeric_field(predicted, gt_state, field)
+        if score is not None:
+            context_scores.append(score)
+
+    for field in _CONTEXT_FIELDS["string"]:
+        score = _score_string_field(predicted, gt_state, field)
+        if score is not None:
+            context_scores.append(score)
+
+    for field, _ in _CONTEXT_FIELDS["categorical"]:
+        score = _score_categorical_field(predicted, gt_state, field)
+        if score is not None:
+            context_scores.append(score)
+
+    visual = sum(visual_scores) / len(visual_scores) if visual_scores else 0.0
+    context = sum(context_scores) / len(context_scores) if context_scores else 0.0
+
+    # Combined: mean of both sub-scores (weighted equally by field count)
+    all_scores = visual_scores + context_scores
+    combined = sum(all_scores) / len(all_scores) if all_scores else 0.0
+
+    return {"visual": visual, "context": context, "combined": combined}
 
 
 # ---------------------------------------------------------------------------
@@ -993,4 +1125,45 @@ REWARD_FUNCTIONS = [
 
 # Weights for the 3 reward signals (format gate is multiplicative, not here)
 DEFAULT_REWARD_WEIGHTS = [0.20, 0.30, 0.50]
+
+
+# ---------------------------------------------------------------------------
+# Split-percept reward computation: configurable visual / context weighting
+# ---------------------------------------------------------------------------
+
+def compute_split_percept_reward(
+    response: str,
+    ground_truth: dict[str, Any] | None = None,
+    visual_weight: float = 0.7,
+    context_weight: float = 0.3,
+    **kwargs: Any,
+) -> float:
+    """
+    Compute R_percept using configurable visual and context sub-weights.
+
+    Instead of a single α for all perceptual fields, this function splits
+    R_percept into two components and combines them with separate weights:
+
+        R_percept = visual_weight · R_percept_visual
+                  + context_weight · R_percept_context
+
+    where:
+      R_percept_visual  — fields requiring the image (health, armor, weapons,
+                          utility, alive counts, helmet, defuser)
+      R_percept_context — fields derivable from c_t (map, phase, side,
+                          bomb status, money, scores)
+
+    Weights need not sum to 1.0; the result is their weighted sum.
+
+    Args:
+        response: Raw model response string.
+        ground_truth: Ground-truth dict with a "game_state" sub-dict.
+        visual_weight: Weight for image-dependent fields (default 0.7).
+        context_weight: Weight for context-derivable fields (default 0.3).
+
+    Returns:
+        Weighted R_percept score ∈ [0, 1].
+    """
+    split = split_perceptual_accuracy_reward(response, ground_truth=ground_truth)
+    return visual_weight * split["visual"] + context_weight * split["context"]
 
