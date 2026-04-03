@@ -250,8 +250,10 @@ def _assemble_captures():
                 shutil.copy2(f, LABELED / f.name)
                 total_labels += 1
 
-        # Screenshots
-        screenshots_src = map_dir / "screenshots"
+        # Screenshots (check both raw/ and screenshots/)
+        screenshots_src = map_dir / "raw"
+        if not screenshots_src.exists():
+            screenshots_src = map_dir / "screenshots"
         if screenshots_src.exists():
             for pat in ("*.png", "*.jpg", "*.jpeg", "*.webp"):
                 for f in screenshots_src.glob(pat):
@@ -309,6 +311,10 @@ ds = load_dataset("{repo_id}")
 ## Paper
 
 *See, Then Think: Two-Phase VLM Training for Game Understanding*
+
+## Code
+
+[github.com/skkwowee/chimera](https://github.com/skkwowee/chimera)
 """
 
 
