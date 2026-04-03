@@ -2,7 +2,7 @@
 """
 GRPO training script for CS2 VLM fine-tuning.
 
-Uses transformers + peft for QLoRA training of Qwen3.5-27B (4-bit).
+Uses transformers + peft for LoRA training of Qwen3.5-35B-A3B MoE (bf16).
 
 Revised reward architecture (D013):
   - Multiplicative format gate (invalid JSON -> zero total reward)
@@ -70,7 +70,7 @@ REWARD_MODES = {
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Qwen3.5-27B on CS2 screenshots using GRPO",
+        description="Train Qwen3.5-35B-A3B MoE on CS2 screenshots using GRPO",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 

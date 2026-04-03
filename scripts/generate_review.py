@@ -485,7 +485,7 @@ def generate_comparison_html(comparisons: list[dict[str, Any]], embed_images: bo
                                 {{renderColumn(item.claude, 'Claude', null)}}
                             </div>
                             <div className="result-column">
-                                <div className="column-header qwen-header">Qwen3.5-27B</div>
+                                <div className="column-header qwen-header">Qwen3.5-35B-A3B</div>
                                 {{renderColumn(item.qwen, 'Qwen', item.claude)}}
                             </div>
                         </div>

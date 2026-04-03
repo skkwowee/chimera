@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
-from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
 
 from src.prompts import CS2_PERCEPTION_SYSTEM_PROMPT, CS2_PERCEPTION_USER_PROMPT
 from src.utils.config import DEFAULT_MODEL_NAME
@@ -707,14 +707,14 @@ def run_eval(args: argparse.Namespace) -> None:
     dtype = getattr(torch, args.dtype) if hasattr(torch, args.dtype) else torch.bfloat16
 
     try:
-        model = Qwen3_5ForConditionalGeneration.from_pretrained(
+        model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
             model_name,
             device_map="auto",
             torch_dtype=dtype,
         )
         model.eval()
     except Exception as e:
-        print(f"[warn] Qwen3_5ForConditionalGeneration failed ({e}), "
+        print(f"[warn] Qwen3_5MoeForConditionalGeneration failed ({e}), "
               "falling back to AutoModelForCausalLM")
         from transformers import AutoModelForCausalLM
         model = AutoModelForCausalLM.from_pretrained(

@@ -2,7 +2,7 @@
 """
 SFT training script for CS2 VLM fine-tuning.
 
-Uses transformers + peft for QLoRA supervised fine-tuning of Qwen3.5-27B (4-bit).
+Uses transformers + peft for LoRA supervised fine-tuning of Qwen3.5-35B-A3B MoE (bf16).
 SFT teaches the model output format and CS2 domain knowledge before GRPO
 refinement.
 
@@ -41,7 +41,7 @@ from src.utils.config import DEFAULT_MODEL_NAME
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Train Qwen3.5-27B on CS2 screenshots using SFT (supervised fine-tuning)",
+        description="Train Qwen3.5-35B-A3B MoE on CS2 screenshots using SFT (supervised fine-tuning)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 

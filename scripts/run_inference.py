@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run inference on CS2 screenshots using Qwen3.5-27B.
+Run inference on CS2 screenshots using Qwen3.5-35B-A3B MoE.
 
 Usage:
     python scripts/run_inference.py --single path/to/screenshot.png

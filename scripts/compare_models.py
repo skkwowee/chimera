@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Compare zero-shot Claude vs Qwen 3.5-27B on CS2 screenshot analysis.
+Compare zero-shot Claude vs Qwen 3.5-35B-A3B MoE on CS2 screenshot analysis.
 
 Finds matching label/screenshot pairs, runs inference with selected models,
 and compares per-field accuracy against ground truth.
@@ -9,7 +9,7 @@ Usage:
     python scripts/compare_models.py --samples 5
     python scripts/compare_models.py --samples 5 --models claude
     python scripts/compare_models.py --samples 5 --models qwen --phase perception
-    python scripts/compare_models.py --samples 5 --models qwen --model-name Qwen/Qwen3.5-27B
+    python scripts/compare_models.py --samples 5 --models qwen --model-name Qwen/Qwen3.5-35B-A3B
 """
 
 import argparse

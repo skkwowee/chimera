@@ -51,8 +51,8 @@ def _lazy_import_ml():
     must have the right environment set up before running the gate check."""
     import torch
     from PIL import Image
-    from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
-    return torch, Image, AutoProcessor, Qwen2_5_VLForConditionalGeneration
+    from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
+    return torch, Image, AutoProcessor, Qwen3_5MoeForConditionalGeneration
 
 
 # ---------------------------------------------------------------------------
@@ -343,7 +343,7 @@ class SFTModel:
         if is_lora:
             # LoRA adapter: load base model then apply adapter
             adapter_cfg = json.loads(adapter_config.read_text())
-            base_model_name = adapter_cfg.get("base_model_name_or_path", "Qwen/Qwen2.5-VL-7B-Instruct")
+            base_model_name = adapter_cfg.get("base_model_name_or_path", "Qwen/Qwen3.5-35B-A3B")
             print(f"  Detected LoRA adapter (base: {base_model_name})")
 
             from peft import PeftModel

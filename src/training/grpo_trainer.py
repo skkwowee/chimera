@@ -1,7 +1,7 @@
 """
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
-Uses transformers + peft for QLoRA training of Qwen3.5-27B (4-bit).
+Uses transformers + peft for LoRA training of Qwen3.5-35B-A3B MoE (bf16).
 
 Reward architecture (D024 — simplified 2-signal, primary):
   - Multiplicative format gate (invalid JSON -> zero total reward)
@@ -118,9 +118,9 @@ class CS2GRPOTrainer:
         self.val_dataset: Any = None
 
     def load_model(self):
-        """Load Qwen3.5-27B (4-bit) with LoRA."""
+        """Load Qwen3.5-35B-A3B MoE (bf16) with LoRA."""
         from peft import LoraConfig, get_peft_model
-        from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+        from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
 
         dtype = getattr(torch, self.config.torch_dtype)
 
@@ -128,7 +128,7 @@ class CS2GRPOTrainer:
         print(f"  vLLM fast inference: {self.config.use_vllm}")
         print(f"  LoRA: {self.config.use_lora}")
 
-        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
             self.config.model_name,
             device_map="auto",
             torch_dtype=dtype,

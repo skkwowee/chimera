@@ -1,5 +1,5 @@
 """
-VLM inference for CS2 screenshot analysis using Qwen3.5-27B (dense, 4-bit).
+VLM inference for CS2 screenshot analysis using Qwen3.5-35B-A3B (MoE, bf16).
 """
 
 import json
@@ -83,14 +83,14 @@ def parse_json_response(response: str) -> dict[str, Any]:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3.5-27B dense VLM (4-bit quantized).
+    Run inference using Qwen3.5-35B-A3B MoE VLM (bf16).
 
-    Loads from HuggingFace Hub using Qwen3_5ForConditionalGeneration.
+    Loads from HuggingFace Hub using Qwen3_5MoeForConditionalGeneration.
     """
 
     def __init__(
         self,
-        model_name: str = "skkwowee/Qwen3.5-27B-bnb-4bit",
+        model_name: str = "Qwen/Qwen3.5-35B-A3B",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
     ):
@@ -102,11 +102,11 @@ class Qwen3VLInference:
 
     def load_model(self):
         """Load the model and processor from HuggingFace Hub."""
-        from transformers import AutoProcessor, Qwen3_5ForConditionalGeneration
+        from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
 
         print(f"Loading {self.model_name}...")
 
-        self.model = Qwen3_5ForConditionalGeneration.from_pretrained(
+        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
             self.model_name,
             device_map="auto",
             torch_dtype=self.dtype,
