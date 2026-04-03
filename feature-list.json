@@ -14,8 +14,8 @@
   {
     "id": "F03",
     "name": "Screenshot-demo synchronization",
-    "description": "Capture CS2 screenshots via demo playback (netcon TCP automation) and pair with ground truth game state from Parquet. Mirage done (548 screenshots, 1504 labels). Inferno/Nuke/Overpass have capture plans but need CS2 demo playback on Windows.",
-    "passes": false
+    "description": "Capture CS2 screenshots via demo playback (SendKeys automation) and pair with ground truth game state from Parquet. All 4 maps complete: Mirage (548 screenshots, 1504 labels), Inferno (1476/1476), Nuke (791/791), Overpass (1538/1538). Total: 4353 screenshots, 5309 labels.",
+    "passes": true
   },
   {
     "id": "F04",

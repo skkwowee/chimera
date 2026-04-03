@@ -236,6 +236,7 @@ def generate_round_context(
     bomb_events: list[dict[str, Any]],
     header: dict[str, Any],
     strip_current_state: bool = False,
+    event_cache: dict[int, list[dict[str, Any]]] | None = None,
 ) -> str:
     """
     Generate the round context string c_t for a decision point.
@@ -313,10 +314,14 @@ def generate_round_context(
             (pl.col("tick") == actual_tick) & (pl.col("round_num") == round_num)
         ).to_dicts()
 
-    # Detect events up to this tick
-    events = detect_round_events(
-        ticks_df, round_num, tick, freeze_end, bomb_events,
-    )
+    # Get events up to this tick (use cache if available)
+    if event_cache is not None:
+        all_events = event_cache.get(round_num, [])
+        events = [e for e in all_events if e["tick"] <= tick]
+    else:
+        events = detect_round_events(
+            ticks_df, round_num, tick, freeze_end, bomb_events,
+        )
 
     # --- Build context string ---
     lines = []
@@ -445,6 +450,7 @@ def generate_label(
     header: dict[str, Any],
     all_captures: list[dict[str, Any]] | None = None,
     strip_current_state: bool = False,
+    event_cache: dict[int, list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any] | None:
     """Generate a game_state label + context for a single capture.
 
@@ -536,6 +542,7 @@ def generate_label(
         tick, round_num, pov_name, pov_side,
         ticks_df, rounds, bomb_events, header,
         strip_current_state=strip_current_state,
+        event_cache=event_cache,
     )
 
     # Find prior screenshots for multi-image input
@@ -581,6 +588,110 @@ def generate_label(
     return label
 
 
+def precompute_round_events(
+    ticks_df: pl.DataFrame,
+    rounds: list[dict[str, Any]],
+    bomb_events: list[dict[str, Any]],
+) -> dict[int, list[dict[str, Any]]]:
+    """Precompute all events for every round (deaths, utility, bomb).
+
+    Returns a dict mapping round_num -> sorted list of events.
+    Each capture can then filter by tick <= up_to_tick instead of
+    re-scanning every tick pair.
+    """
+    cache: dict[int, list[dict[str, Any]]] = {}
+
+    for rnd in rounds:
+        round_num = rnd["round_num"]
+        freeze_end = rnd.get("freeze_end", 0)
+
+        round_ticks = ticks_df.filter(pl.col("round_num") == round_num)
+        available_ticks = (
+            round_ticks.select("tick").unique().sort("tick")
+            .to_series().to_list()
+        )
+
+        events: list[dict[str, Any]] = []
+
+        # Detect deaths and utility usage from tick diffs
+        for i in range(1, len(available_ticks)):
+            prev_tick = available_ticks[i - 1]
+            curr_tick = available_ticks[i]
+
+            prev_snap = round_ticks.filter(pl.col("tick") == prev_tick)
+            curr_snap = round_ticks.filter(pl.col("tick") == curr_tick)
+
+            prev_players = {p["name"]: p for p in prev_snap.to_dicts()}
+            curr_players = {p["name"]: p for p in curr_snap.to_dicts()}
+
+            for name, curr_p in curr_players.items():
+                prev_p = prev_players.get(name)
+                if prev_p is None:
+                    continue
+
+                prev_health = prev_p.get("health") or 0
+                curr_health = curr_p.get("health") or 0
+
+                if prev_health > 0 and curr_health == 0:
+                    side = (curr_p.get("side") or "").upper()
+                    time_s = _tick_to_time(curr_tick, freeze_end)
+                    events.append({
+                        "tick": curr_tick,
+                        "time_s": time_s,
+                        "type": "death",
+                        "player": name,
+                        "side": side,
+                        "description": f"{name} ({side}) eliminated",
+                    })
+
+                if (prev_p.get("health") or 0) == 0:
+                    continue
+                prev_inv = set(str(x) for x in (prev_p.get("inventory") or []))
+                curr_inv = set(str(x) for x in (curr_p.get("inventory") or []))
+                lost_items = prev_inv - curr_inv
+                for item in lost_items:
+                    if item in UTILITY_ITEMS:
+                        side = (curr_p.get("side") or "").upper()
+                        time_s = _tick_to_time(curr_tick, freeze_end)
+                        events.append({
+                            "tick": curr_tick,
+                            "time_s": time_s,
+                            "type": "utility",
+                            "player": name,
+                            "side": side,
+                            "item": item,
+                            "description": f"{name} ({side}) used {item}",
+                        })
+
+        # Bomb events
+        for evt in bomb_events:
+            if evt["round_num"] != round_num:
+                continue
+            event_type = str(evt.get("event", "")).lower()
+            time_s = _tick_to_time(evt["tick"], freeze_end)
+
+            if event_type in ("plant", "planted", "bomb_planted"):
+                events.append({
+                    "tick": evt["tick"], "time_s": time_s,
+                    "type": "bomb_planted", "description": "Bomb planted",
+                })
+            elif event_type in ("defuse", "defused", "bomb_defused"):
+                events.append({
+                    "tick": evt["tick"], "time_s": time_s,
+                    "type": "bomb_defused", "description": "Bomb defused",
+                })
+            elif event_type in ("drop", "dropped"):
+                events.append({
+                    "tick": evt["tick"], "time_s": time_s,
+                    "type": "bomb_dropped", "description": "Bomb dropped",
+                })
+
+        events.sort(key=lambda e: e["tick"])
+        cache[round_num] = events
+
+    return cache
+
+
 def process_plan(plan_path: Path, demo_data_dir: Path, output_dir: Path, dry_run: bool):
     """Generate labels for all captures in a plan."""
     plan = json.loads(plan_path.read_text())
@@ -598,6 +709,10 @@ def process_plan(plan_path: Path, demo_data_dir: Path, output_dir: Path, dry_run
     labels_dir = output_dir / "labels"
     labels_dir.mkdir(parents=True, exist_ok=True)
 
+    # Precompute events once per round
+    print("  Precomputing round events...")
+    event_cache = precompute_round_events(ticks_df, rounds, bomb_events)
+
     # Inject demo_stem into all captures for metadata
     all_captures = plan["captures"]
     for cap in all_captures:
@@ -610,6 +725,7 @@ def process_plan(plan_path: Path, demo_data_dir: Path, output_dir: Path, dry_run
         label = generate_label(
             cap, ticks_df, rounds, bomb_events, header,
             all_captures=all_captures,
+            event_cache=event_cache,
         )
         if label is None:
             skipped += 1
