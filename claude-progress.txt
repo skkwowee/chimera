@@ -17,16 +17,23 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
 
-## What changed this session (2026-04-02)
+## What changed this session (2026-04-03)
+- HuggingFace push complete (skkwowee/chimera-cs2)
+- Council review of pipeline readiness:
+  F04 (SFT): 95% ready — trainer, CLI, data loader, curated dataset all exist
+  F05b (GRPO smoke test): ready — 2013 samples pre-extracted in smoke_test.jsonl
+  F05c (RECALL): partial — math/FAISS in recall.py, not wired into trainer
+- Next: run F04 SFT training on H200, then F05b smoke test
+
+## What changed session (2026-04-02)
 - Completed F03: captured screenshots for all 4 maps via SendKeys automation
   Inferno (1476), Nuke (791), Overpass (1538) + existing Mirage (548)
   Total: 4353 screenshots, 5309 labels generated
 - Optimized generate_sft_labels.py: precompute round events once per round
   instead of re-scanning tick pairs per capture (~30x speedup)
 - netcon TCP didn't work from WSL2 (network isolation); SendKeys workaround worked
-- Next: push to HuggingFace, then F05b smoke test
 
-## What changed previous session (2026-03-25)
+## What changed session (2026-03-25)
 - Council review of RL methodology identified key improvements
 - Reward architecture simplified from 4 signals to 2 (R_percept + R_strategy)
 - Designed RECALL: retrieval-based advantage estimation via kNN over historical outcomes
@@ -59,14 +66,19 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - Data sparsity (D023): L0 contrastive pairing marginal at 4 demos,
   L1 needs 100+ demos. GRPO can proceed with positive signal only.
 
-## Next step: push to HuggingFace → F05b smoke test → F05c RECALL
-1. F05b: Run GRPO smoke test with simplified 2-signal reward (R_percept + R_strategy)
-   - B-site post-plant slice, base Qwen3.5-35B-A3B, verify pipeline end-to-end
+## Next steps
+1. F04: Run SFT training on H200
+   - Curated dataset exists (data/sft_dataset.json, 1.9MB)
+   - Command: python scripts/train_sft.py --screenshots data/raw --labels data/labeled
+   - Verify: per-field accuracy on val split, format gate pass rate
+2. F05b: Run GRPO smoke test with simplified 2-signal reward (R_percept + R_strategy)
+   - Data ready: data/training/grpo/smoke_test.jsonl (2013 samples, 36 rounds)
+   - Command: python scripts/train_grpo.py --reward-mode simplified
    - Check: reward variance across G=4 completions, loss curve, gradient norms
-2. F05c: Implement RECALL — retrieval-based advantage estimation
-   - Encode game states as ~25-dim vectors, index in FAISS
-   - Retrieve K neighbors, compute A(s,a) = Q̂(s,a) - V̂(s)
-   - Implementation target: src/training/recall.py
+3. F05c: Wire RECALL into GRPO trainer
+   - recall.py has: RECALLIndex, tactical_embedding, action_embedding, recall_advantage
+   - Missing: index build from training data, integration into train_grpo.py reward mode
+   - Need: add recall_index to CS2GRPOConfig, build index before training loop
 
 ## Data available
 - 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
@@ -74,6 +86,14 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - All 4 maps: 4353 screenshots, 5309 labels (Mirage 548/1504, Inferno 1476/1476, Nuke 791/791, Overpass 1538/1538)
 - Viewer data in site/public/viewer-data/
 
-## Files modified this session
-- claude-progress.txt — updated with RECALL design and simplified reward
-- feature-list.json — added F05c (RECALL)
+## Key files for next steps
+- scripts/train_sft.py — SFT training CLI (459 lines, full arg parsing)
+- scripts/train_grpo.py — GRPO training CLI
+- scripts/build_sft_dataset.py — dataset curation (already run → data/sft_dataset.json)
+- src/training/sft_trainer.py — CS2SFTTrainer (4-bit quant + LoRA r=32 α=64)
+- src/training/grpo_trainer.py — CS2GRPOTrainer (QLoRA + TRL)
+- src/training/rewards.py — 2-signal (simplified) + 3-signal (ablation) reward fns
+- src/training/recall.py — RECALL skeleton (FAISS, embeddings, advantage calc)
+- src/training/data_utils.py — data loading, conversation format, train/val split
+- data/training/grpo/smoke_test.jsonl — 2013 pre-extracted GRPO samples
+- scripts/pod_setup.sh, run_pod.sh — H200 deployment scripts
