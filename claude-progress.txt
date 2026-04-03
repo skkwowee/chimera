@@ -8,7 +8,7 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 ## Pipeline Status
 - [x] F01 — Data schema & manifest
 - [x] F02 — Demo data pipeline & viewer (4 demos, 83 rounds, 563 kills)
-- [ ] F03 — Screenshot-demo synchronization (Mirage done, 3 maps pending)
+- [x] F03 — Screenshot-demo synchronization (4 maps, 4353 screenshots, 5309 labels)
 - [ ] F04 — SFT training — visual grounding
 - [ ] F05 — GRPO dataset from demos
 - [x] F05a — Data sparsity diagnostic (L0: 96.2%, L1: 27.0%)
@@ -17,7 +17,16 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
 
-## What changed this session (2026-03-25)
+## What changed this session (2026-04-02)
+- Completed F03: captured screenshots for all 4 maps via SendKeys automation
+  Inferno (1476), Nuke (791), Overpass (1538) + existing Mirage (548)
+  Total: 4353 screenshots, 5309 labels generated
+- Optimized generate_sft_labels.py: precompute round events once per round
+  instead of re-scanning tick pairs per capture (~30x speedup)
+- netcon TCP didn't work from WSL2 (network isolation); SendKeys workaround worked
+- Next: push to HuggingFace, then F05b smoke test
+
+## What changed previous session (2026-03-25)
 - Council review of RL methodology identified key improvements
 - Reward architecture simplified from 4 signals to 2 (R_percept + R_strategy)
 - Designed RECALL: retrieval-based advantage estimation via kNN over historical outcomes
@@ -25,9 +34,8 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - Simplified Ω to: a·w + (1-a)·(1-w) (no magic numbers)
 - Key literature found: DIAMOND (CS:GO world model), MemRL (retrieval-based),
   MS-GRPO (sequential), ToMPO (multi-agent), VLAA-Thinking (SFT→GRPO on Qwen-VL)
-- Next: run F05b smoke test with simplified reward, then implement RECALL
 
-## What changed last session (2026-03-16)
+## What changed session (2026-03-16)
 - Implemented sparsity diagnostic (scripts/sparsity_diagnostic.py) per D023
 - Results at 4 demos (20,678 samples, 83 rounds):
   L0 (side × advantage × bomb): 23/30 buckets covered, 96.2% samples, var=0.1262
@@ -51,7 +59,7 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - Data sparsity (D023): L0 contrastive pairing marginal at 4 demos,
   L1 needs 100+ demos. GRPO can proceed with positive signal only.
 
-## Next step: F05b smoke test with simplified reward → F05c RECALL
+## Next step: push to HuggingFace → F05b smoke test → F05c RECALL
 1. F05b: Run GRPO smoke test with simplified 2-signal reward (R_percept + R_strategy)
    - B-site post-plant slice, base Qwen3.5-35B-A3B, verify pipeline end-to-end
    - Check: reward variance across G=4 completions, loss curve, gradient norms
@@ -63,7 +71,7 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 ## Data available
 - 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
 - Parquet files in data/processed/demos/ with full-tick player state
-- Mirage screenshots: 548 captured, 1504 labels generated
+- All 4 maps: 4353 screenshots, 5309 labels (Mirage 548/1504, Inferno 1476/1476, Nuke 791/791, Overpass 1538/1538)
 - Viewer data in site/public/viewer-data/
 
 ## Files modified this session
