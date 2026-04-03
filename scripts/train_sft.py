@@ -413,6 +413,7 @@ def main():
     # Set seeds for reproducibility
     import random
     import numpy as np
+    import torch
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
     random.seed(args.seed)
