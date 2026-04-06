@@ -48,6 +48,13 @@ def parse_args():
     # Data paths
     data_group = parser.add_argument_group("Data paths")
     data_group.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="Path to pre-built SFT dataset JSON (from build_sft_dataset.py). "
+             "If provided, --screenshots and --labels are ignored.",
+    )
+    data_group.add_argument(
         "--screenshots",
         type=str,
         default="data/raw",
@@ -367,33 +374,95 @@ def main():
 
     # Load and prepare data
     print("Loading data...")
-    screenshots_dir = Path(args.screenshots)
-    labels_dir = Path(args.labels)
 
-    if not labels_dir.exists():
-        print(f"Error: Labels directory not found: {labels_dir}")
-        sys.exit(1)
+    if args.dataset:
+        # Load pre-built dataset from build_sft_dataset.py
+        import json as _json
+        import random as _random
+        from src.training.data_utils import (
+            prepare_conversation_format,
+            format_ground_truth_as_json,
+        )
 
-    # Convert labeled data to SFT format
-    sft_items = convert_labeled_to_sft_format(
-        screenshots_dir=screenshots_dir,
-        labels_dir=labels_dir,
-    )
+        dataset_path = Path(args.dataset)
+        if not dataset_path.exists():
+            print(f"Error: Dataset not found: {dataset_path}")
+            sys.exit(1)
 
-    if len(sft_items) == 0:
-        print("Error: No labeled data found!")
-        print(f"  Screenshots: {screenshots_dir}")
-        print(f"  Labels: {labels_dir}")
-        sys.exit(1)
+        with open(dataset_path) as f:
+            records = _json.load(f)
+        print(f"Loaded {len(records)} records from {dataset_path}")
 
-    print(f"Found {len(sft_items)} labeled samples")
+        # Shuffle and split
+        _random.seed(args.seed)
+        _random.shuffle(records)
+        split_idx = int(len(records) * args.train_ratio)
 
-    # Create train/val split
-    train_data, val_data = create_sft_dataset(
-        sft_items,
-        train_ratio=args.train_ratio,
-        seed=args.seed,
-    )
+        train_data = []
+        val_data = []
+        for i, rec in enumerate(records):
+            gs = rec["game_state"]
+            analysis = rec.get("analysis", {})
+            advice = rec.get("advice", {})
+
+            # Build response JSON (same format as SFT target)
+            response = _json.dumps(
+                {"game_state": gs, "analysis": analysis, "advice": advice},
+                separators=(",", ":"),
+            )
+
+            # Find the screenshot image
+            img_dir = rec.get("image_dir", "")
+            screenshot_id = rec.get("screenshot_id", "")
+            img_path = None
+            for ext in [".jpg", ".png", ".jpeg"]:
+                candidate = Path(img_dir) / "raw" / f"{screenshot_id}{ext}"
+                if candidate.exists():
+                    img_path = str(candidate)
+                    break
+            if img_path is None:
+                continue
+
+            messages = prepare_conversation_format(
+                image_path=img_path,
+                prompt="Read this CS2 screenshot. Extract the game state from the HUD.",
+                response=response if i < split_idx else None,
+            )
+
+            if i < split_idx:
+                train_data.append({"messages": messages})
+            else:
+                val_data.append({
+                    "messages": messages,
+                    "ground_truth": rec,
+                    "image_path": img_path,
+                })
+    else:
+        screenshots_dir = Path(args.screenshots)
+        labels_dir = Path(args.labels)
+
+        if not labels_dir.exists():
+            print(f"Error: Labels directory not found: {labels_dir}")
+            sys.exit(1)
+
+        sft_items = convert_labeled_to_sft_format(
+            screenshots_dir=screenshots_dir,
+            labels_dir=labels_dir,
+        )
+
+        if len(sft_items) == 0:
+            print("Error: No labeled data found!")
+            print(f"  Screenshots: {screenshots_dir}")
+            print(f"  Labels: {labels_dir}")
+            sys.exit(1)
+
+        print(f"Found {len(sft_items)} labeled samples")
+
+        train_data, val_data = create_sft_dataset(
+            sft_items,
+            train_ratio=args.train_ratio,
+            seed=args.seed,
+        )
 
     print(f"Train: {len(train_data)} samples")
     print(f"Val: {len(val_data)} samples")
