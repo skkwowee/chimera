@@ -37,9 +37,9 @@ class CS2SFTConfig:
 
     # LoRA settings
     use_lora: bool = True
-    lora_r: int = 32
-    lora_alpha: int = 64
-    lora_dropout: float = 0.0
+    lora_r: int = 4
+    lora_alpha: int = 8
+    lora_dropout: float = 0.1
     lora_target_modules: list[str] = field(
         default_factory=lambda: [
             "q_proj", "k_proj", "v_proj", "o_proj",
@@ -48,10 +48,10 @@ class CS2SFTConfig:
     )
 
     # Training settings
-    num_epochs: int = 5
+    num_epochs: int = 1
     batch_size: int = 1
     gradient_accumulation_steps: int = 4
-    learning_rate: float = 5e-5
+    learning_rate: float = 1e-5
     warmup_ratio: float = 0.1
     max_grad_norm: float = 1.0
     weight_decay: float = 0.01
@@ -59,7 +59,7 @@ class CS2SFTConfig:
 
     # SFT-specific settings
     max_seq_length: int = 3072
-    finetune_vision_layers: bool = True  # SFT trains vision; GRPO freezes it for vLLM
+    finetune_vision_layers: bool = True  # Vision needs SFT for CS2 HUD layout
 
     # Output settings
     output_dir: str = "outputs/sft"
@@ -276,6 +276,14 @@ class CS2SFTTrainer:
             json.dump(self.config.to_dict(), f, indent=2)
 
         # SFT training configuration
+        eval_kwargs = {}
+        if self.val_dataset is not None:
+            eval_kwargs["eval_strategy"] = "steps"
+            eval_kwargs["eval_steps"] = self.config.save_steps
+            eval_kwargs["load_best_model_at_end"] = True
+            eval_kwargs["metric_for_best_model"] = "eval_loss"
+            eval_kwargs["greater_is_better"] = False
+
         sft_config = SFTConfig(
             output_dir=str(output_dir),
             num_train_epochs=self.config.num_epochs,
@@ -296,6 +304,8 @@ class CS2SFTTrainer:
             remove_unused_columns=False,
             # Reporting
             report_to=self.config.report_to,
+            # Eval + early stopping
+            **eval_kwargs,
         )
 
         # Create SFT trainer

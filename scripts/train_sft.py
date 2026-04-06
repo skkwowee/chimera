@@ -98,19 +98,19 @@ def parse_args():
     lora_group.add_argument(
         "--lora-r",
         type=int,
-        default=16,
+        default=4,
         help="LoRA rank",
     )
     lora_group.add_argument(
         "--lora-alpha",
         type=int,
-        default=32,
+        default=8,
         help="LoRA alpha",
     )
     lora_group.add_argument(
         "--lora-dropout",
         type=float,
-        default=0.05,
+        default=0.1,
         help="LoRA dropout",
     )
 
@@ -119,7 +119,7 @@ def parse_args():
     train_group.add_argument(
         "--epochs",
         type=int,
-        default=3,
+        default=1,
         help="Number of training epochs",
     )
     train_group.add_argument(
@@ -137,7 +137,7 @@ def parse_args():
     train_group.add_argument(
         "--lr",
         type=float,
-        default=2e-5,
+        default=1e-5,
         help="Learning rate",
     )
     train_group.add_argument(

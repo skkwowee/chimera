@@ -17,13 +17,54 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
 
+## What changed this session (2026-04-06)
+- Overfitting analysis: first SFT run had 257:1 params/token ratio (41.5M LoRA params, 161K loss tokens)
+  Scaling law analysis: need ≤5:1 ratio → r=4 max for current data, r=2 if vision LoRA included
+- Updated SFT config: r=4 α=8, dropout=0.1, lr=1e-5, 1 epoch, eval during training
+- Removed "Think briefly" from prompts — was causing Qwen to output prose instead of JSON
+- Added eval_steps + load_best_model_at_end to SFT trainer
+
+### Baseline eval (10 samples, same seed=42, across all 4 maps)
+Field-level accuracy on HUD perception task (no fine-tuning):
+
+| Field              | Opus 4.6 | Sonnet | Qwen 3.5 Base |
+|--------------------|----------|--------|---------------|
+| player_health      |   90%    |  80%   |   0% (no JSON)|
+| player_armor       |   70%    |  20%   |   0%          |
+| map_name           |   90%    |   0%   |   0%          |
+| alive_enemies      |   60%    |  70%   |   0%          |
+| player_side        |   50%    |  40%   |   0%          |
+| bomb_status        |   50%    |  50%   |   0%          |
+| weapon_primary     |   40%    |  50%   |   0%          |
+| alive_teammates    |   10%    |  30%   |   0%          |
+| score_t            |   20%    |  10%   |   0%          |
+| score_ct           |   20%    |  10%   |   0%          |
+| **Overall**        | **50%**  |**40%** | **36%**       |
+
+Notes: Qwen needed enable_thinking=False + temperature=0.6 to output JSON.
+  Without this, 0% (outputs prose due to Qwen3.5 <think> tags).
+
+Key findings:
+  - Even Opus 4.6 only 50% — CS2 HUD is genuinely hard for VLMs
+  - Qwen already best at health (100%) and armor (100%), worst at side (0%) and bomb (0%)
+  - Hardest across all models: alive_teammates, score_t/ct, player_side
+  - "Think briefly" prompt + Qwen3.5 thinking mode caused JSON format failure
+  - Fixed: removed "Think briefly", use enable_thinking=False + temp=0.6 for inference
+  - Vision fine-tuning IS needed: side, bomb_status, scores require HUD-specific grounding
+  - Target: beat Opus 4.6's 50% with SFT on Qwen 3.5
+
 ## What changed this session (2026-04-03)
 - HuggingFace push complete (skkwowee/chimera-cs2)
-- Council review of pipeline readiness:
-  F04 (SFT): 95% ready — trainer, CLI, data loader, curated dataset all exist
-  F05b (GRPO smoke test): ready — 2013 samples pre-extracted in smoke_test.jsonl
-  F05c (RECALL): partial — math/FAISS in recall.py, not wired into trainer
-- Next: run F04 SFT training on H200, then F05b smoke test
+- Standardized all code to Qwen3.5-35B-A3B MoE (bf16) — 13 files updated
+  Model class: Qwen3_5MoeForConditionalGeneration, removed all 27B/4-bit refs
+- First SFT training run on 2x H100 SXM (RunPod):
+  31.5 min, 48 steps, 3 epochs, batch 8, LoRA r=32 α=64
+  Train: loss 0.033, token acc 98.9%
+  Val: loss 17.5, token acc 9.1% — SEVERE OVERFITTING
+  Root cause: only 549 Mirage screenshots on pod (of 4353 total), 3 epochs too many
+  LoRA adapter saved (83MB), merged model failed (disk full, 100GB pod)
+- Fix needed: upload all screenshots to HF, reduce epochs to 1, lower LoRA rank (r=8)
+- Pod setup notes: need ed25519 SSH key, install qwen-vl-utils, HF rate limits without token
 
 ## What changed session (2026-04-02)
 - Completed F03: captured screenshots for all 4 maps via SendKeys automation

@@ -60,8 +60,7 @@ Be precise about numbers you can see in the HUD. Use the round context to \
 inform your analysis — you know what has happened so far. If you can't \
 determine a value from the screenshot, use null.
 
-Keep your response under 500 words. Think briefly before answering \
-(at most a few sentences), then output the JSON object."""
+Output ONLY the JSON object. No explanation, no markdown, no other text."""
 
 # Legacy single-screenshot prompt (kept for backward compat with old labels)
 CS2_USER_PROMPT = (
@@ -79,8 +78,7 @@ Respond with valid JSON in this exact format (compact, no extra whitespace):
 Be precise about numbers you can see in the HUD. If you can't determine \
 a value from the screenshot, use null.
 
-Think briefly before answering (at most a few sentences), then output the \
-JSON object."""
+Output ONLY the JSON object. No explanation, no markdown, no other text."""
 
 CS2_PERCEPTION_USER_PROMPT = (
     "Read this CS2 screenshot. Extract the game state from the HUD."
@@ -112,8 +110,7 @@ You must respond with valid JSON in this exact format:
     }
 }
 
-Keep your response under 500 words. Think briefly before answering \
-(at most a few sentences), then output the JSON object."""
+Output ONLY the JSON object. No explanation, no markdown, no other text."""
 
 CS2_PLANNING_USER_PROMPT = (
     "Given the game state below and the screenshot, provide strategic advice.\n\n"
