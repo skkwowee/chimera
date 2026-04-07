@@ -99,7 +99,7 @@ ssh_cmd "cd $REPO_DIR && PYTHONPATH=$REPO_DIR python3 scripts/build_sft_dataset.
 ARGS_STR=""
 [ ${#EXTRA_ARGS[@]} -gt 0 ] && ARGS_STR="${EXTRA_ARGS[*]}"
 
-TRAIN_CMD="cd $REPO_DIR && PYTHONPATH=$REPO_DIR PYTHONUNBUFFERED=1 python3 scripts/train_sft.py \
+TRAIN_CMD="cd $REPO_DIR && PYTHONPATH=$REPO_DIR PYTHONUNBUFFERED=1 PYTHONUTF8=1 python3 scripts/train_sft.py \
     --dataset data/sft_dataset.json \
     --output $OUTPUT_DIR \
     --epochs 1 \
