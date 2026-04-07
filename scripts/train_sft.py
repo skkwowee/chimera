@@ -426,17 +426,13 @@ def main():
             messages = prepare_conversation_format(
                 image_path=img_path,
                 prompt="Read this CS2 screenshot. Extract the game state from the HUD.",
-                response=response if i < split_idx else None,
+                response=response,
             )
 
             if i < split_idx:
                 train_data.append({"messages": messages})
             else:
-                val_data.append({
-                    "messages": messages,
-                    "ground_truth": rec,
-                    "image_path": img_path,
-                })
+                val_data.append({"messages": messages})
     else:
         screenshots_dir = Path(args.screenshots)
         labels_dir = Path(args.labels)
