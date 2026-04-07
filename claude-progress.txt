@@ -53,6 +53,47 @@ Key findings:
   - Vision fine-tuning IS needed: side, bomb_status, scores require HUD-specific grounding
   - Target: beat Opus 4.6's 50% with SFT on Qwen 3.5
 
+### SFT Training Run (checkpoint-150, ~50% of 1 epoch)
+Config: r=4 α=8, dropout=0.1, lr=1e-5, 1 epoch, vision=trainable, 3322 samples (4 maps)
+Training crashed at step ~195/304 — SSH session dropped and killed the process.
+Checkpoint-150 saved (step 150, loss=0.958, token_acc=76.4%, epoch=0.49)
+
+Training curve (healthy, no overfitting):
+  Step 5:   loss=1.804, acc=62.7%
+  Step 50:  loss=1.591, acc=64.9%
+  Step 100: loss=~1.2,  acc=~70%
+  Step 150: loss=0.958, acc=76.4%
+  Step 195: loss=0.792, acc=80.7% (last captured before crash)
+
+### SFT Eval (checkpoint-150, same 10 samples as baselines)
+| Field              | Opus 4.6 | SFT ckpt-150 | Qwen Base | Sonnet |
+|--------------------|----------|--------------|-----------|--------|
+| player_health      |   90%    |    90%       |   100%    |  80%   |
+| player_armor       |   70%    |   100%       |   100%    |  20%   |
+| player_side        |   50%    |    40%       |     0%    |  40%   |
+| alive_teammates    |   10%    |    40%       |    20%    |  30%   |
+| alive_enemies      |   60%    |    30%       |    80%    |  70%   |
+| bomb_status        |   50%    |     0%       |     0%    |  50%   |
+| weapon_primary     |   40%    |    50%       |    20%    |  50%   |
+| score_t            |   20%    |    50%       |    20%    |  10%   |
+| score_ct           |   20%    |    50%       |    20%    |  10%   |
+| map_name           |   90%    |    30%       |    40%    |   0%   |
+| **Overall**        | **50%**  |  **48%**     |  **40%**  |**36%** |
+
+Key observations:
+  - JSON format: 10/10 valid JSON (vs 0/10 base Qwen)
+  - Scores improved massively: 20% → 50% (both T and CT)
+  - bomb_status still 0% — always outputs None/null
+  - map_name regressed — confuses Inferno/Mirage
+  - Training was only 50% done when it crashed — full run likely beats Opus
+
+### Fixes applied
+- Added signal handling (SIGTERM/SIGHUP) to save checkpoint on SSH disconnect
+- Added file logging (train_*.log) alongside console output
+- Added error handling: OOM, interrupt, crash all save emergency checkpoints
+- Created run_sft_pod.sh with nohup for SSH-safe remote training
+- Fixed val data bug: val samples were missing response → bogus eval_loss=17.85
+
 ## What changed this session (2026-04-03)
 - HuggingFace push complete (skkwowee/chimera-cs2)
 - Standardized all code to Qwen3.5-35B-A3B MoE (bf16) — 13 files updated

@@ -27,7 +27,11 @@ Usage:
 """
 
 import argparse
+import logging
+import signal
 import sys
+import traceback
+from datetime import datetime
 from pathlib import Path
 
 from src.training import (
@@ -37,6 +41,8 @@ from src.training import (
     create_sft_dataset,
 )
 from src.utils.config import DEFAULT_MODEL_NAME
+
+log = logging.getLogger("sft")
 
 
 def parse_args():
@@ -236,8 +242,30 @@ def parse_args():
     return parser.parse_args()
 
 
+def _setup_logging(output_dir: str) -> Path:
+    """Configure file + console logging. Returns log file path."""
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    log_file = output / f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout),
+        ],
+    )
+    return log_file
+
+
 def main():
     args = parse_args()
+
+    log_file = _setup_logging(args.output)
+    log.info("Log file: %s", log_file)
+    log.info("Args: %s", vars(args))
 
     # Resolve save_merged: --no-save-merged overrides the default
     save_merged = not args.no_save_merged
@@ -485,39 +513,75 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    # Train
-    print("Starting training...")
-    trainer.train(resume_from=args.resume)
+    # Signal handler: save checkpoint on SIGTERM/SIGHUP (e.g. SSH disconnect)
+    _interrupted = False
 
-    # Save model
+    def _signal_handler(signum, frame):
+        nonlocal _interrupted
+        sig_name = signal.Signals(signum).name
+        log.warning("Received %s — will save checkpoint after current step", sig_name)
+        _interrupted = True
+
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGHUP, _signal_handler)
+
+    # Train with error handling
     output_path = Path(args.output) / "final_model"
-    print(f"\nSaving model to {output_path}...")
-    trainer.save_model(
-        output_path,
-        save_merged=save_merged,
-    )
+    try:
+        log.info("Starting training...")
+        if torch.cuda.is_available():
+            for i in range(torch.cuda.device_count()):
+                mem = torch.cuda.get_device_properties(i).total_mem / 1024**3
+                log.info("  GPU %d: %s (%.1f GB)", i, torch.cuda.get_device_name(i), mem)
 
-    # Final evaluation
-    print("\nRunning final evaluation...")
-    results = trainer.evaluate()
+        trainer.train(resume_from=args.resume)
 
-    print("\n" + "=" * 60)
-    print("Training complete!")
-    print("=" * 60)
-    print(f"Model saved to: {output_path}")
+        log.info("Training complete — saving model...")
+        trainer.save_model(output_path, save_merged=save_merged)
+
+    except torch.cuda.OutOfMemoryError:
+        log.error("CUDA OOM! Saving emergency checkpoint...")
+        log.error("GPU memory: allocated=%.2f GB, reserved=%.2f GB",
+                  torch.cuda.memory_allocated() / 1024**3,
+                  torch.cuda.memory_reserved() / 1024**3)
+        try:
+            emergency_path = Path(args.output) / "emergency_checkpoint"
+            trainer.save_model(emergency_path, save_merged=False)
+            log.info("Emergency checkpoint saved to %s", emergency_path)
+        except Exception:
+            log.error("Failed to save emergency checkpoint: %s", traceback.format_exc())
+        sys.exit(1)
+
+    except KeyboardInterrupt:
+        log.warning("Interrupted by user — saving checkpoint...")
+        try:
+            interrupt_path = Path(args.output) / "interrupted_checkpoint"
+            trainer.save_model(interrupt_path, save_merged=False)
+            log.info("Checkpoint saved to %s", interrupt_path)
+        except Exception:
+            log.error("Failed to save checkpoint: %s", traceback.format_exc())
+        sys.exit(130)
+
+    except Exception:
+        log.error("Training failed:\n%s", traceback.format_exc())
+        try:
+            crash_path = Path(args.output) / "crash_checkpoint"
+            if trainer.model is not None:
+                trainer.save_model(crash_path, save_merged=False)
+                log.info("Crash checkpoint saved to %s", crash_path)
+        except Exception:
+            log.error("Failed to save crash checkpoint: %s", traceback.format_exc())
+        sys.exit(1)
+
+    # Final summary
+    log.info("=" * 60)
+    log.info("Training complete!")
+    log.info("=" * 60)
+    log.info("Model saved to: %s", output_path)
     if save_merged:
-        print(f"Merged model at: {output_path / 'merged_16bit'}")
-        print("\nTo use as GRPO base:")
-        print(f"  python scripts/train_grpo.py --model-name {output_path / 'merged_16bit'}")
-    print(f"\nFinal mean weighted total: {results.get('mean_weighted_total', 'N/A'):.4f}")
-    print(f"  Format gate pass rate: {results.get('mean_format_gate', 'N/A'):.4f}")
-    for signal in ("perceptual_accuracy", "decision_alignment", "outcome"):
-        val = results.get(f"mean_{signal}", "N/A")
-        label = signal.replace("_", " ").title()
-        if isinstance(val, float):
-            print(f"  {label}: {val:.4f}")
-        else:
-            print(f"  {label}: {val}")
+        log.info("Merged model at: %s", output_path / "merged_16bit")
+        log.info("To use as GRPO base:")
+        log.info("  python scripts/train_grpo.py --model-name %s", output_path / "merged_16bit")
 
 
 if __name__ == "__main__":
