@@ -10,6 +10,7 @@ Usage:
     python scripts/compare_models.py --samples 5 --models claude
     python scripts/compare_models.py --samples 5 --models qwen --phase perception
     python scripts/compare_models.py --samples 5 --models qwen --model-name Qwen/Qwen3.5-35B-A3B
+    python scripts/compare_models.py --samples 10 --models qwen --tolerance  # tolerance-based scoring
 """
 
 import argparse
@@ -35,6 +36,22 @@ COMPARE_FIELDS = [
     "bomb_status",
 ]
 
+# Tolerance-based scoring: field -> max absolute difference for a "match"
+# None = exact match required (categorical fields)
+TOLERANCES = {
+    "map_name": None,
+    "round_phase": None,
+    "player_side": None,
+    "player_health": 5,
+    "player_armor": 5,
+    "player_money": 100,
+    "weapon_primary": None,
+    "weapon_secondary": None,
+    "alive_teammates": 1,
+    "alive_enemies": 1,
+    "bomb_status": None,
+}
+
 
 def find_pairs(labeled_dir: Path, captures_dir: Path) -> list[dict[str, Any]]:
     """Find label/screenshot pairs where both files exist."""
@@ -52,7 +69,25 @@ def find_pairs(labeled_dir: Path, captures_dir: Path) -> list[dict[str, Any]]:
     return pairs
 
 
-def compare_fields(label: dict[str, Any], prediction: dict[str, Any]) -> dict[str, Any]:
+def _is_match(field: str, label_val: Any, pred_val: Any, use_tolerance: bool) -> bool:
+    """Check if prediction matches label, optionally with tolerance."""
+    if label_val == pred_val:
+        return True
+    if not use_tolerance:
+        return False
+    tol = TOLERANCES.get(field)
+    if tol is None:
+        return False  # categorical field, exact match required
+    # Try numeric comparison with tolerance
+    try:
+        return abs(float(label_val) - float(pred_val)) <= tol
+    except (TypeError, ValueError):
+        return False
+
+
+def compare_fields(
+    label: dict[str, Any], prediction: dict[str, Any], use_tolerance: bool = False,
+) -> dict[str, Any]:
     """Compare game_state fields between label and prediction."""
     label_state = label.get("game_state", {})
     pred_state = prediction.get("game_state", {})
@@ -66,7 +101,7 @@ def compare_fields(label: dict[str, Any], prediction: dict[str, Any]) -> dict[st
         pred_val = pred_state.get(field)
         if label_val is not None:
             total += 1
-            match = label_val == pred_val
+            match = _is_match(field, label_val, pred_val, use_tolerance)
             if match:
                 matches += 1
             details[field] = {
@@ -89,13 +124,14 @@ def format_val(val: Any) -> str:
 
 def print_sample_table(
     sample_id: str, label: dict[str, Any], predictions: dict[str, dict[str, Any]],
+    use_tolerance: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Print a per-sample comparison table."""
     print(f"\n=== {sample_id} ===\n")
 
     model_names = list(predictions.keys())
     comparisons = {
-        name: compare_fields(label, pred)
+        name: compare_fields(label, pred, use_tolerance=use_tolerance)
         for name, pred in predictions.items()
     }
 
@@ -148,6 +184,8 @@ def main():
                         help="Override default Qwen model name/path")
     parser.add_argument("--perception-run", type=str, default=None,
                         help="Path to previous perception comparison JSON (required for --phase planning)")
+    parser.add_argument("--tolerance", action="store_true",
+                        help="Use tolerance-based scoring: ±5 health/armor, ±100 money, ±1 alive counts")
     parser.add_argument("--labeled-dir", type=str, default="data/labeled")
     parser.add_argument("--captures-dir", type=str, default="data/captures")
     args = parser.parse_args()
@@ -185,6 +223,8 @@ def main():
     print(f"Sampled {len(samples)} for evaluation (seed={args.seed})")
     print(f"Models: {', '.join(args.models)}")
     print(f"Phase: {args.phase}")
+    if args.tolerance:
+        print("Tolerance scoring: ON (±5 health/armor, ±100 money, ±1 alive counts)")
 
     # Initialize models
     models = {}
@@ -255,7 +295,7 @@ def main():
                 "predictions": {name: {"output": pred} for name, pred in predictions.items()},
             }
         else:
-            comparisons = print_sample_table(pair["id"], label, predictions)
+            comparisons = print_sample_table(pair["id"], label, predictions, use_tolerance=args.tolerance)
             sample_result = {
                 "id": pair["id"],
                 "image": str(pair["image_path"]),
@@ -299,6 +339,7 @@ def main():
         "seed": args.seed,
         "models": args.models,
         "phase": args.phase,
+        "tolerance": args.tolerance,
         "num_samples": len(samples),
         "aggregate": {
             name: {

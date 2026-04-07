@@ -17,6 +17,27 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
 
+## What changed this session (2026-04-07, session 2)
+- Updated paper/main.tex with SFT results:
+  - Wrote Introduction section (no longer TODOs)
+  - Wrote Phase 1 SFT method section with LoRA config details
+  - Added Table 1: per-field SFT accuracy vs baselines (Opus, Sonnet, Base Qwen)
+  - Added training curve figure (loss + token accuracy over 304 steps)
+  - Wrote Analysis section (what SFT learns, overfitting boundary)
+  - Filled in Setup (data, model, hyperparams) and Baselines sections
+  - Left GRPO-related sections as TODOs pending Phase 2
+- Added tolerance-based scoring to scripts/compare_models.py:
+  - --tolerance flag: ±5 health/armor, ±100 money, ±1 alive counts, exact for categorical
+  - New _is_match() helper with numeric tolerance comparison
+  - Tolerance flag recorded in saved JSON output
+- Re-ran SFT eval on pod (same 10 samples, seed=42):
+  - Exact match: 69.2% (74/107) — slightly higher than previous 67.3% (non-deterministic)
+  - Tolerance: 74.8% (80/107) — +5.6pp from tolerance scoring
+  - Saved: comparison_20260407_231038.json (exact), comparison_20260407_231352.json (tolerance)
+  - Key: player_side wrong on 6/10, map_name improved to 6/10, numerics near-perfect
+  - Model outputs are non-deterministic between runs despite same seed (inference sampling)
+- Note: site/ directory no longer exists — website updates skipped
+
 ## What changed this session (2026-04-07)
 - SFT training completed: 1 full epoch, 304 steps, 1h40m on 2x H100
   Config: r=4 α=8, dropout=0.1, lr=1e-5, vision trainable, 3322 samples
@@ -189,12 +210,10 @@ Key observations:
   L1 needs 100+ demos. GRPO can proceed with positive signal only.
 
 ## Next steps
-1. Add tolerance-based eval scoring to compare_models.py
-   - Exact match for categorical: player_side, bomb_status, map_name, weapon_*, round_phase
-   - Absolute error for numerical: player_health, player_armor (±5 tolerance)
-   - ±1 tolerance for counts: alive_teammates, alive_enemies, score_t, score_ct
-   - Re-run eval with tolerance scoring to get a more nuanced accuracy picture
-2. F05b: Run GRPO smoke test with simplified 2-signal reward (R_percept + R_strategy)
+1. [DONE] Add tolerance-based eval scoring to compare_models.py (--tolerance flag)
+2. Re-run eval with tolerance scoring to get a more nuanced accuracy picture
+   - On pod: python scripts/compare_models.py --samples 10 --models qwen --tolerance --model-name outputs/sft/final_model/merged_16bit
+3. F05b: Run GRPO smoke test with simplified 2-signal reward (R_percept + R_strategy)
    - Data ready: data/training/grpo/smoke_test.jsonl (2013 samples, 36 rounds)
    - Command: python scripts/train_grpo.py --reward-mode simplified
    - Use SFT model as base: --model-name outputs/sft/final_model/merged_16bit
