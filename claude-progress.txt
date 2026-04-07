@@ -189,13 +189,15 @@ Key observations:
   L1 needs 100+ demos. GRPO can proceed with positive signal only.
 
 ## Next steps
-1. F04: Run SFT training on H200
-   - Curated dataset exists (data/sft_dataset.json, 1.9MB)
-   - Command: python scripts/train_sft.py --screenshots data/raw --labels data/labeled
-   - Verify: per-field accuracy on val split, format gate pass rate
+1. Add tolerance-based eval scoring to compare_models.py
+   - Exact match for categorical: player_side, bomb_status, map_name, weapon_*, round_phase
+   - Absolute error for numerical: player_health, player_armor (±5 tolerance)
+   - ±1 tolerance for counts: alive_teammates, alive_enemies, score_t, score_ct
+   - Re-run eval with tolerance scoring to get a more nuanced accuracy picture
 2. F05b: Run GRPO smoke test with simplified 2-signal reward (R_percept + R_strategy)
    - Data ready: data/training/grpo/smoke_test.jsonl (2013 samples, 36 rounds)
    - Command: python scripts/train_grpo.py --reward-mode simplified
+   - Use SFT model as base: --model-name outputs/sft/final_model/merged_16bit
    - Check: reward variance across G=4 completions, loss curve, gradient norms
 3. F05c: Wire RECALL into GRPO trainer
    - recall.py has: RECALLIndex, tactical_embedding, action_embedding, recall_advantage
@@ -209,13 +211,23 @@ Key observations:
 - Viewer data in site/public/viewer-data/
 
 ## Key files for next steps
-- scripts/train_sft.py — SFT training CLI (459 lines, full arg parsing)
+- scripts/compare_models.py — eval script (needs tolerance scoring addition)
 - scripts/train_grpo.py — GRPO training CLI
-- scripts/build_sft_dataset.py — dataset curation (already run → data/sft_dataset.json)
-- src/training/sft_trainer.py — CS2SFTTrainer (4-bit quant + LoRA r=32 α=64)
+- scripts/run_sft_pod.sh — SSH-safe pod training launcher (nohup, signal handling)
+- src/training/sft_trainer.py — CS2SFTTrainer (LoRA r=4 α=8, vision trainable)
 - src/training/grpo_trainer.py — CS2GRPOTrainer (QLoRA + TRL)
 - src/training/rewards.py — 2-signal (simplified) + 3-signal (ablation) reward fns
 - src/training/recall.py — RECALL skeleton (FAISS, embeddings, advantage calc)
 - src/training/data_utils.py — data loading, conversation format, train/val split
+- src/inference/vlm.py — Qwen3VLInference (supports custom model paths for SFT eval)
 - data/training/grpo/smoke_test.jsonl — 2013 pre-extracted GRPO samples
-- scripts/pod_setup.sh, run_pod.sh — H200 deployment scripts
+- data/predictions/comparison_20260407_193202.json — SFT eval results (67.3%)
+- data/predictions/comparison_20260407_193616.json — Base Qwen eval results (50.5%)
+- scripts/pod_setup.sh — pod bootstrap (clone, deps, data pull)
+
+## Pod setup notes (2026-04-07)
+- RunPod template needs: torch>=2.6, torchvision>=0.21 (for CUDA 12.4 compat)
+- pip install: datasets peft trl bitsandbytes accelerate qwen-vl-utils anthropic python-dotenv
+- Set PYTHONUTF8=1 to avoid TRL model card Unicode errors
+- Symlink captures: ln -sf /workspace/chimera-data/captures /workspace/chimera/data/captures
+- Symlink labels: for d in captures/*/labels/; do ln -sf $d/*.json data/labeled/; done
