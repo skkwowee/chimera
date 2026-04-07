@@ -9,13 +9,53 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [x] F01 — Data schema & manifest
 - [x] F02 — Demo data pipeline & viewer (4 demos, 83 rounds, 563 kills)
 - [x] F03 — Screenshot-demo synchronization (4 maps, 4353 screenshots, 5309 labels)
-- [ ] F04 — SFT training — visual grounding
+- [x] F04 — SFT training — visual grounding (67.3% vs 50% Opus/Base)
 - [ ] F05 — GRPO dataset from demos
 - [x] F05a — Data sparsity diagnostic (L0: 96.2%, L1: 27.0%)
 - [ ] F05b — Small-scale GRPO smoke test (NEXT)
 - [ ] F05c — RECALL — Retrieval-based advantage estimation
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
+
+## What changed this session (2026-04-07)
+- SFT training completed: 1 full epoch, 304 steps, 1h40m on 2x H100
+  Config: r=4 α=8, dropout=0.1, lr=1e-5, vision trainable, 3322 samples
+  Final train loss=0.363, eval loss=0.613, eval token accuracy=84.8%
+- Fixed 3 pod issues: total_mem→total_memory (PyTorch API), PYTHONUTF8=1 (TRL model card),
+  torch 2.4→2.6 + torchvision upgrade (transformers 5.5.0 compat)
+- Merged 66GB model saved at /workspace/outputs/sft/final_model/merged_16bit
+- Eval on 10 samples (seed=42, same as baselines): SFT 67.3% vs Opus 50% vs Base Qwen 50%
+
+### SFT Final Eval (10 samples, seed=42)
+| Field              | Opus 4.6 | Base Qwen | SFT Final |
+|--------------------|----------|-----------|-----------|
+| player_health      |   90%    |    90%    |   100%    |
+| player_armor       |   70%    |    90%    |   100%    |
+| player_money       |    -     |    90%    |   100%    |
+| round_phase        |    -     |    60%    |   100%    |
+| weapon_primary     |   40%    |    57%    |    71%    |
+| player_side        |   50%    |    20%    |    60%    |
+| alive_enemies      |   60%    |    50%    |    50%    |
+| alive_teammates    |   10%    |    40%    |    40%    |
+| map_name           |   90%    |    10%    |    40%    |
+| weapon_secondary   |    -     |    30%    |    40%    |
+| bomb_status        |   50%    |    20%    |    40%    |
+| **Overall**        | **50%**  |  **50%**  |  **67%**  |
+
+Key observations:
+  - Perfect on numerical fields: health, armor, money, round_phase (all 100%)
+  - JSON format: 10/10 valid (same as ckpt-150)
+  - Big improvements: player_side +40pp, bomb_status +20pp, weapon_primary +14pp
+  - Remaining weak: map_name (40%), alive counts (40-50%), bomb_status (40%)
+  - Training curve: no overfitting (eval tracks train, monotonic improvement)
+  - Tolerance-based scoring would show even better results (off-by-one counts)
+
+### Training curve (full epoch)
+  Step 155: loss=0.958, acc=76.4% (resume from ckpt-150)
+  Step 200: loss=0.776, acc=81.2%, eval_loss=0.760, eval_acc=81.6%
+  Step 250: loss=0.650, acc=84.0%, eval_loss=0.651, eval_acc=84.0%
+  Step 300: loss=0.602, acc=85.2%, eval_loss=0.614, eval_acc=84.8%
+  Step 304: loss=0.363 (final average)
 
 ## What changed this session (2026-04-06)
 - Overfitting analysis: first SFT run had 257:1 params/token ratio (41.5M LoRA params, 161K loss tokens)
