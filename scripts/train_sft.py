@@ -531,7 +531,7 @@ def main():
         log.info("Starting training...")
         if torch.cuda.is_available():
             for i in range(torch.cuda.device_count()):
-                mem = torch.cuda.get_device_properties(i).total_mem / 1024**3
+                mem = torch.cuda.get_device_properties(i).total_memory / 1024**3
                 log.info("  GPU %d: %s (%.1f GB)", i, torch.cuda.get_device_name(i), mem)
 
         trainer.train(resume_from=args.resume)
