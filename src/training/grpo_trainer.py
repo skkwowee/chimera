@@ -378,6 +378,323 @@ class CS2GRPOTrainer:
 
         return trainer
 
+    @staticmethod
+    def _compute_sequence_log_probs(
+        model: Any,
+        input_ids: Any,
+        attention_mask: Any,
+        completion_start: int,
+        **model_kwargs: Any,
+    ) -> Any:
+        """
+        Compute per-token log probs for the completion portion of a sequence.
+
+        Args:
+            model: The language model.
+            input_ids: Full sequence (prompt + completion), shape [1, seq_len].
+            attention_mask: Attention mask, shape [1, seq_len].
+            completion_start: Index where completion tokens begin.
+            **model_kwargs: Extra inputs (pixel_values, image_grid_thw, etc.).
+
+        Returns:
+            Sum of log probs over completion tokens (scalar tensor).
+        """
+        outputs = model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            **model_kwargs,
+        )
+        # logits shape: [1, seq_len, vocab_size]
+        logits = outputs.logits
+        # Shift: predict token t+1 from position t
+        shift_logits = logits[:, completion_start - 1 : -1, :]
+        shift_labels = input_ids[:, completion_start:]
+        log_probs = torch.nn.functional.log_softmax(shift_logits, dim=-1)
+        # Gather log probs at the actual token positions
+        token_log_probs = log_probs.gather(2, shift_labels.unsqueeze(-1)).squeeze(-1)
+        return token_log_probs.sum()
+
+    def train_manual(self, resume_from: str | None = None):
+        """
+        Manual GRPO training loop — bypasses TRL to avoid the multimodal
+        prompt repetition bug (TRL #5120).
+
+        For each sample:
+          1. Process multimodal input once (handles images correctly)
+          2. Generate G completions sequentially (no prompt repetition)
+          3. Score each completion with reward functions
+          4. Compute group-normalized advantages
+          5. Compute policy gradient loss and backprop
+
+        This is equivalent to TRL's GRPOTrainer but without the broken
+        prompt duplication that crashes Qwen3VLProcessor.
+        """
+        if self.model is None:
+            self.load_model()
+        assert self.model is not None
+        assert self.processor is not None
+
+        if self.train_dataset is None:
+            raise ValueError("No training data prepared. Call prepare_data() first.")
+
+        from transformers import GenerationConfig
+
+        config = self.config
+        output_dir = Path(config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save config
+        config_path = output_dir / "training_config.json"
+        with open(config_path, "w") as f:
+            json.dump(config.to_dict(), f, indent=2)
+
+        # Optimizer
+        trainable_params = [p for p in self.model.parameters() if p.requires_grad]
+        optimizer = torch.optim.AdamW(
+            trainable_params,
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
+        )
+
+        # LR scheduler with warmup
+        total_steps = config.max_steps if config.max_steps > 0 else (
+            len(self.train_dataset) * config.num_epochs
+        )
+        warmup_steps = int(total_steps * config.warmup_ratio)
+
+        def lr_lambda(step: int) -> float:
+            if step < warmup_steps:
+                return step / max(warmup_steps, 1)
+            return max(0.0, 1.0 - (step - warmup_steps) / max(total_steps - warmup_steps, 1))
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+        gen_config = GenerationConfig(
+            max_new_tokens=config.max_new_tokens,
+            do_sample=True,
+            temperature=config.temperature,
+            top_p=0.95,
+        )
+
+        reward_weights = config.reward_weights
+
+        print("=" * 60)
+        print("Manual GRPO Training (TRL bypass)")
+        print("=" * 60)
+        print(f"  Samples: {len(self.train_dataset)}")
+        print(f"  Max steps: {total_steps}")
+        print(f"  Group size (G): {config.num_generations}")
+        print(f"  Gradient accumulation: {config.gradient_accumulation_steps}")
+        print(f"  LR: {config.learning_rate}")
+        print(f"  Reward signals: {len(self.reward_fns)}")
+        print(f"  Reward weights: {reward_weights}")
+        print()
+
+        # Training log
+        log_path = output_dir / "training_log.jsonl"
+        log_f = open(log_path, "a")
+
+        global_step = 0
+        optimizer.zero_grad()
+        accum_loss = 0.0
+        accum_reward = 0.0
+        accum_reward_std = 0.0
+        accum_format_pass = 0.0
+        accum_count = 0
+
+        epoch = 0
+        while True:
+            epoch += 1
+            # Shuffle dataset indices each epoch
+            import random as _rng
+            indices = list(range(len(self.train_dataset)))
+            _rng.shuffle(indices)
+
+            for sample_idx in indices:
+                sample = self.train_dataset[sample_idx]
+                prompt_content = sample["prompt"]
+                ground_truth = sample.get("ground_truth", {})
+
+                # Build chat messages
+                if isinstance(prompt_content, list):
+                    messages = [{"role": "user", "content": prompt_content}]
+                elif isinstance(prompt_content, str):
+                    messages = [{"role": "user", "content": prompt_content}]
+                else:
+                    messages = prompt_content
+
+                # Process multimodal input ONCE
+                try:
+                    inputs = self.processor.apply_chat_template(
+                        messages,
+                        tokenize=True,
+                        add_generation_prompt=True,
+                        return_dict=True,
+                        return_tensors="pt",
+                    )
+                    inputs = {k: v.to(self.model.device) if hasattr(v, 'to') else v
+                              for k, v in inputs.items()}
+                except Exception as e:
+                    print(f"  [step {global_step}] Skipping sample: {e}")
+                    continue
+
+                prompt_len = inputs["input_ids"].shape[1]
+
+                # Separate generation kwargs (pixel_values, image_grid_thw, etc.)
+                gen_input_keys = {"input_ids", "attention_mask"}
+                model_extra_kwargs = {
+                    k: v for k, v in inputs.items() if k not in gen_input_keys
+                }
+
+                # --- Step 1: Generate G completions ---
+                completions_text: list[str] = []
+                completions_ids: list[Any] = []
+
+                self.model.eval()
+                with torch.no_grad():
+                    for _g in range(config.num_generations):
+                        output = self.model.generate(
+                            input_ids=inputs["input_ids"],
+                            attention_mask=inputs["attention_mask"],
+                            generation_config=gen_config,
+                            **model_extra_kwargs,
+                        )
+                        gen_ids = output[0, prompt_len:]
+                        text = self.processor.decode(gen_ids, skip_special_tokens=True)
+                        completions_text.append(text)
+                        completions_ids.append(gen_ids)
+
+                # --- Step 2: Score completions ---
+                rewards = []
+                format_passes = 0
+                for comp_text in completions_text:
+                    gate = format_gate_reward(comp_text)
+                    if gate == 0.0:
+                        rewards.append(0.0)
+                    else:
+                        format_passes += 1
+                        r = sum(
+                            w * fn(comp_text, ground_truth=ground_truth)
+                            for w, fn in zip(reward_weights, self.reward_fns, strict=False)
+                        )
+                        rewards.append(gate * r)
+
+                rewards_t = torch.tensor(rewards, device=self.model.device)
+
+                # --- Step 3: Compute advantages ---
+                reward_std = rewards_t.std()
+                if reward_std < 1e-8:
+                    # All rewards identical — no learning signal, skip
+                    continue
+
+                advantages = (rewards_t - rewards_t.mean()) / (reward_std + 1e-8)
+
+                # --- Step 4: Compute policy gradient loss ---
+                self.model.train()
+                sample_loss = torch.tensor(0.0, device=self.model.device)
+
+                for g_idx in range(config.num_generations):
+                    gen_ids = completions_ids[g_idx]
+                    if len(gen_ids) == 0:
+                        continue
+
+                    # Build full sequence: prompt + completion
+                    full_ids = torch.cat([
+                        inputs["input_ids"][0], gen_ids
+                    ]).unsqueeze(0)
+                    full_mask = torch.ones_like(full_ids)
+
+                    log_prob = self._compute_sequence_log_probs(
+                        self.model,
+                        input_ids=full_ids,
+                        attention_mask=full_mask,
+                        completion_start=prompt_len,
+                        **model_extra_kwargs,
+                    )
+
+                    # REINFORCE loss: -advantage * log_prob
+                    sample_loss = sample_loss + (-advantages[g_idx] * log_prob)
+
+                # Average over group
+                sample_loss = sample_loss / config.num_generations
+                # Scale by gradient accumulation
+                scaled_loss = sample_loss / config.gradient_accumulation_steps
+                scaled_loss.backward()
+
+                # Accumulate metrics
+                accum_loss += sample_loss.item()
+                accum_reward += rewards_t.mean().item()
+                accum_reward_std += reward_std.item()
+                accum_format_pass += format_passes / config.num_generations
+                accum_count += 1
+
+                # --- Step 5: Optimizer step ---
+                if accum_count % config.gradient_accumulation_steps == 0:
+                    grad_norm = torch.nn.utils.clip_grad_norm_(
+                        trainable_params, config.max_grad_norm,
+                    )
+                    optimizer.step()
+                    scheduler.step()
+                    optimizer.zero_grad()
+                    global_step += 1
+
+                    # Log
+                    if global_step % config.logging_steps == 0:
+                        avg_loss = accum_loss / accum_count
+                        avg_reward = accum_reward / accum_count
+                        avg_reward_std = accum_reward_std / accum_count
+                        avg_format = accum_format_pass / accum_count
+
+                        log_entry = {
+                            "step": global_step,
+                            "epoch": epoch,
+                            "loss": round(avg_loss, 6),
+                            "mean_reward": round(avg_reward, 4),
+                            "reward_std": round(avg_reward_std, 4),
+                            "format_pass_rate": round(avg_format, 4),
+                            "grad_norm": round(grad_norm.item(), 4),
+                            "lr": round(scheduler.get_last_lr()[0], 8),
+                        }
+                        print(
+                            f"  step {global_step:4d} | "
+                            f"loss {avg_loss:.4f} | "
+                            f"reward {avg_reward:.3f}±{avg_reward_std:.3f} | "
+                            f"fmt {avg_format:.0%} | "
+                            f"grad {grad_norm.item():.3f} | "
+                            f"lr {scheduler.get_last_lr()[0]:.2e}"
+                        )
+                        log_f.write(json.dumps(log_entry) + "\n")
+                        log_f.flush()
+
+                        accum_loss = 0.0
+                        accum_reward = 0.0
+                        accum_reward_std = 0.0
+                        accum_format_pass = 0.0
+                        accum_count = 0
+
+                    # Save checkpoint
+                    if global_step % config.save_steps == 0:
+                        ckpt_dir = output_dir / f"checkpoint-{global_step}"
+                        ckpt_dir.mkdir(parents=True, exist_ok=True)
+                        self.model.save_pretrained(str(ckpt_dir))
+                        self.processor.save_pretrained(str(ckpt_dir))
+                        print(f"  Saved checkpoint: {ckpt_dir}")
+
+                    if config.max_steps > 0 and global_step >= config.max_steps:
+                        break
+
+                self._print_memory_usage()
+
+            if config.max_steps > 0 and global_step >= config.max_steps:
+                break
+            if config.max_steps <= 0 and epoch >= config.num_epochs:
+                break
+
+        log_f.close()
+        print(f"\nManual GRPO training complete — {global_step} steps")
+        print(f"Log: {log_path}")
+        self._print_memory_usage()
+
     def save_model(
         self,
         output_path: str | Path,

@@ -272,6 +272,11 @@ def parse_args():
 
     # Other options
     parser.add_argument(
+        "--manual",
+        action="store_true",
+        help="Use manual GRPO loop (bypasses TRL — required for multimodal Qwen3-VL)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Load model and check VRAM usage without training",
@@ -437,7 +442,10 @@ def main():
 
     # Train
     print("Starting training...")
-    trainer.train(resume_from=args.resume)
+    if args.manual:
+        trainer.train_manual(resume_from=args.resume)
+    else:
+        trainer.train(resume_from=args.resume)
 
     # Save model
     output_path = Path(args.output) / "final_model"
