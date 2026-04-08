@@ -97,7 +97,7 @@ class CS2GRPOTrainer:
     """
     GRPO trainer for CS2 screenshot analysis.
 
-    Uses QLoRA (4-bit + LoRA) via peft.
+    Uses LoRA via peft (bf16 base, no quantization).
 
     Reward architecture (D024 — simplified 2-signal, primary):
       - Multiplicative format gate: invalid JSON -> all signals return 0.0

@@ -34,6 +34,8 @@ COMPARE_FIELDS = [
     "alive_teammates",
     "alive_enemies",
     "bomb_status",
+    "score_t",
+    "score_ct",
 ]
 
 # Tolerance-based scoring: field -> max absolute difference for a "match"
@@ -50,6 +52,8 @@ TOLERANCES = {
     "alive_teammates": 1,
     "alive_enemies": 1,
     "bomb_status": None,
+    "score_t": None,
+    "score_ct": None,
 }
 
 

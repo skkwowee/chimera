@@ -244,7 +244,7 @@ Key observations:
 - 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
 - Parquet files in data/processed/demos/ with full-tick player state
 - All 4 maps: 4353 screenshots, 5309 labels (Mirage 548/1504, Inferno 1476/1476, Nuke 791/791, Overpass 1538/1538)
-- Viewer data in site/public/viewer-data/
+- Viewer: see cs2-demo-viewer repo (site/ directory removed from this repo)
 
 ## Key files for next steps
 - scripts/compare_models.py — eval script (needs tolerance scoring addition)
@@ -257,8 +257,8 @@ Key observations:
 - src/training/data_utils.py — data loading, conversation format, train/val split
 - src/inference/vlm.py — Qwen3VLInference (supports custom model paths for SFT eval)
 - data/training/grpo/smoke_test.jsonl — 2013 pre-extracted GRPO samples
-- data/predictions/comparison_20260407_193202.json — SFT eval results (67.3%)
-- data/predictions/comparison_20260407_193616.json — Base Qwen eval results (50.5%)
+- data/predictions/comparison_20260407_231038.json — SFT eval results (69.2% exact)
+- data/predictions/comparison_20260407_231352.json — SFT eval results (74.8% tolerance)
 - scripts/pod_setup.sh — pod bootstrap (clone, deps, data pull)
 
 ## Pod setup notes (2026-04-07)

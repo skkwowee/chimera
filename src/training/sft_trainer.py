@@ -79,7 +79,7 @@ class CS2SFTTrainer:
     """
     SFT trainer for CS2 screenshot analysis.
 
-    Uses QLoRA (4-bit + LoRA) via peft.
+    Uses LoRA via peft (bf16 base, no quantization).
     Trains the model to produce valid JSON with game_state/analysis/advice
     through supervised learning on demo ground truth data.
     """
