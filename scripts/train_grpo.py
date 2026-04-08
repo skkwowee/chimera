@@ -277,6 +277,11 @@ def parse_args():
         help="Use manual GRPO loop (bypasses TRL — required for multimodal Qwen3-VL)",
     )
     parser.add_argument(
+        "--perception-only",
+        action="store_true",
+        help="Relax format gate to only require game_state key (for text-only smoke tests)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Load model and check VRAM usage without training",
@@ -332,6 +337,7 @@ def main():
         output_dir=args.output,
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
+        perception_only=args.perception_only,
     )
 
     print("=" * 60)

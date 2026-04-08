@@ -80,6 +80,9 @@ class CS2GRPOConfig:
         default_factory=lambda: list(SIMPLIFIED_REWARD_WEIGHTS)
     )
 
+    # Format gate
+    perception_only: bool = False  # If True, format gate only requires game_state (not analysis+advice)
+
     # Output settings
     output_dir: str = "outputs/grpo"
     save_steps: int = 100
@@ -568,7 +571,7 @@ class CS2GRPOTrainer:
                 rewards = []
                 format_passes = 0
                 for comp_text in completions_text:
-                    gate = format_gate_reward(comp_text)
+                    gate = format_gate_reward(comp_text, perception_only=config.perception_only)
                     if gate == 0.0:
                         rewards.append(0.0)
                     else:
