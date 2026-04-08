@@ -576,7 +576,9 @@ class CS2GRPOTrainer:
                 completions_text: list[str] = []
                 completions_ids: list[Any] = []
 
+                # Disable gradient checkpointing for generation (enables KV cache)
                 self.model.eval()
+                self.model.gradient_checkpointing_disable()
                 with torch.no_grad():
                     for _g in range(config.num_generations):
                         output = self.model.generate(
@@ -618,6 +620,7 @@ class CS2GRPOTrainer:
 
                 # --- Step 4: Compute policy gradient loss ---
                 self.model.train()
+                self.model.gradient_checkpointing_enable()
                 sample_loss = torch.tensor(0.0, device=self.model.device)
 
                 for g_idx in range(config.num_generations):
