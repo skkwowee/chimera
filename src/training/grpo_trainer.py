@@ -518,9 +518,25 @@ class CS2GRPOTrainer:
                 prompt_content = sample["prompt"]
                 ground_truth = sample.get("ground_truth", {})
 
-                # Build chat messages
+                # Build chat messages — handle content block lists and plain strings
                 if isinstance(prompt_content, list):
-                    messages = [{"role": "user", "content": prompt_content}]
+                    # Check if this is a list of content blocks [{"type": "text", ...}]
+                    # or already a list of messages [{"role": "user", ...}]
+                    if prompt_content and isinstance(prompt_content[0], dict) and "type" in prompt_content[0]:
+                        # Content blocks — check for images
+                        has_images = any(b.get("type") == "image" for b in prompt_content)
+                        if has_images:
+                            # Multimodal: pass content blocks directly
+                            messages = [{"role": "user", "content": prompt_content}]
+                        else:
+                            # Text-only: extract text and join
+                            text_parts = [
+                                b["text"] for b in prompt_content
+                                if b.get("type") == "text" and "text" in b
+                            ]
+                            messages = [{"role": "user", "content": "\n".join(text_parts)}]
+                    else:
+                        messages = prompt_content
                 elif isinstance(prompt_content, str):
                     messages = [{"role": "user", "content": prompt_content}]
                 else:
