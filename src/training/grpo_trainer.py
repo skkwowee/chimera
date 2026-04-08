@@ -117,6 +117,7 @@ class CS2GRPOTrainer:
         self.config: CS2GRPOConfig = config or CS2GRPOConfig()
         self.model: Any = None
         self.processor: Any = None
+        self.tokenizer: Any = None  # For text-only generation (avoids processor multimodal issues)
         self.reward_fns: list[Callable[..., Any]] = list(SIMPLIFIED_REWARD_FUNCTIONS)
         self.train_dataset: Any = None
         self.val_dataset: Any = None
@@ -124,7 +125,7 @@ class CS2GRPOTrainer:
     def load_model(self):
         """Load Qwen3.5-35B-A3B MoE (bf16) with LoRA."""
         from peft import LoraConfig, get_peft_model
-        from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
+        from transformers import AutoProcessor, AutoTokenizer, Qwen3_5MoeForConditionalGeneration
 
         dtype = getattr(torch, self.config.torch_dtype)
 
@@ -141,6 +142,7 @@ class CS2GRPOTrainer:
         self.model.gradient_checkpointing_enable()
 
         self.processor = AutoProcessor.from_pretrained(self.config.model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
 
         # Apply LoRA if enabled
         # GRPO freezes vision layers when using vLLM
@@ -519,17 +521,13 @@ class CS2GRPOTrainer:
                 ground_truth = sample.get("ground_truth", {})
 
                 # Build chat messages — handle content block lists and plain strings
+                has_images = False
                 if isinstance(prompt_content, list):
-                    # Check if this is a list of content blocks [{"type": "text", ...}]
-                    # or already a list of messages [{"role": "user", ...}]
                     if prompt_content and isinstance(prompt_content[0], dict) and "type" in prompt_content[0]:
-                        # Content blocks — check for images
                         has_images = any(b.get("type") == "image" for b in prompt_content)
                         if has_images:
-                            # Multimodal: pass content blocks directly
                             messages = [{"role": "user", "content": prompt_content}]
                         else:
-                            # Text-only: extract text and join
                             text_parts = [
                                 b["text"] for b in prompt_content
                                 if b.get("type") == "text" and "text" in b
@@ -542,15 +540,24 @@ class CS2GRPOTrainer:
                 else:
                     messages = prompt_content
 
-                # Process multimodal input ONCE
+                # Tokenize — use processor for multimodal, tokenizer for text-only
                 try:
-                    inputs = self.processor.apply_chat_template(
-                        messages,
-                        tokenize=True,
-                        add_generation_prompt=True,
-                        return_dict=True,
-                        return_tensors="pt",
-                    )
+                    if has_images:
+                        inputs = self.processor.apply_chat_template(
+                            messages,
+                            tokenize=True,
+                            add_generation_prompt=True,
+                            return_dict=True,
+                            return_tensors="pt",
+                        )
+                    else:
+                        input_text = self.tokenizer.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True,
+                            enable_thinking=False,
+                        )
+                        inputs = self.tokenizer(input_text, return_tensors="pt")
                     inputs = {k: v.to(self.model.device) if hasattr(v, 'to') else v
                               for k, v in inputs.items()}
                 except Exception as e:
@@ -579,7 +586,8 @@ class CS2GRPOTrainer:
                             **model_extra_kwargs,
                         )
                         gen_ids = output[0, prompt_len:]
-                        text = self.processor.decode(gen_ids, skip_special_tokens=True)
+                        decode_fn = self.tokenizer if not has_images else self.processor
+                        text = decode_fn.decode(gen_ids, skip_special_tokens=True)
                         completions_text.append(text)
                         completions_ids.append(gen_ids)
 
@@ -701,8 +709,6 @@ class CS2GRPOTrainer:
 
                     if config.max_steps > 0 and global_step >= config.max_steps:
                         break
-
-                self._print_memory_usage()
 
             if config.max_steps > 0 and global_step >= config.max_steps:
                 break
