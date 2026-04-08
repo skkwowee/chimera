@@ -525,11 +525,69 @@ def precompute_round_contributions(
 # Main extraction
 # ---------------------------------------------------------------------------
 
+MAP_SHORT_TO_CAPTURE_DIR = {
+    "de_mirage": "furia-vs-vitality-m1-mirage",
+    "de_inferno": "furia-vs-vitality-m2-inferno",
+    "de_nuke": "furia-vs-vitality-m3-nuke",
+    "de_overpass": "furia-vs-vitality-m4-overpass",
+}
+
+MAP_SHORT_TO_PREFIX = {
+    "de_mirage": "mirage",
+    "de_inferno": "inferno",
+    "de_nuke": "nuke",
+    "de_overpass": "overpass",
+}
+
+
+def find_nearest_screenshot(
+    captures_dir: Path, map_name: str, round_num: int, tick: int, player_name: str,
+) -> str | None:
+    """Find the nearest screenshot for a given sample, searching within ±500 ticks."""
+    capture_subdir = MAP_SHORT_TO_CAPTURE_DIR.get(map_name)
+    prefix = MAP_SHORT_TO_PREFIX.get(map_name)
+    if not capture_subdir or not prefix:
+        return None
+
+    raw_dir = captures_dir / capture_subdir / "raw"
+    if not raw_dir.exists():
+        return None
+
+    # Try exact match first
+    exact = raw_dir / f"{prefix}_r{round_num:02d}_t{tick:06d}_{player_name}.jpg"
+    if exact.exists():
+        return str(exact)
+
+    # Search nearby ticks (±500)
+    import glob
+    pattern = str(raw_dir / f"{prefix}_r{round_num:02d}_t*_{player_name}.jpg")
+    candidates = glob.glob(pattern)
+    if not candidates:
+        return None
+
+    # Parse tick from filename and find nearest
+    best = None
+    best_dist = float("inf")
+    for c in candidates:
+        fname = Path(c).stem  # e.g. mirage_r07_t044951_apEX
+        parts = fname.split("_")
+        try:
+            c_tick = int(parts[2][1:])  # strip 't' prefix
+        except (IndexError, ValueError):
+            continue
+        dist = abs(c_tick - tick)
+        if dist < best_dist and dist <= 500:
+            best_dist = dist
+            best = c
+    return best
+
+
 def extract_grpo_samples(
     demo_data_dir: Path,
     delta: int = DEFAULT_DELTA,
     sample_interval: int = DEFAULT_SAMPLE_INTERVAL,
     all_rounds: bool = False,
+    captures_dir: Path | None = None,
 ) -> list[dict[str, Any]]:
     """Extract GRPO samples from all demos in demo_data_dir."""
 
@@ -728,8 +786,21 @@ def extract_grpo_samples(
                         rnd, round_events, start_snap,
                     )
 
+                    # Build prompt content
+                    prompt_content: list[dict[str, Any]] = []
+
+                    # Try to find a matching screenshot
+                    if captures_dir is not None:
+                        img_path = find_nearest_screenshot(
+                            captures_dir, map_name, rnum, tick, p_name,
+                        )
+                        if img_path is not None:
+                            prompt_content.append({"type": "image", "image": img_path})
+
+                    prompt_content.append({"type": "text", "text": context})
+
                     sample = {
-                        "prompt": [{"type": "text", "text": context}],
+                        "prompt": prompt_content,
                         "ground_truth": ground_truth,
                     }
                     all_samples.append(sample)
@@ -763,8 +834,12 @@ def build_manifest(samples: list[dict[str, Any]], num_demos: int) -> dict[str, A
     # Count distinct rounds from prompt headers
     round_ids = set()
     for s in samples:
-        first_line = s["prompt"][0]["text"].split("\n")[0]
-        round_ids.add(first_line)
+        # Find the text block in the prompt (may be after an image block)
+        for block in s["prompt"]:
+            if block.get("type") == "text":
+                first_line = block["text"].split("\n")[0]
+                round_ids.add(first_line)
+                break
 
     return {
         "created": datetime.now(UTC).isoformat(),
@@ -807,16 +882,22 @@ def main():
         "--all-rounds", action="store_true",
         help="Extract from all rounds, not just post-plant",
     )
+    parser.add_argument(
+        "--captures-dir", default=None,
+        help="Directory containing screenshot captures (adds images to prompts)",
+    )
     args = parser.parse_args()
 
     demo_data_dir = Path(args.demo_data_dir)
     output_path = Path(args.output)
+    cap_dir = Path(args.captures_dir) if args.captures_dir else None
 
     samples = extract_grpo_samples(
         demo_data_dir,
         delta=args.delta,
         sample_interval=args.sample_interval,
         all_rounds=args.all_rounds,
+        captures_dir=cap_dir,
     )
 
     if not samples:

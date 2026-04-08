@@ -55,6 +55,7 @@ class CS2GRPOConfig:
 
     # Training settings
     num_epochs: int = 3
+    max_steps: int = -1
     batch_size: int = 1
     gradient_accumulation_steps: int = 4
     learning_rate: float = 2e-5
@@ -187,15 +188,18 @@ class CS2GRPOTrainer:
         from datasets import Dataset
 
         def format_sample(sample: dict[str, Any]) -> dict[str, Any]:
-            """Format a sample for GRPO training."""
+            """Format a sample for GRPO training (TRL 1.0 expects 'prompt' key)."""
             prompt_content = sample["prompt"]
             if isinstance(prompt_content, list):
-                messages = [{"role": "user", "content": prompt_content}]
+                # Multimodal content list — wrap as chat messages for TRL
+                prompt = [{"role": "user", "content": prompt_content}]
+            elif isinstance(prompt_content, str):
+                prompt = [{"role": "user", "content": prompt_content}]
             else:
-                messages = [{"role": "user", "content": prompt_content}]
+                prompt = prompt_content
 
             return {
-                "messages": messages,
+                "prompt": prompt,
                 "ground_truth": sample.get("ground_truth", {}),
                 "image_path": sample.get("image_path", ""),
             }
@@ -227,30 +231,55 @@ class CS2GRPOTrainer:
             self.reward_fns = reward_fns
         print(f"Reward functions configured: {len(self.reward_fns)} signals")
 
+    @staticmethod
+    def _extract_completion_text(completion: Any) -> str:
+        """Extract plain text from a TRL completion (str or message list)."""
+        if isinstance(completion, str):
+            return completion
+        if isinstance(completion, list):
+            # Conversational format: [{"role": "assistant", "content": "..."}]
+            texts = []
+            for msg in completion:
+                if isinstance(msg, dict):
+                    content = msg.get("content", "")
+                    if isinstance(content, str):
+                        texts.append(content)
+                    elif isinstance(content, list):
+                        # Multimodal content blocks
+                        for block in content:
+                            if isinstance(block, dict) and block.get("type") == "text":
+                                texts.append(block.get("text", ""))
+                elif isinstance(msg, str):
+                    texts.append(msg)
+            return "\n".join(texts)
+        return str(completion)
+
     def _create_reward_wrappers(self) -> list[Callable[..., Any]]:
         """
-        Wrap each reward function for TRL's GRPOTrainer batch interface.
+        Wrap each reward function for TRL 1.0's GRPOTrainer batch interface.
+
+        TRL 1.0 calls: reward_func(prompts=..., completions=..., completion_ids=..., **kwargs)
+        Where completions are message lists in conversational mode.
 
         Each wrapper applies the multiplicative format gate before computing
-        the signal reward. This ensures invalid JSON -> 0 for ALL signals,
-        not just the format signal.
-
-        Signature: (completions: list[str], **kwargs) -> list[float]
+        the signal reward. This ensures invalid JSON -> 0 for ALL signals.
         """
         wrappers = []
 
         for fn in self.reward_fns:
             def make_wrapper(reward_fn: Callable[..., Any]) -> Callable[..., Any]:
-                def wrapper(completions: list[str], **kwargs: Any) -> list[float]:
+                def wrapper(**kwargs: Any) -> list[float]:
+                    completions = kwargs.get("completions", [])
                     ground_truths = kwargs.get("ground_truth", [None] * len(completions))
                     results = []
                     for completion, gt in zip(completions, ground_truths, strict=False):
+                        text = CS2GRPOTrainer._extract_completion_text(completion)
                         # Multiplicative format gate: invalid JSON -> 0.0 for all signals
-                        gate = format_gate_reward(completion)
+                        gate = format_gate_reward(text)
                         if gate == 0.0:
                             results.append(0.0)
                         else:
-                            results.append(reward_fn(completion, ground_truth=gt))
+                            results.append(reward_fn(text, ground_truth=gt))
                     return results
                 return wrapper
             wrappers.append(make_wrapper(fn))
@@ -299,6 +328,7 @@ class CS2GRPOTrainer:
         grpo_config = GRPOConfig(
             output_dir=str(output_dir),
             num_train_epochs=self.config.num_epochs,
+            max_steps=self.config.max_steps,
             per_device_train_batch_size=self.config.batch_size,
             gradient_accumulation_steps=self.config.gradient_accumulation_steps,
             learning_rate=self.config.learning_rate,
@@ -320,8 +350,8 @@ class CS2GRPOTrainer:
             beta=self.config.kl_coef,
             # Reward weights for the separate reward functions (2 or 3)
             reward_weights=self.config.reward_weights,
-            # Reporting
-            report_to="wandb",
+            # Reporting — use wandb if available, otherwise none
+            report_to="none",
         )
 
         # Create GRPO trainer with separate reward functions

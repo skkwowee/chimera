@@ -36,6 +36,23 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
   - Saved: comparison_20260407_231038.json (exact), comparison_20260407_231352.json (tolerance)
   - Key: player_side wrong on 6/10, map_name improved to 6/10, numerics near-perfect
   - Model outputs are non-deterministic between runs despite same seed (inference sampling)
+- F05b GRPO smoke test — partial success, TRL multimodal blocker:
+  - Fixed train_grpo.py: added --data (JSONL input), --max-steps, import torch
+  - Fixed grpo_trainer.py: report_to="none", TRL 1.0 prompt/reward API changes
+    - Reward wrappers updated for TRL 1.0 kwargs interface (prompts=, completions=)
+    - _extract_completion_text() handles conversational message lists
+    - prepare_data() outputs "prompt" key (not "messages") for TRL 1.0
+    - Added max_steps to CS2GRPOConfig
+  - Text-only smoke test ran 20 steps — loop works but all rewards=0 (no valid JSON
+    without images, format gate kills everything). Proves loop mechanics work.
+  - Added --captures-dir to extract_grpo_samples.py, matches screenshots to GRPO samples
+    by tick/round/player (±500 tick tolerance). 652/2013 samples matched to images.
+  - BLOCKER: TRL 1.0 + Qwen3-VL multimodal GRPO crashes during prompt repetition.
+    Qwen3VLProcessor.image_grid_thw index goes out of bounds when TRL repeats prompts
+    for num_generations>1. Tried 3 data formats (embedded, separate field, block list) —
+    all crash at same point. This is a TRL bug, not our code.
+  - Options: (a) file TRL issue, (b) manual GRPO loop bypassing TRL, (c) vLLM backend
+  - Pod setup: torch 2.4→2.6, installed trl 1.0, peft, datasets, transformers 5.5
 - Note: site/ directory no longer exists — website updates skipped
 
 ## What changed this session (2026-04-07)

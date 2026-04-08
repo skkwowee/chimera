@@ -32,6 +32,8 @@ import argparse
 import sys
 from pathlib import Path
 
+import torch
+
 from src.training import (
     DEFAULT_REWARD_WEIGHTS,
     REWARD_FUNCTIONS,
@@ -76,6 +78,13 @@ def parse_args():
 
     # Data paths
     data_group = parser.add_argument_group("Data paths")
+    data_group.add_argument(
+        "--data",
+        type=str,
+        default=None,
+        help="Path to JSONL file with pre-built samples (prompt + ground_truth). "
+             "If set, --screenshots and --labels are ignored.",
+    )
     data_group.add_argument(
         "--screenshots",
         type=str,
@@ -155,6 +164,12 @@ def parse_args():
         type=int,
         default=3,
         help="Number of training epochs",
+    )
+    train_group.add_argument(
+        "--max-steps",
+        type=int,
+        default=-1,
+        help="Max training steps (overrides epochs if > 0)",
     )
     train_group.add_argument(
         "--batch-size",
@@ -299,6 +314,7 @@ def main():
         lora_alpha=args.lora_alpha,
         lora_dropout=args.lora_dropout,
         num_epochs=args.epochs,
+        max_steps=args.max_steps,
         batch_size=args.batch_size,
         gradient_accumulation_steps=args.gradient_accumulation,
         learning_rate=args.lr,
@@ -340,33 +356,60 @@ def main():
 
     # Load and prepare data
     print("Loading data...")
-    screenshots_dir = Path(args.screenshots)
-    labels_dir = Path(args.labels)
 
-    if not labels_dir.exists():
-        print(f"Error: Labels directory not found: {labels_dir}")
-        sys.exit(1)
+    if args.data:
+        # Load from pre-built JSONL file
+        import json as json_mod
+        import random as random_mod
 
-    # Convert labeled data to GRPO format
-    grpo_items = convert_labeled_to_grpo_format(
-        screenshots_dir=screenshots_dir,
-        labels_dir=labels_dir,
-    )
+        data_path = Path(args.data)
+        if not data_path.exists():
+            print(f"Error: Data file not found: {data_path}")
+            sys.exit(1)
 
-    if len(grpo_items) == 0:
-        print("Error: No labeled data found!")
-        print(f"  Screenshots: {screenshots_dir}")
-        print(f"  Labels: {labels_dir}")
-        sys.exit(1)
+        all_samples = []
+        with open(data_path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    all_samples.append(json_mod.loads(line))
 
-    print(f"Found {len(grpo_items)} labeled samples")
+        print(f"Loaded {len(all_samples)} samples from {data_path}")
 
-    # Create train/val split
-    train_data, val_data = create_grpo_dataset(
-        grpo_items,
-        train_ratio=args.train_ratio,
-        seed=args.seed,
-    )
+        # Split into train/val
+        random_mod.seed(args.seed)
+        random_mod.shuffle(all_samples)
+        split_idx = int(len(all_samples) * args.train_ratio)
+        train_data = all_samples[:split_idx]
+        val_data = all_samples[split_idx:]
+    else:
+        screenshots_dir = Path(args.screenshots)
+        labels_dir = Path(args.labels)
+
+        if not labels_dir.exists():
+            print(f"Error: Labels directory not found: {labels_dir}")
+            sys.exit(1)
+
+        # Convert labeled data to GRPO format
+        grpo_items = convert_labeled_to_grpo_format(
+            screenshots_dir=screenshots_dir,
+            labels_dir=labels_dir,
+        )
+
+        if len(grpo_items) == 0:
+            print("Error: No labeled data found!")
+            print(f"  Screenshots: {screenshots_dir}")
+            print(f"  Labels: {labels_dir}")
+            sys.exit(1)
+
+        print(f"Found {len(grpo_items)} labeled samples")
+
+        # Create train/val split
+        train_data, val_data = create_grpo_dataset(
+            grpo_items,
+            train_ratio=args.train_ratio,
+            seed=args.seed,
+        )
 
     print(f"Train: {len(train_data)} samples")
     print(f"Val: {len(val_data)} samples")
