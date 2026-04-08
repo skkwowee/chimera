@@ -540,6 +540,16 @@ class CS2GRPOTrainer:
                 else:
                     messages = prompt_content
 
+                # Add system prompt for JSON output format
+                system_msg = {
+                    "role": "system",
+                    "content": (
+                        "You are a CS2 game analyst. Respond ONLY with a JSON object "
+                        "containing a game_state key. No other text."
+                    ),
+                }
+                messages = [system_msg] + messages
+
                 # Tokenize — use processor for multimodal, tokenizer for text-only
                 try:
                     if has_images:
