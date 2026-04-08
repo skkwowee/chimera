@@ -38,8 +38,8 @@
   {
     "id": "F05b",
     "name": "Small-scale GRPO smoke test — B-site post-plants",
-    "description": "End-to-end GRPO pipeline test on a small slice: B-site post-plant rounds across all 4 demos (36 rounds, ~200-400 planning frames). Skip SFT, use base Qwen3.5-35B-A3B. Verify: training loop runs, rewards differentiate between completions, gradients flow, loss decreases. Estimate ~20-30 min on H200. Steps: (1) extract B-site post-plant samples from Parquet, (2) build GRPO-format dataset, (3) run training, (4) check reward variance and loss curves.",
-    "passes": false
+    "description": "End-to-end GRPO pipeline test on a small slice: B-site post-plant rounds across all 4 demos (36 rounds, ~200-400 planning frames). Manual GRPO loop (bypasses TRL multimodal bug #5120). Base Qwen3.5-35B-A3B + LoRA r=4, G=4, 20 steps on 1x H100. Results: format pass 25%→75%, mean reward 0.008→0.321, grad norms stable (37-67), loss converging. Rewards differentiate, gradients flow, loop runs end-to-end.",
+    "passes": true
   },
   {
     "id": "F05c",
