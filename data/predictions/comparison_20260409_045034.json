@@ -1,0 +1,1063 @@
+{
+  "timestamp": "20260409_045034",
+  "seed": 42,
+  "models": [
+    "qwen"
+  ],
+  "phase": "perception",
+  "tolerance": false,
+  "num_samples": 10,
+  "aggregate": {
+    "Qwen": {
+      "matches": 82,
+      "total": 127,
+      "accuracy": 0.6456692913385826
+    }
+  },
+  "samples": [
+    {
+      "id": "inferno_r14_t121727_apEX",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m2-inferno/raw/inferno_r14_t121727_apEX.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_inferno",
+          "round_num": 14,
+          "round_phase": "playing",
+          "player_name": "apEX",
+          "player_side": "CT",
+          "player_health": 100,
+          "player_armor": 100,
+          "player_has_helmet": true,
+          "player_money": 350,
+          "weapon_primary": "FAMAS",
+          "weapon_secondary": "USP-S",
+          "utility": [
+            "Smoke Grenade",
+            "Incendiary Grenade"
+          ],
+          "has_defuser": false,
+          "alive_teammates": 4,
+          "alive_enemies": 5,
+          "bomb_status": "carried",
+          "score_t": 7,
+          "score_ct": 6
+        },
+        "teammates": [
+          {
+            "name": "flameZ",
+            "alive": true,
+            "health": 62
+          },
+          {
+            "name": "mezii",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "ZywOo",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "ropz",
+            "alive": true,
+            "health": 100
+          }
+        ],
+        "context": "Round 14 | T 7 - 6 CT | de_inferno\nRound time: 60s\n\nECONOMY (round start):\n  T-side: eco (~$1,600)\n  CT-side: half-buy (~$15,700)\n\nROUND EVENTS:\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 Bomb dropped\n    3.3s \u2014 mezii (CT) used Smoke Grenade\n    5.8s \u2014 apEX (CT) used High Explosive Grenade\n    6.2s \u2014 flameZ (CT) used Flashbang\n    6.3s \u2014 mezii (CT) used Incendiary Grenade\n   10.3s \u2014 flameZ (CT) used High Explosive Grenade\n   15.3s \u2014 apEX (CT) used Incendiary Grenade\n   17.0s \u2014 ropz (CT) used Incendiary Grenade\n   22.2s \u2014 apEX (CT) used Flashbang\n   53.1s \u2014 apEX (CT) used High Explosive Grenade\n   57.0s \u2014 flameZ (CT) used Incendiary Grenade\n\nCURRENT STATE:\n  Alive: 5T vs 5CT\n  Bomb: carried\n  POV: apEX (CT), 100hp/100armor, FAMAS, utility: Smoke Grenade, Incendiary Grenade\n  Teammates alive: flameZ (62hp, MP9), mezii (100hp, FAMAS), ZywOo (100hp, M4A4), ropz (100hp, MP9)",
+        "prior_screenshots": [
+          "inferno_r14_t121343_apEX",
+          "inferno_r14_t121535_apEX"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m2-inferno.dem",
+          "tick": 121727,
+          "round_num": 14,
+          "screenshot_id": "inferno_r14_t121727_apEX",
+          "pov_player": "apEX",
+          "pov_side": "ct",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_inferno",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 100,
+              "player_armor": 100,
+              "player_has_helmet": true,
+              "player_money": 350,
+              "weapon_primary": "FAMAS",
+              "weapon_secondary": "Glock-18",
+              "utility": [
+                "Smoke Grenade",
+                "Molotov",
+                "Flashbang"
+              ],
+              "has_defuser": false,
+              "alive_teammates": 4,
+              "alive_enemies": 4,
+              "bomb_status": "dropped",
+              "score_t": 5,
+              "score_ct": 8
+            },
+            "analysis": {
+              "situation_summary": "5v4 numerical advantage. Economy is low ($350) with full utility. Bomb is dropped, indicating off-site or post-plant cleanup.",
+              "economy_assessment": "Force-buy round. Full utility loadout suggests coordinated economy play.",
+              "immediate_threats": [
+                "4 enemies active - high risk of multi-directional engagement",
+                "Numerical disadvantage: 1 fewer enemy than teammates"
+              ],
+              "opportunities": [
+                "Numerical advantage (5 vs 4) allows for trading and information gathering",
+                "Full utility loadout provides tactical flexibility"
+              ]
+            },
+            "advice": {
+              "primary_action": "Hold information with utility and call out enemy positions",
+              "reasoning": "Numerical advantage (5v4) requires disciplined positioning and utility usage. Economy is low ($350) so save weapons when possible.",
+              "fallback": "Fall back to safe position and wait for teammate information",
+              "callout": "4 enemies, 5v4 numbers. Economy: $350. Full utility. Play smart."
+            }
+          },
+          "matches": 8,
+          "total": 13
+        }
+      }
+    },
+    {
+      "id": "inferno_r03_t022322_KSCERATO",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m2-inferno/raw/inferno_r03_t022322_KSCERATO.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_inferno",
+          "round_num": 3,
+          "round_phase": "post-plant",
+          "player_name": "KSCERATO",
+          "player_side": "CT",
+          "player_health": 77,
+          "player_armor": 100,
+          "player_has_helmet": true,
+          "player_money": 2200,
+          "weapon_primary": null,
+          "weapon_secondary": "Five-SeveN",
+          "utility": [],
+          "has_defuser": false,
+          "alive_teammates": 2,
+          "alive_enemies": 3,
+          "bomb_status": "planted",
+          "score_t": 2,
+          "score_ct": 0
+        },
+        "teammates": [
+          {
+            "name": "molodoy",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "FalleN",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "yuurih",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "YEKINDAR",
+            "alive": true,
+            "health": 98
+          }
+        ],
+        "context": "Round 3 | T 2 - 0 CT | de_inferno\nRound time: 120s\n\nECONOMY (round start):\n  T-side: half-buy (~$14,800)\n  CT-side: half-buy (~$10,600)\n\nROUND EVENTS:\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 yuurih (CT) used High Explosive Grenade\n    5.6s \u2014 Bomb dropped\n    7.1s \u2014 ropz (T) used Molotov\n    8.6s \u2014 mezii (T) used Molotov\n    9.8s \u2014 yuurih (CT) used Flashbang\n   15.1s \u2014 ropz (T) used High Explosive Grenade\n   16.9s \u2014 yuurih (CT) used Smoke Grenade\n   17.7s \u2014 ZywOo (T) used Molotov\n   20.6s \u2014 KSCERATO (CT) used High Explosive Grenade\n   21.6s \u2014 FalleN (CT) used Smoke Grenade\n   28.6s \u2014 apEX (T) used Flashbang\n   28.9s \u2014 mezii (T) used High Explosive Grenade\n   29.0s \u2014 ZywOo (T) used High Explosive Grenade\n   30.7s \u2014 mezii (T) eliminated\n   30.7s \u2014 mezii (T) used Smoke Grenade\n   30.7s \u2014 mezii (T) used Flashbang\n   32.6s \u2014 FalleN (CT) used Flashbang\n   41.5s \u2014 apEX (T) used High Explosive Grenade\n   41.7s \u2014 flameZ (T) used High Explosive Grenade\n   43.3s \u2014 apEX (T) used High Explosive Grenade\n   46.3s \u2014 flameZ (T) used Smoke Grenade\n   54.5s \u2014 ZywOo (T) used Flashbang\n   57.2s \u2014 apEX (T) used Smoke Grenade\n   59.9s \u2014 flameZ (T) used Smoke Grenade\n   60.5s \u2014 Bomb dropped\n   65.5s \u2014 flameZ (T) used Molotov\n   66.9s \u2014 ropz (T) used Flashbang\n   67.0s \u2014 apEX (T) used Molotov\n   68.6s \u2014 flameZ (T) used Flashbang\n   69.8s \u2014 apEX (T) used Flashbang\n   76.1s \u2014 apEX (T) eliminated\n   76.1s \u2014 Bomb dropped\n   76.1s \u2014 YEKINDAR (CT) used High Explosive Grenade\n   76.4s \u2014 molodoy (CT) eliminated\n   81.2s \u2014 ZywOo (T) used Smoke Grenade\n   85.5s \u2014 Bomb planted\n   85.8s \u2014 ropz (T) used Smoke Grenade\n  114.5s \u2014 FalleN (CT) eliminated\n\nCURRENT STATE:\n  Alive: 3T vs 3CT\n  Bomb: planted\n  POV: KSCERATO (CT), 77hp/100armor, Five-SeveN, utility: none\n  Teammates alive: yuurih (100hp, MP9), YEKINDAR (98hp, Five-SeveN)\n  Teammates dead: molodoy, FalleN",
+        "prior_screenshots": [
+          "inferno_r03_t022130_KSCERATO"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m2-inferno.dem",
+          "tick": 22322,
+          "round_num": 3,
+          "screenshot_id": "inferno_r03_t022322_KSCERATO",
+          "pov_player": "KSCERATO",
+          "pov_side": "ct",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_inferno",
+              "round_phase": "post-plant",
+              "player_side": "CT",
+              "player_health": 77,
+              "player_armor": 100,
+              "player_has_helmet": true,
+              "player_money": 2200,
+              "weapon_primary": null,
+              "weapon_secondary": "Five-Seven",
+              "utility": [],
+              "has_defuser": false,
+              "alive_teammates": 1,
+              "alive_enemies": 4,
+              "bomb_status": "planted",
+              "score_t": 2,
+              "score_ct": 0
+            },
+            "analysis": {
+              "situation_summary": "3v4 post-plant, bomb planted with 40s remaining. You are on CT side with 1 teammate alive. Enemy count is 4. You have no utility. Situation is unfavorable.",
+              "immediate_threats": [
+                "Multiple enemies still active (4)"
+              ],
+              "opportunities": [
+                "Wait for bomb to detonate",
+                "Coordinate with 1 teammate for retake"
+              ]
+            },
+            "advice": {
+              "primary_action": "Hold position and wait for bomb to detonate",
+              "reasoning": "Numbers are 1v4 (3v4 with 1 teammate). Outnumbered. Utility: none. Economy: $2200 (eco).",
+              "follow_up": "After round ends, buy based on economy. Current loadout: pistol only."
+            }
+          },
+          "matches": 9,
+          "total": 12
+        }
+      }
+    },
+    {
+      "id": "nuke_r06_t029594_ropz",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m3-nuke/raw/nuke_r06_t029594_ropz.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_nuke",
+          "round_num": 6,
+          "round_phase": "playing",
+          "player_name": "ropz",
+          "player_side": "CT",
+          "player_health": 100,
+          "player_armor": 95,
+          "player_has_helmet": true,
+          "player_money": 6600,
+          "weapon_primary": "M4A4",
+          "weapon_secondary": "Tec-9",
+          "utility": [
+            "Flashbang",
+            "High Explosive Grenade"
+          ],
+          "has_defuser": true,
+          "alive_teammates": 3,
+          "alive_enemies": 5,
+          "bomb_status": "carried",
+          "score_t": 0,
+          "score_ct": 5
+        },
+        "teammates": [
+          {
+            "name": "ZywOo",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "apEX",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "flameZ",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "mezii",
+            "alive": false,
+            "health": 0
+          }
+        ],
+        "context": "Round 6 | T 0 - 5 CT | de_nuke\nRound time: 27s\n\nECONOMY (round start):\n  T-side: full-buy (~$18,600)\n  CT-side: full-buy (~$23,300)\n\nROUND EVENTS:\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 molodoy (T) used Smoke Grenade\n    0.0s \u2014 yuurih (T) used Smoke Grenade\n    0.5s \u2014 FalleN (T) used Smoke Grenade\n    4.3s \u2014 FalleN (T) used Smoke Grenade\n    5.5s \u2014 YEKINDAR (T) used Smoke Grenade\n    7.2s \u2014 KSCERATO (T) used High Explosive Grenade\n    7.8s \u2014 flameZ (CT) used Incendiary Grenade\n    8.0s \u2014 ZywOo (CT) used Incendiary Grenade\n    8.3s \u2014 ropz (CT) used Incendiary Grenade\n    8.3s \u2014 mezii (CT) used Incendiary Grenade\n    8.4s \u2014 KSCERATO (T) used Smoke Grenade\n    9.0s \u2014 yuurih (T) used High Explosive Grenade\n    9.1s \u2014 flameZ (CT) used High Explosive Grenade\n    9.8s \u2014 apEX (CT) used High Explosive Grenade\n   12.2s \u2014 mezii (CT) used High Explosive Grenade\n   13.3s \u2014 flameZ (CT) used Smoke Grenade\n   14.3s \u2014 ZywOo (CT) used High Explosive Grenade\n   15.3s \u2014 ropz (CT) used Smoke Grenade\n   16.2s \u2014 flameZ (CT) used Flashbang\n   18.8s \u2014 mezii (CT) eliminated\n   18.8s \u2014 mezii (CT) used Smoke Grenade\n   18.8s \u2014 mezii (CT) used Flashbang\n   21.3s \u2014 yuurih (T) used Molotov\n   24.3s \u2014 YEKINDAR (T) used Molotov\n\nCURRENT STATE:\n  Alive: 5T vs 4CT\n  Bomb: carried\n  POV: ropz (CT), 100hp/95armor, M4A4, utility: Flashbang, High Explosive Grenade\n  Teammates alive: ZywOo (100hp, AWP), apEX (100hp, M4A1-S), flameZ (100hp, M4A4)\n  Teammates dead: mezii",
+        "prior_screenshots": [
+          "nuke_r06_t029210_ropz",
+          "nuke_r06_t029402_ropz"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m3-nuke.dem",
+          "tick": 29594,
+          "round_num": 6,
+          "screenshot_id": "nuke_r06_t029594_ropz",
+          "pov_player": "ropz",
+          "pov_side": "ct",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_inferno",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 100,
+              "player_armor": 95,
+              "player_has_helmet": true,
+              "player_money": 6600,
+              "weapon_primary": "AK-47",
+              "weapon_secondary": "Glock-18",
+              "utility": [
+                "High Explosive Grenade"
+              ],
+              "has_defuser": false,
+              "alive_teammates": 3,
+              "alive_enemies": 5,
+              "bomb_status": "dropped",
+              "score_t": 5,
+              "score_ct": 0
+            },
+            "analysis": {
+              "situation_summary": "4v5 disadvantage (3 alive teammates, 5 enemies). Bomb dropped. Economy: full buy ($6600).",
+              "economy_assessment": "full-buy",
+              "round_importance": "high",
+              "immediate_threats": [
+                "5 active enemies on map",
+                "numerical disadvantage"
+              ],
+              "recommended_actions": [
+                "Play cautiously due to numbers",
+                "Avoid unnecessary engagements",
+                "Look for utility usage opportunities"
+              ]
+            },
+            "metadata": {
+              "extraction_timestamp": "2024-01-15T10:23:45Z",
+              "confidence_score": 0.95,
+              "analysis_version": "2.1"
+            }
+          },
+          "matches": 7,
+          "total": 13
+        }
+      }
+    },
+    {
+      "id": "mirage_r10_t065849_molodoy",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m1-mirage/raw/mirage_r10_t065849_molodoy.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_mirage",
+          "round_num": 10,
+          "round_phase": "playing",
+          "player_name": "molodoy",
+          "player_side": "T",
+          "player_health": 100,
+          "player_armor": 100,
+          "player_has_helmet": true,
+          "player_money": 50,
+          "weapon_primary": "Galil AR",
+          "weapon_secondary": "Glock-18",
+          "utility": [
+            "Flashbang"
+          ],
+          "has_defuser": false,
+          "alive_teammates": 4,
+          "alive_enemies": 5,
+          "bomb_status": "dropped",
+          "score_t": 2,
+          "score_ct": 7
+        },
+        "teammates": [
+          {
+            "name": "FalleN",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "KSCERATO",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "yuurih",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "YEKINDAR",
+            "alive": true,
+            "health": 100
+          }
+        ],
+        "context": "Round 10 | T 2 - 7 CT | de_mirage\nRound time: 27s\n\nECONOMY (round start):\n  T-side: half-buy (~$16,800)\n  CT-side: full-buy (~$22,450)\n\nROUND EVENTS:\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 yuurih (T) used Smoke Grenade\n    0.4s \u2014 molodoy (T) used Smoke Grenade\n    0.8s \u2014 YEKINDAR (T) used Smoke Grenade\n    0.9s \u2014 flameZ (CT) used Flashbang\n    4.3s \u2014 flameZ (CT) used Incendiary Grenade\n    5.6s \u2014 flameZ (CT) used Flashbang\n    6.2s \u2014 FalleN (T) used Smoke Grenade\n    7.0s \u2014 YEKINDAR (T) used Smoke Grenade\n    9.5s \u2014 YEKINDAR (T) used Flashbang\n    9.6s \u2014 ZywOo (CT) used Incendiary Grenade\n   10.2s \u2014 flameZ (CT) used Smoke Grenade\n   11.0s \u2014 apEX (CT) used High Explosive Grenade\n   11.2s \u2014 mezii (CT) used Incendiary Grenade\n   11.4s \u2014 ropz (CT) used Flashbang\n   17.5s \u2014 ropz (CT) used Smoke Grenade\n   18.2s \u2014 apEX (CT) used Smoke Grenade\n   18.4s \u2014 mezii (CT) used Smoke Grenade\n   21.5s \u2014 mezii (CT) used High Explosive Grenade\n\nCURRENT STATE:\n  Alive: 5T vs 5CT\n  Bomb: dropped\n  POV: molodoy (T), 100hp/100armor, Galil AR, utility: Flashbang\n  Teammates alive: FalleN (100hp, Galil AR), KSCERATO (100hp, AK-47), yuurih (100hp, Galil AR), YEKINDAR (100hp, AK-47)",
+        "prior_screenshots": [
+          "mirage_r10_t065465_molodoy",
+          "mirage_r10_t065657_molodoy"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m1-mirage.dem",
+          "tick": 65849,
+          "round_num": 10,
+          "screenshot_id": "mirage_r10_t065849_molodoy",
+          "pov_player": "molodoy",
+          "pov_side": "t",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_mirage",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 100,
+              "player_armor": 100,
+              "player_has_helmet": true,
+              "player_money": 50,
+              "weapon_primary": "Galil AR",
+              "weapon_secondary": "USP-S",
+              "utility": [
+                "Flashbang"
+              ],
+              "has_defuser": false,
+              "alive_teammates": 4,
+              "alive_enemies": 5,
+              "bomb_status": "carried",
+              "score_t": 2,
+              "score_ct": 7
+            },
+            "analysis": {
+              "situation_summary": "Disadvantaged 4v5 with bomb carried. Economy is low ($50) with no utility except one flash.",
+              "immediate_threats": [
+                "5 active enemies - numerical disadvantage",
+                "Bomb carrier present - high urgency"
+              ],
+              "opportunities": [
+                "4 teammates available for coordination",
+                "No utility aside from 1 flash - limited information gathering"
+              ]
+            },
+            "advice": {
+              "primary_action": "Fall back to teammates and reorganize",
+              "reasoning": "Numerical disadvantage (4v5) and low economy require defensive play. Wait for teammates to regroup before engaging.",
+              "fallback_options": [
+                "Defend choke point with teammates",
+                "Play passive and gather information",
+                "Force buy if opportunity arises"
+              ]
+            }
+          },
+          "matches": 10,
+          "total": 13
+        }
+      }
+    },
+    {
+      "id": "mirage_r07_t044951_apEX",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m1-mirage/raw/mirage_r07_t044951_apEX.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_mirage",
+          "round_num": 7,
+          "round_phase": "post-plant",
+          "player_name": "apEX",
+          "player_side": "CT",
+          "player_health": 100,
+          "player_armor": 52,
+          "player_has_helmet": true,
+          "player_money": 12750,
+          "weapon_primary": "AK-47",
+          "weapon_secondary": "Tec-9",
+          "utility": [],
+          "has_defuser": false,
+          "alive_teammates": 0,
+          "alive_enemies": 4,
+          "bomb_status": "planted",
+          "score_t": 1,
+          "score_ct": 5
+        },
+        "teammates": [
+          {
+            "name": "mezii",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "ropz",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "flameZ",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "ZywOo",
+            "alive": false,
+            "health": 0
+          }
+        ],
+        "context": "Round 7 | T 1 - 5 CT | de_mirage\nRound time: 123s\n\nECONOMY (round start):\n  T-side: full-buy (~$21,200)\n  CT-side: full-buy (~$22,650)\n\nROUND EVENTS:\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 molodoy (T) used Smoke Grenade\n    0.0s \u2014 yuurih (T) used Smoke Grenade\n    0.3s \u2014 FalleN (T) used Smoke Grenade\n    0.5s \u2014 KSCERATO (T) used Smoke Grenade\n    2.3s \u2014 Bomb dropped\n    4.0s \u2014 ropz (CT) used Incendiary Grenade\n    4.7s \u2014 YEKINDAR (T) used Flashbang\n    9.7s \u2014 ZywOo (CT) used Incendiary Grenade\n   10.3s \u2014 mezii (CT) used Incendiary Grenade\n   11.5s \u2014 FalleN (T) used Flashbang\n   13.5s \u2014 apEX (CT) used High Explosive Grenade\n   13.6s \u2014 ZywOo (CT) used High Explosive Grenade\n   15.3s \u2014 flameZ (CT) used Incendiary Grenade\n   16.8s \u2014 ZywOo (CT) used Smoke Grenade\n   19.3s \u2014 apEX (CT) used High Explosive Grenade\n   28.9s \u2014 flameZ (CT) used Flashbang\n   30.0s \u2014 FalleN (T) used Smoke Grenade\n   30.7s \u2014 yuurih (T) eliminated\n   30.7s \u2014 yuurih (T) used Molotov\n   30.7s \u2014 yuurih (T) used Flashbang\n   33.1s \u2014 mezii (CT) used High Explosive Grenade\n   34.4s \u2014 mezii (CT) used Smoke Grenade\n   37.7s \u2014 apEX (CT) used Smoke Grenade\n   40.0s \u2014 flameZ (CT) used Smoke Grenade\n   40.1s \u2014 flameZ (CT) eliminated\n   40.1s \u2014 flameZ (CT) used Flashbang\n   45.6s \u2014 apEX (CT) used Incendiary Grenade\n   48.2s \u2014 YEKINDAR (T) used Smoke Grenade\n   49.7s \u2014 YEKINDAR (T) used Molotov\n   52.4s \u2014 KSCERATO (T) used Flashbang\n   63.3s \u2014 ropz (CT) eliminated\n   63.3s \u2014 ropz (CT) used Smoke Grenade\n   63.3s \u2014 ropz (CT) used Flashbang\n   63.3s \u2014 ropz (CT) used High Explosive Grenade\n   65.7s \u2014 FalleN (T) used Molotov\n   67.2s \u2014 FalleN (T) used Flashbang\n   67.7s \u2014 KSCERATO (T) used Molotov\n   70.3s \u2014 apEX (CT) used Smoke Grenade\n   71.6s \u2014 apEX (CT) used Flashbang\n   73.0s \u2014 KSCERATO (T) used Smoke Grenade\n   95.8s \u2014 ZywOo (CT) eliminated\n   95.8s \u2014 ZywOo (CT) used Flashbang\n   98.2s \u2014 mezii (CT) eliminated\n   98.2s \u2014 mezii (CT) used Flashbang\n  103.0s \u2014 Bomb planted\n\nCURRENT STATE:\n  Alive: 4T vs 1CT\n  Bomb: planted\n  POV: apEX (CT), 100hp/52armor, AK-47, utility: none\n  Teammates dead: mezii, ropz, flameZ, ZywOo",
+        "prior_screenshots": [
+          "mirage_r07_t044567_apEX",
+          "mirage_r07_t044759_apEX"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m1-mirage.dem",
+          "tick": 44951,
+          "round_num": 7,
+          "screenshot_id": "mirage_r07_t044951_apEX",
+          "pov_player": "apEX",
+          "pov_side": "ct",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_inferno",
+              "round_phase": "post-plant",
+              "player_side": "CT",
+              "player_health": 100,
+              "player_armor": 52,
+              "player_has_helmet": true,
+              "player_money": 12750,
+              "weapon_primary": "AK-47",
+              "weapon_secondary": "USP-S",
+              "utility": [
+                "flashbang",
+                "smoke grenade"
+              ],
+              "has_defuser": true,
+              "alive_teammates": 0,
+              "alive_enemies": 4,
+              "bomb_status": "planted",
+              "score_t": 5,
+              "score_ct": 1
+            },
+            "analysis": {
+              "situation_summary": "5v1 disadvantage, bomb planted, 40s remaining",
+              "economy_assessment": "eco",
+              "round_importance": "high",
+              "recommended_action": "defuse bomb"
+            }
+          },
+          "matches": 9,
+          "total": 13
+        }
+      }
+    },
+    {
+      "id": "inferno_r17_t155854_FalleN",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m2-inferno/raw/inferno_r17_t155854_FalleN.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_inferno",
+          "round_num": 17,
+          "round_phase": "playing",
+          "player_name": "FalleN",
+          "player_side": "T",
+          "player_health": 100,
+          "player_armor": 0,
+          "player_has_helmet": false,
+          "player_money": 1900,
+          "weapon_primary": null,
+          "weapon_secondary": "Glock-18",
+          "utility": [
+            "Molotov"
+          ],
+          "has_defuser": false,
+          "alive_teammates": 1,
+          "alive_enemies": 5,
+          "bomb_status": "dropped",
+          "score_t": 8,
+          "score_ct": 8
+        },
+        "teammates": [
+          {
+            "name": "molodoy",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "KSCERATO",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "yuurih",
+            "alive": true,
+            "health": 70
+          },
+          {
+            "name": "YEKINDAR",
+            "alive": false,
+            "health": 0
+          }
+        ],
+        "context": "Round 17 | T 8 - 8 CT | de_inferno\nRound time: 54s\n\nECONOMY (round start):\n  T-side: force-buy (~$6,600)\n  CT-side: full-buy (~$21,700)\n\nROUND EVENTS:\n    0.0s \u2014 ropz (CT) used High Explosive Grenade\n    1.2s \u2014 mezii (CT) used High Explosive Grenade\n    2.5s \u2014 mezii (CT) used High Explosive Grenade\n    3.6s \u2014 mezii (CT) used High Explosive Grenade\n    3.7s \u2014 ZywOo (CT) used Smoke Grenade\n    4.3s \u2014 molodoy (T) used Smoke Grenade\n    4.6s \u2014 mezii (CT) used High Explosive Grenade\n    6.0s \u2014 KSCERATO (T) used Molotov\n    6.2s \u2014 mezii (CT) used High Explosive Grenade\n    7.6s \u2014 mezii (CT) used Incendiary Grenade\n    8.0s \u2014 mezii (CT) used Flashbang\n    8.7s \u2014 YEKINDAR (T) used Molotov\n    9.2s \u2014 mezii (CT) used High Explosive Grenade\n    9.4s \u2014 flameZ (CT) used High Explosive Grenade\n    9.8s \u2014 apEX (CT) used High Explosive Grenade\n   13.9s \u2014 ropz (CT) used Incendiary Grenade\n   16.6s \u2014 flameZ (CT) used Incendiary Grenade\n   18.4s \u2014 apEX (CT) used Flashbang\n   28.4s \u2014 apEX (CT) used Smoke Grenade\n   31.8s \u2014 ropz (CT) used Smoke Grenade\n   35.8s \u2014 Bomb dropped\n   42.2s \u2014 FalleN (T) used Smoke Grenade\n   45.0s \u2014 apEX (CT) used High Explosive Grenade\n   49.0s \u2014 yuurih (T) used Molotov\n   51.1s \u2014 YEKINDAR (T) eliminated\n   51.8s \u2014 yuurih (T) used Smoke Grenade\n   52.1s \u2014 KSCERATO (T) eliminated\n   52.1s \u2014 Bomb dropped\n   53.1s \u2014 molodoy (T) eliminated\n\nCURRENT STATE:\n  Alive: 2T vs 5CT\n  Bomb: dropped\n  POV: FalleN (T), 100hp/0armor, Glock-18, utility: Molotov\n  Teammates alive: yuurih (70hp, Tec-9)\n  Teammates dead: molodoy, KSCERATO, YEKINDAR",
+        "prior_screenshots": [
+          "inferno_r17_t154318_FalleN",
+          "inferno_r17_t154510_FalleN"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m2-inferno.dem",
+          "tick": 155854,
+          "round_num": 17,
+          "screenshot_id": "inferno_r17_t155854_FalleN",
+          "pov_player": "FalleN",
+          "pov_side": "t",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_mirage",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 100,
+              "player_armor": 0,
+              "player_has_helmet": false,
+              "player_money": 1900,
+              "weapon_primary": null,
+              "weapon_secondary": "Glock-18",
+              "utility": [],
+              "has_defuser": false,
+              "alive_teammates": 0,
+              "alive_enemies": 3,
+              "bomb_status": "carried",
+              "score_t": 6,
+              "score_ct": 10
+            },
+            "analysis": {
+              "situation_summary": "4v3 numbers - 3 enemies remaining. Bomb is carried. No teammates alive.",
+              "economy_assessment": "eco",
+              "round_importance": "medium",
+              "recommended_action": "Play cautiously with numbers disadvantage"
+            }
+          },
+          "matches": 5,
+          "total": 12
+        }
+      }
+    },
+    {
+      "id": "inferno_r13_t113350_yuurih",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m2-inferno/raw/inferno_r13_t113350_yuurih.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_inferno",
+          "round_num": 13,
+          "round_phase": "playing",
+          "player_name": "yuurih",
+          "player_side": "T",
+          "player_health": 100,
+          "player_armor": 100,
+          "player_has_helmet": false,
+          "player_money": 150,
+          "weapon_primary": null,
+          "weapon_secondary": "Glock-18",
+          "utility": [],
+          "has_defuser": false,
+          "alive_teammates": 4,
+          "alive_enemies": 5,
+          "bomb_status": "carried",
+          "score_t": 7,
+          "score_ct": 5
+        },
+        "teammates": [
+          {
+            "name": "molodoy",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "FalleN",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "KSCERATO",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "YEKINDAR",
+            "alive": true,
+            "health": 100
+          }
+        ],
+        "context": "Round 13 | T 7 - 5 CT | de_inferno\nRound time: 12s\n\nECONOMY (round start):\n  T-side: eco (~$2,950)\n  CT-side: eco (~$3,400)\n\nROUND EVENTS:\n    9.8s \u2014 KSCERATO (T) used Decoy Grenade\n\nCURRENT STATE:\n  Alive: 5T vs 5CT\n  Bomb: carried\n  POV: yuurih (T), 100hp/100armor, Glock-18, utility: none\n  Teammates alive: molodoy (100hp, Glock-18), FalleN (100hp, Glock-18), KSCERATO (100hp, Glock-18), YEKINDAR (100hp, Glock-18)",
+        "prior_screenshots": [
+          "inferno_r13_t112966_yuurih",
+          "inferno_r13_t113158_yuurih"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m2-inferno.dem",
+          "tick": 113350,
+          "round_num": 13,
+          "screenshot_id": "inferno_r13_t113350_yuurih",
+          "pov_player": "yuurih",
+          "pov_side": "t",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_inferno",
+              "round_phase": "playing",
+              "player_side": "T",
+              "player_health": 100,
+              "player_armor": 100,
+              "player_has_helmet": true,
+              "player_money": 150,
+              "weapon_primary": null,
+              "weapon_secondary": "Glock-18",
+              "utility": [],
+              "has_defuser": false,
+              "alive_teammates": 0,
+              "alive_enemies": 5,
+              "bomb_status": "carried",
+              "score_t": 7,
+              "score_ct": 5
+            },
+            "analysis": {
+              "situation_summary": "Disadvantaged 1v5. No teammates alive. Enemy count: 5. Bomb is being carried.",
+              "immediate_threats": [
+                "Multiple enemies nearby",
+                "Outnumbered"
+              ],
+              "opportunities": [
+                "Use utility to create space",
+                "Wait for enemy engagement"
+              ]
+            },
+            "advice": {
+              "priority_action": "Stay mobile and use utility",
+              "reasoning": "With 0 teammates and 5 enemies, you are in a 1v5 situation. Survival depends on positioning and utility usage.",
+              "recommended_action": "Use smoke or flash to break line of sight and reposition. Avoid direct confrontation until numbers are more favorable.",
+              "weapon_assessment": "Only pistol available. Economy is low ($150).",
+              "economy_advice": "Save round. Economy is low ($150). Equipment: pistol only. Consider saving for next round."
+            }
+          },
+          "matches": 11,
+          "total": 12
+        }
+      }
+    },
+    {
+      "id": "inferno_r10_t081156_ZywOo",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m2-inferno/raw/inferno_r10_t081156_ZywOo.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_inferno",
+          "round_num": 10,
+          "round_phase": "playing",
+          "player_name": "ZywOo",
+          "player_side": "T",
+          "player_health": 96,
+          "player_armor": 97,
+          "player_has_helmet": true,
+          "player_money": 150,
+          "weapon_primary": "AK-47",
+          "weapon_secondary": "Glock-18",
+          "utility": [
+            "High Explosive Grenade",
+            "Molotov",
+            "Flashbang"
+          ],
+          "has_defuser": false,
+          "alive_teammates": 3,
+          "alive_enemies": 5,
+          "bomb_status": "carried",
+          "score_t": 6,
+          "score_ct": 3
+        },
+        "teammates": [
+          {
+            "name": "apEX",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "flameZ",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "mezii",
+            "alive": true,
+            "health": 92
+          },
+          {
+            "name": "ropz",
+            "alive": true,
+            "health": 100
+          }
+        ],
+        "context": "Round 10 | T 6 - 3 CT | de_inferno\nRound time: 51s\n\nECONOMY (round start):\n  T-side: force-buy (~$9,000)\n  CT-side: full-buy (~$22,400)\n\nROUND EVENTS:\n    0.0s \u2014 KSCERATO (CT) used Smoke Grenade\n    0.0s \u2014 ZywOo (T) used Flashbang\n    0.0s \u2014 ropz (T) used Molotov\n    0.0s \u2014 KSCERATO (CT) used High Explosive Grenade\n    2.6s \u2014 yuurih (CT) used Smoke Grenade\n    5.5s \u2014 Bomb dropped\n    6.5s \u2014 mezii (T) used Smoke Grenade\n    6.8s \u2014 apEX (T) used Smoke Grenade\n    8.0s \u2014 YEKINDAR (CT) used Smoke Grenade\n    9.0s \u2014 ZywOo (T) used Molotov\n    9.3s \u2014 FalleN (CT) used High Explosive Grenade\n    9.6s \u2014 YEKINDAR (CT) used Incendiary Grenade\n   10.7s \u2014 FalleN (CT) used Incendiary Grenade\n   10.9s \u2014 KSCERATO (CT) used Flashbang\n   11.3s \u2014 YEKINDAR (CT) used High Explosive Grenade\n   17.9s \u2014 yuurih (CT) used Incendiary Grenade\n   19.1s \u2014 Bomb dropped\n   19.2s \u2014 flameZ (T) used Smoke Grenade\n   24.2s \u2014 apEX (T) used High Explosive Grenade\n   27.4s \u2014 mezii (T) used Flashbang\n   29.5s \u2014 flameZ (T) used Flashbang\n   30.7s \u2014 molodoy (CT) used Incendiary Grenade\n   34.0s \u2014 yuurih (CT) used Smoke Grenade\n   34.3s \u2014 molodoy (CT) used Smoke Grenade\n   37.6s \u2014 molodoy (CT) used High Explosive Grenade\n   43.0s \u2014 apEX (T) used Smoke Grenade\n   47.1s \u2014 ZywOo (T) used Smoke Grenade\n   48.6s \u2014 flameZ (T) eliminated\n   48.6s \u2014 flameZ (T) used Molotov\n   48.6s \u2014 flameZ (T) used High Explosive Grenade\n   48.6s \u2014 ZywOo (T) used Flashbang\n\nCURRENT STATE:\n  Alive: 4T vs 5CT\n  Bomb: carried\n  POV: ZywOo (T), 96hp/97armor, AK-47, utility: High Explosive Grenade, Molotov, Flashbang\n  Teammates alive: apEX (100hp, P250), mezii (92hp, Tec-9), ropz (100hp, Tec-9)\n  Teammates dead: flameZ",
+        "prior_screenshots": [
+          "inferno_r10_t080964_ZywOo",
+          "inferno_r10_t081004_ZywOo"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m2-inferno.dem",
+          "tick": 81156,
+          "round_num": 10,
+          "screenshot_id": "inferno_r10_t081156_ZywOo",
+          "pov_player": "ZywOo",
+          "pov_side": "t",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_inferno",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 96,
+              "player_armor": 97,
+              "player_has_helmet": true,
+              "player_money": 150,
+              "weapon_primary": "AK-47",
+              "weapon_secondary": "Glock-18",
+              "utility": [],
+              "has_defuser": false,
+              "alive_teammates": 4,
+              "alive_enemies": 3,
+              "bomb_status": "carried",
+              "score_t": 3,
+              "score_ct": 6
+            },
+            "analysis": {
+              "situation_summary": "4v3 numerical advantage for CT side. Economy is low ($150) - pistol round or eco. Bomb is active and being carried.",
+              "immediate_threats": [
+                "3 enemies remaining on T side - high priority to track their positions"
+              ],
+              "opportunities": [
+                "Numerical advantage (4v3) - press the advantage with coordinated pushes",
+                "Economy is low - play conservative and rely on utility usage"
+              ]
+            },
+            "advice": {
+              "action": "play_conservative",
+              "reasoning": "Low economy ($150) limits buy options. With 4v3 numbers, play methodically and avoid unnecessary trades.",
+              "callout": "4v3 numbers, bomb carried. Play smart and use numbers."
+            }
+          },
+          "matches": 8,
+          "total": 13
+        }
+      }
+    },
+    {
+      "id": "overpass_r11_t079517_yuurih",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m4-overpass/raw/overpass_r11_t079517_yuurih.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_overpass",
+          "round_num": 11,
+          "round_phase": "playing",
+          "player_name": "yuurih",
+          "player_side": "CT",
+          "player_health": 100,
+          "player_armor": 97,
+          "player_has_helmet": true,
+          "player_money": 4050,
+          "weapon_primary": "M4A4",
+          "weapon_secondary": "Tec-9",
+          "utility": [
+            "High Explosive Grenade",
+            "Flashbang"
+          ],
+          "has_defuser": true,
+          "alive_teammates": 4,
+          "alive_enemies": 5,
+          "bomb_status": "dropped",
+          "score_t": 5,
+          "score_ct": 5
+        },
+        "teammates": [
+          {
+            "name": "KSCERATO",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "FalleN",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "molodoy",
+            "alive": true,
+            "health": 100
+          },
+          {
+            "name": "YEKINDAR",
+            "alive": true,
+            "health": 100
+          }
+        ],
+        "context": "Round 11 | T 5 - 5 CT | de_overpass\nRound time: 9s\n\nECONOMY (round start):\n  T-side: full-buy (~$19,150)\n  CT-side: full-buy (~$23,350)\n\nROUND EVENTS:\n    0.0s \u2014 FalleN (CT) used Flashbang\n    0.0s \u2014 molodoy (CT) used High Explosive Grenade\n    0.0s \u2014 FalleN (CT) used High Explosive Grenade\n    0.0s \u2014 flameZ (T) used Molotov\n    0.8s \u2014 yuurih (CT) used Incendiary Grenade\n    1.6s \u2014 yuurih (CT) used Smoke Grenade\n    4.7s \u2014 FalleN (CT) used Smoke Grenade\n    5.4s \u2014 YEKINDAR (CT) used Smoke Grenade\n    6.0s \u2014 Bomb dropped\n    6.4s \u2014 FalleN (CT) used Incendiary Grenade\n    6.6s \u2014 apEX (T) used Smoke Grenade\n    6.8s \u2014 YEKINDAR (CT) used Incendiary Grenade\n    7.6s \u2014 ropz (T) used Molotov\n    7.8s \u2014 KSCERATO (CT) used High Explosive Grenade\n\nCURRENT STATE:\n  Alive: 5T vs 5CT\n  Bomb: dropped\n  POV: yuurih (CT), 100hp/97armor, M4A4, utility: High Explosive Grenade, Flashbang\n  Teammates alive: KSCERATO (100hp, AK-47), FalleN (100hp, M4A1-S), molodoy (100hp, AWP), YEKINDAR (100hp, M4A1-S)",
+        "prior_screenshots": [
+          "overpass_r11_t079133_yuurih",
+          "overpass_r11_t079325_yuurih"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m4-overpass.dem",
+          "tick": 79517,
+          "round_num": 11,
+          "screenshot_id": "overpass_r11_t079517_yuurih",
+          "pov_player": "yuurih",
+          "pov_side": "ct",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_mirage",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 100,
+              "player_armor": 97,
+              "player_has_helmet": true,
+              "player_money": 4050,
+              "weapon_primary": null,
+              "weapon_secondary": "Glock-18",
+              "utility": [],
+              "has_defuser": false,
+              "alive_teammates": 4,
+              "alive_enemies": 5,
+              "bomb_status": "carried",
+              "score_t": 5,
+              "score_ct": 5
+            },
+            "analysis": {
+              "situation_summary": "5v4 disadvantage, bomb carried by enemy",
+              "immediate_threats": [
+                "Multiple enemies nearby",
+                "Outnumbered 5v4"
+              ],
+              "recommended_action": "Play defensively, avoid unnecessary fights, wait for teammate support",
+              "economy_assessment": "Full buy - good economy"
+            }
+          },
+          "matches": 9,
+          "total": 13
+        }
+      }
+    },
+    {
+      "id": "inferno_r04_t028949_apEX",
+      "image": "/workspace/chimera-data/captures/furia-vs-vitality-m2-inferno/raw/inferno_r04_t028949_apEX.jpg",
+      "label": {
+        "game_state": {
+          "map_name": "de_inferno",
+          "round_num": 4,
+          "round_phase": "playing",
+          "player_name": "apEX",
+          "player_side": "T",
+          "player_health": 92,
+          "player_armor": 100,
+          "player_has_helmet": true,
+          "player_money": 1550,
+          "weapon_primary": "AK-47",
+          "weapon_secondary": "Glock-18",
+          "utility": [
+            "Flashbang"
+          ],
+          "has_defuser": false,
+          "alive_teammates": 2,
+          "alive_enemies": 2,
+          "bomb_status": "carried",
+          "score_t": 3,
+          "score_ct": 0
+        },
+        "teammates": [
+          {
+            "name": "flameZ",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "mezii",
+            "alive": false,
+            "health": 0
+          },
+          {
+            "name": "ZywOo",
+            "alive": true,
+            "health": 4
+          },
+          {
+            "name": "ropz",
+            "alive": true,
+            "health": 100
+          }
+        ],
+        "context": "Round 4 | T 3 - 0 CT | de_inferno\nRound time: 72s\n\nECONOMY (round start):\n  T-side: full-buy (~$19,500)\n  CT-side: full-buy (~$21,850)\n\nROUND EVENTS:\n    0.0s \u2014 Bomb dropped\n    0.0s \u2014 YEKINDAR (CT) used Flashbang\n    0.0s \u2014 KSCERATO (CT) used Smoke Grenade\n    0.5s \u2014 FalleN (CT) used Smoke Grenade\n    4.3s \u2014 mezii (T) used Flashbang\n    5.2s \u2014 Bomb dropped\n    7.4s \u2014 ropz (T) used Molotov\n    8.1s \u2014 YEKINDAR (CT) used Smoke Grenade\n    9.0s \u2014 mezii (T) used Molotov\n    9.1s \u2014 flameZ (T) used Molotov\n    9.5s \u2014 FalleN (CT) used Flashbang\n   11.1s \u2014 mezii (T) used High Explosive Grenade\n   11.5s \u2014 mezii (T) eliminated\n   11.5s \u2014 mezii (T) used Smoke Grenade\n   12.5s \u2014 yuurih (CT) used Incendiary Grenade\n   12.5s \u2014 FalleN (CT) used High Explosive Grenade\n   13.4s \u2014 YEKINDAR (CT) used High Explosive Grenade\n   14.4s \u2014 molodoy (CT) used Incendiary Grenade\n   16.5s \u2014 molodoy (CT) used High Explosive Grenade\n   19.1s \u2014 YEKINDAR (CT) eliminated\n   19.1s \u2014 YEKINDAR (CT) used Incendiary Grenade\n   22.7s \u2014 apEX (T) used Flashbang\n   23.8s \u2014 FalleN (CT) used Incendiary Grenade\n   28.8s \u2014 FalleN (CT) used Smoke Grenade\n   29.2s \u2014 ropz (T) used Smoke Grenade\n   34.8s \u2014 KSCERATO (CT) used High Explosive Grenade\n   58.9s \u2014 FalleN (CT) eliminated\n   59.9s \u2014 flameZ (T) eliminated\n   59.9s \u2014 flameZ (T) used Smoke Grenade\n   59.9s \u2014 flameZ (T) used Flashbang\n   60.6s \u2014 yuurih (CT) used Smoke Grenade\n   60.8s \u2014 apEX (T) used High Explosive Grenade\n   61.5s \u2014 ZywOo (T) used High Explosive Grenade\n   62.2s \u2014 KSCERATO (CT) used Incendiary Grenade\n   62.2s \u2014 apEX (T) used Molotov\n   63.2s \u2014 KSCERATO (CT) eliminated\n   63.2s \u2014 KSCERATO (CT) used Flashbang\n   65.2s \u2014 ZywOo (T) used Smoke Grenade\n   66.5s \u2014 apEX (T) used Smoke Grenade\n\nCURRENT STATE:\n  Alive: 3T vs 2CT\n  Bomb: carried\n  POV: apEX (T), 92hp/100armor, AK-47, utility: Flashbang\n  Teammates alive: ZywOo (4hp, AK-47), ropz (100hp, AK-47)\n  Teammates dead: flameZ, mezii",
+        "prior_screenshots": [
+          "inferno_r04_t028565_apEX",
+          "inferno_r04_t028757_apEX"
+        ],
+        "metadata": {
+          "demo_file": "furia-vs-vitality-m2-inferno.dem",
+          "tick": 28949,
+          "round_num": 4,
+          "screenshot_id": "inferno_r04_t028949_apEX",
+          "pov_player": "apEX",
+          "pov_side": "t",
+          "capture_reason": "sample"
+        }
+      },
+      "predictions": {
+        "Qwen": {
+          "output": {
+            "game_state": {
+              "map_name": "de_mirage",
+              "round_phase": "playing",
+              "player_side": "CT",
+              "player_health": 92,
+              "player_armor": 100,
+              "player_has_helmet": true,
+              "player_money": 1550,
+              "weapon_primary": "AK-47",
+              "weapon_secondary": "USP-S",
+              "utility": [
+                "flashbang",
+                "smoke grenade"
+              ],
+              "has_defuser": false,
+              "alive_teammates": 2,
+              "alive_enemies": 3,
+              "bomb_status": "dropped",
+              "score_t": 0,
+              "score_ct": 3
+            },
+            "analysis": {
+              "situation_summary": "3v4 disadvantage - numerically outmatched. No bomb threat. Team economy is strong with 3 players armed.",
+              "recommended_action": "Play cautiously and look for isolated targets. With 3 enemies remaining, avoid 1v3 scenarios. Coordinate with 2 teammates to create numerical advantages.",
+              "economy_assessment": "eco",
+              "round_importance": "low"
+            }
+          },
+          "matches": 6,
+          "total": 13
+        }
+      }
+    }
+  ]
+}
