@@ -18,6 +18,15 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F07 — Evaluation & analysis
 
 ## What changed this session (2026-04-08)
+- SFT re-training completed on H200 — checkpoint-304 (full epoch)
+  - Resumed from checkpoint-150 (HuggingFace), ran to step 304/304 on 1x H200
+  - Final: train loss 0.573, eval loss 0.614, token accuracy 84.8%
+  - Eval on 10 samples (seed=42): 74.7% field accuracy — matches original run
+  - LoRA adapters saved: checkpoints 250, 300, 304 in git AND HuggingFace
+  - Merged model deferred (pod disk quota issues on both H100 and H200)
+  - To merge: PeftModel.from_pretrained(base, ckpt-304).merge_and_unload()
+  - OOM on H100 at step 200 (80GB not enough for some long sequences)
+  - H200 (144GB) ran without issues; merge OOM'd due to 100GB volume quota
 - F05b GRPO smoke test PASSED — manual GRPO loop bypassing TRL multimodal bug
   - Built train_manual() in grpo_trainer.py: full GRPO loop without TRL
     - Sequential generation (avoids TRL prompt repetition crash on Qwen3-VL)
