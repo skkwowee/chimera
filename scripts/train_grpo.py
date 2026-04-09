@@ -44,6 +44,8 @@ from src.training import (
     CS2GRPOTrainer,
     convert_labeled_to_grpo_format,
     create_grpo_dataset,
+    perceptual_accuracy_reward,
+    recall_reward,
 )
 from src.utils.config import DEFAULT_MODEL_NAME
 
@@ -57,11 +59,9 @@ REWARD_MODES = {
         "description": "2-signal: R_percept (0.20) + R_outcome_simple (0.80)",
     },
     "recall": {
-        # Placeholder — R_RECALL will be added when recall.py is ready.
-        # For now, falls back to simplified.
-        "functions": SIMPLIFIED_REWARD_FUNCTIONS,
-        "weights": SIMPLIFIED_REWARD_WEIGHTS,
-        "description": "2-signal: R_percept + R_RECALL (pending recall.py)",
+        "functions": [perceptual_accuracy_reward, recall_reward],
+        "weights": [0.20, 0.80],
+        "description": "2-signal: R_percept (0.20) + R_RECALL (0.80)",
     },
     "legacy": {
         "functions": REWARD_FUNCTIONS,
@@ -429,6 +429,10 @@ def main():
 
     # Prepare data for trainer
     trainer.prepare_data(train_data, val_data)
+
+    # Build RECALL index if using recall reward mode
+    if args.reward_mode == "recall":
+        trainer.build_recall_index(train_data)
 
     # Evaluation only
     if args.eval_only:

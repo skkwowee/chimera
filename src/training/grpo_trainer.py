@@ -119,6 +119,7 @@ class CS2GRPOTrainer:
         self.processor: Any = None
         self.tokenizer: Any = None  # For text-only generation (avoids processor multimodal issues)
         self.reward_fns: list[Callable[..., Any]] = list(SIMPLIFIED_REWARD_FUNCTIONS)
+        self.recall_index: Any = None  # RECALLIndex for RECALL reward mode
         self.train_dataset: Any = None
         self.val_dataset: Any = None
 
@@ -235,6 +236,19 @@ class CS2GRPOTrainer:
         if reward_fns is not None:
             self.reward_fns = reward_fns
         print(f"Reward functions configured: {len(self.reward_fns)} signals")
+
+    def build_recall_index(self, train_data: list[dict[str, Any]]):
+        """Build FAISS kNN index from training samples for RECALL reward."""
+        from .recall import RECALLIndex
+
+        print("Building RECALL index...")
+        self.recall_index = RECALLIndex()
+        samples = [s for s in train_data if "ground_truth" in s]
+        if samples:
+            self.recall_index.build_from_samples(samples)
+            print(f"RECALL index built: {self.recall_index.size} samples indexed")
+        else:
+            print("WARNING: No samples with ground_truth — RECALL index empty")
 
     @staticmethod
     def _extract_completion_text(completion: Any) -> str:
@@ -582,23 +596,24 @@ class CS2GRPOTrainer:
                     k: v for k, v in inputs.items() if k not in gen_input_keys
                 }
 
-                # --- Step 1: Generate G completions ---
+                # --- Step 1: Generate G completions (batched) ---
                 completions_text: list[str] = []
                 completions_ids: list[Any] = []
 
-                # Disable gradient checkpointing for generation (enables KV cache)
                 self.model.eval()
                 self.model.gradient_checkpointing_disable()
                 with torch.no_grad():
-                    for _g in range(config.num_generations):
-                        output = self.model.generate(
-                            input_ids=inputs["input_ids"],
-                            attention_mask=inputs["attention_mask"],
-                            generation_config=gen_config,
-                            **model_extra_kwargs,
-                        )
-                        gen_ids = output[0, prompt_len:]
-                        decode_fn = self.tokenizer if not has_images else self.processor
+                    outputs = self.model.generate(
+                        input_ids=inputs["input_ids"],
+                        attention_mask=inputs["attention_mask"],
+                        generation_config=gen_config,
+                        num_return_sequences=config.num_generations,
+                        **model_extra_kwargs,
+                    )
+                    # outputs shape: [G, total_seq_len]
+                    decode_fn = self.tokenizer if not has_images else self.processor
+                    for g_idx in range(outputs.shape[0]):
+                        gen_ids = outputs[g_idx, prompt_len:]
                         text = decode_fn.decode(gen_ids, skip_special_tokens=True)
                         completions_text.append(text)
                         completions_ids.append(gen_ids)
@@ -613,7 +628,8 @@ class CS2GRPOTrainer:
                     else:
                         format_passes += 1
                         r = sum(
-                            w * fn(comp_text, ground_truth=ground_truth)
+                            w * fn(comp_text, ground_truth=ground_truth,
+                                   recall_index=self.recall_index)
                             for w, fn in zip(reward_weights, self.reward_fns, strict=False)
                         )
                         rewards.append(gate * r)

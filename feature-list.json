@@ -44,8 +44,8 @@
   {
     "id": "F05c",
     "name": "RECALL — Retrieval-based advantage estimation",
-    "description": "kNN retrieval over tactical game state embeddings to compute counterfactual outcome rewards during GRPO training. Encode states as ~25-dim vectors, index in FAISS, retrieve K neighbors, compute advantage A(s,a) = Q̂(s,a) - V̂(s). Replaces R_decision and R_outcome as primary strategy signal. Implementation: src/training/recall.py.",
-    "passes": false
+    "description": "kNN retrieval over tactical game state embeddings to compute counterfactual outcome rewards during GRPO training. Encode states as ~19-dim vectors, index in FAISS, retrieve K=32 neighbors, compute advantage A(s,a) = Q̂(s,a) - V̂(s). Wired into GRPO trainer via --reward-mode recall (R_percept 0.20 + R_RECALL 0.80). Tested: 2013 samples indexed, 20% non-zero advantage signal. Implementation: src/training/recall.py + grpo_trainer.py build_recall_index().",
+    "passes": true
   },
   {
     "id": "F06",

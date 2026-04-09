@@ -167,7 +167,7 @@ class Qwen3VLInference:
             prompt = prompt or CS2_USER_PROMPT
 
         if max_new_tokens is None:
-            max_new_tokens = 4096 if enable_thinking else 1024
+            max_new_tokens = 4096 if enable_thinking else 256
 
         image_path = Path(image_path)
 

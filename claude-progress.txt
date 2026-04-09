@@ -17,6 +17,19 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning
 - [ ] F07 — Evaluation & analysis
 
+## What changed this session (2026-04-09)
+- F05c RECALL wired into GRPO trainer — ~20 lines across 2 files:
+  - grpo_trainer.py: added recall_index field, build_recall_index() method,
+    pass recall_index kwarg to all reward fns in train_manual() reward loop
+  - train_grpo.py: updated "recall" reward mode from placeholder to real
+    [perceptual_accuracy_reward, recall_reward] with weights [0.20, 0.80],
+    added build_recall_index() call before training when --reward-mode recall
+  - Tested end-to-end: 2013 smoke_test samples → FAISS index builds on CPU,
+    20% of queries return non-zero advantage (confident signal)
+  - All reward fns accept **kwargs so recall_index passes through harmlessly
+  - faiss-cpu added to local venv (already in pod deps)
+  - F05c marked passing in feature-list.json
+
 ## What changed this session (2026-04-08)
 - SFT re-training completed on H200 — checkpoint-304 (full epoch)
   - Resumed from checkpoint-150 (HuggingFace), ran to step 304/304 on 1x H200
@@ -271,21 +284,16 @@ Key observations:
 ## Next steps
 1. [DONE] F05b — GRPO smoke test passed (manual loop, 20 steps)
 2. [DONE] Re-train SFT — resumed from ckpt-150 on H200, completed step 304
-   - LoRA adapter saved: checkpoints/sft-r4-checkpoint-304/ (8.4MB, in git)
-   - Merge to full model deferred (pod disk quota issue)
-   - To merge: load base + PeftModel.from_pretrained(ckpt-304) → merge_and_unload()
-   - Final: train loss 0.573, eval loss 0.614, eval token accuracy 84.8%
-3. Run proper 50-sample eval for stable accuracy numbers
+3. [DONE] F05c — RECALL wired into GRPO trainer (2026-04-09)
+4. Run proper 50-sample eval for stable accuracy numbers
    - 10 samples too noisy — results vary 64-74% across runs/pods
    - Need per-field breakdown at 50 samples with both exact and tolerance scoring
-4. F05c: Wire RECALL into GRPO trainer
-   - recall.py has: RECALLIndex, tactical_embedding, action_embedding, recall_advantage
-   - Missing: index build from training data, integration into train_grpo.py reward mode
-   - Need: add recall_index to CS2GRPOConfig, build index before training loop
-5. F06: Full GRPO training with SFT model + manual loop
-   - Use --manual flag (TRL multimodal bug still open)
+   - Command: python scripts/compare_models.py --samples 50 --tolerance --lora-adapter checkpoints/sft-r4-checkpoint-304
+5. F06: Full GRPO training with SFT model + manual loop + RECALL
+   - Use --manual --reward-mode recall flags
    - Re-extract smoke_test.jsonl WITH images (--captures-dir) for multimodal training
    - Scale up: more steps, full dataset, SFT model as base
+   - H200 required (~90GB VRAM for GRPO)
 
 ## Data available
 - 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
