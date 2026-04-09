@@ -1,0 +1,301 @@
+2026-04-09 01:11:34 [INFO] sft: Log file: /workspace/outputs/sft/train_20260409_011134.log
+2026-04-09 01:11:34 [INFO] sft: Args: {'dataset': 'data/sft_dataset.json', 'screenshots': 'data/raw', 'labels': 'data/labeled', 'output': '/workspace/outputs/sft', 'train_ratio': 0.9, 'model_name': 'Qwen/Qwen3.5-35B-A3B', 'dtype': 'bfloat16', 'no_lora': False, 'lora_r': 4, 'lora_alpha': 8, 'lora_dropout': 0.1, 'epochs': 1, 'batch_size': 1, 'gradient_accumulation': 8, 'lr': 1e-05, 'warmup_ratio': 0.1, 'max_seq_length': 2048, 'no_finetune_vision': False, 'resume': '/workspace/chimera-data/checkpoints/sft-r4-checkpoint-150', 'save_steps': 50, 'logging_steps': 5, 'save_merged': True, 'no_save_merged': False, 'benchmark': None, 'dry_run': False, 'eval_only': False, 'wandb': False, 'seed': 42}
+============================================================
+CS2 SFT Training
+============================================================
+Model: Qwen/Qwen3.5-35B-A3B
+LoRA: True
+  - rank: 4
+  - alpha: 8
+Vision layers: trainable
+Max seq length: 2048
+Save merged: True
+Output: /workspace/outputs/sft
+
+Loading data...
+Loaded 3322 records from data/sft_dataset.json
+Train: 2427 samples
+Val: 267 samples
+
+Prepared 2427 training samples
+Prepared 267 validation samples
+2026-04-09 01:11:36 [INFO] sft: Starting training...
+2026-04-09 01:11:36 [INFO] sft:   GPU 0: NVIDIA H200 (139.8 GB)
+Loading Qwen/Qwen3.5-35B-A3B...
+  Finetune vision layers: True
+  LoRA: True
+2026-04-09 01:11:39 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-04-09 01:11:39 [WARNING] huggingface_hub.utils._http: Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-04-09 01:11:39 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+2026-04-09 01:11:39 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/adapter_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:11:39 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:11:39 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+2026-04-09 01:11:39 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/model.safetensors "HTTP/1.1 404 Not Found"
+2026-04-09 01:11:40 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/model.safetensors.index.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:11:40 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/model.safetensors.index.json "HTTP/1.1 200 OK"
+2026-04-09 01:11:40 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3.5-35B-A3B/revision/main "HTTP/1.1 200 OK"
+Fetching 14 files:   0%|          | 0/14 [00:00<?, ?it/s]Fetching 14 files: 100%|██████████| 14/14 [00:00<00:00, 11927.74it/s]
+The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+Loading weights:   0%|          | 0/1026 [00:00<?, ?it/s]Loading weights:   0%|          | 2/1026 [00:00<01:48,  9.46it/s]Loading weights:   1%|▏         | 13/1026 [00:00<00:20, 48.80it/s]Loading weights:   2%|▏         | 20/1026 [00:00<00:34, 28.88it/s]Loading weights:   3%|▎         | 32/1026 [00:02<01:28, 11.23it/s]Loading weights:   5%|▍         | 49/1026 [00:02<00:45, 21.37it/s]Loading weights:   6%|▌         | 57/1026 [00:03<00:58, 16.53it/s]Loading weights:   6%|▌         | 63/1026 [00:04<01:36,  9.96it/s]Loading weights:   8%|▊         | 82/1026 [00:06<01:26, 10.95it/s]Loading weights:  10%|▉         | 101/1026 [00:06<00:54, 16.86it/s]Loading weights:  12%|█▏        | 118/1026 [00:06<00:37, 24.48it/s]Loading weights:  12%|█▏        | 127/1026 [00:07<00:42, 20.93it/s]Loading weights:  13%|█▎        | 134/1026 [00:07<00:38, 22.92it/s]Loading weights:  15%|█▍        | 152/1026 [00:07<00:27, 31.25it/s]Loading weights:  17%|█▋        | 170/1026 [00:08<00:22, 38.55it/s]Loading weights:  18%|█▊        | 187/1026 [00:09<00:45, 18.38it/s]Loading weights:  19%|█▉        | 196/1026 [00:11<01:07, 12.28it/s]Loading weights:  21%|██▏       | 220/1026 [00:11<00:38, 20.67it/s]Loading weights:  22%|██▏       | 229/1026 [00:13<00:52, 15.26it/s]Loading weights:  23%|██▎       | 238/1026 [00:13<00:42, 18.44it/s]Loading weights:  24%|██▍       | 245/1026 [00:13<00:51, 15.26it/s]Loading weights:  25%|██▌       | 257/1026 [00:14<00:39, 19.45it/s]Loading weights:  26%|██▌       | 265/1026 [00:14<00:35, 21.25it/s]Loading weights:  28%|██▊       | 289/1026 [00:16<00:44, 16.45it/s]Loading weights:  30%|██▉       | 307/1026 [00:16<00:30, 23.62it/s]Loading weights:  31%|███       | 314/1026 [00:18<00:58, 12.20it/s]Loading weights:  32%|███▏      | 326/1026 [00:20<01:16,  9.14it/s]Loading weights:  33%|███▎      | 334/1026 [00:20<01:03, 10.82it/s]Loading weights:  35%|███▍      | 358/1026 [00:20<00:33, 19.75it/s]Loading weights:  36%|███▌      | 367/1026 [00:21<00:36, 18.25it/s]Loading weights:  37%|███▋      | 377/1026 [00:23<00:58, 11.17it/s]Loading weights:  38%|███▊      | 395/1026 [00:25<01:05,  9.57it/s]Loading weights:  39%|███▉      | 404/1026 [00:27<01:12,  8.58it/s]Loading weights:  42%|████▏     | 427/1026 [00:27<00:40, 14.80it/s]Loading weights:  42%|████▏     | 435/1026 [00:30<01:14,  7.99it/s]Loading weights:  43%|████▎     | 445/1026 [00:30<00:56, 10.28it/s]Loading weights:  44%|████▍     | 452/1026 [00:31<01:05,  8.82it/s]Loading weights:  45%|████▌     | 464/1026 [00:32<00:47, 11.92it/s]Loading weights:  46%|████▌     | 473/1026 [00:35<01:22,  6.70it/s]Loading weights:  48%|████▊     | 496/1026 [00:35<00:42, 12.48it/s]Loading weights:  49%|████▉     | 503/1026 [00:36<00:46, 11.34it/s]Loading weights:  50%|█████     | 514/1026 [00:36<00:33, 15.10it/s]Loading weights:  51%|█████     | 521/1026 [00:37<00:45, 10.98it/s]Loading weights:  52%|█████▏    | 532/1026 [00:37<00:32, 14.98it/s]Loading weights:  52%|█████▏    | 538/1026 [00:39<00:48, 10.05it/s]Loading weights:  53%|█████▎    | 543/1026 [00:39<00:44, 10.87it/s]Loading weights:  55%|█████▌    | 565/1026 [00:39<00:20, 22.39it/s]Loading weights:  56%|█████▌    | 574/1026 [00:40<00:24, 18.70it/s]Loading weights:  57%|█████▋    | 583/1026 [00:40<00:19, 23.26it/s]Loading weights:  58%|█████▊    | 590/1026 [00:40<00:18, 23.90it/s]Loading weights:  59%|█████▊    | 601/1026 [00:40<00:13, 31.15it/s]Loading weights:  59%|█████▉    | 608/1026 [00:41<00:19, 21.42it/s]Loading weights:  60%|█████▉    | 613/1026 [00:42<00:27, 15.05it/s]Loading weights:  62%|██████▏   | 634/1026 [00:42<00:13, 28.55it/s]Loading weights:  62%|██████▏   | 641/1026 [00:43<00:25, 15.20it/s]Loading weights:  64%|██████▎   | 652/1026 [00:43<00:18, 20.27it/s]Loading weights:  64%|██████▍   | 658/1026 [00:44<00:17, 20.91it/s]Loading weights:  65%|██████▌   | 671/1026 [00:45<00:24, 14.56it/s]Loading weights:  66%|██████▌   | 679/1026 [00:45<00:22, 15.63it/s]Loading weights:  77%|███████▋  | 785/1026 [00:45<00:02, 83.44it/s]Loading weights:  86%|████████▌ | 881/1026 [00:46<00:00, 157.82it/s]Loading weights:  96%|█████████▋| 988/1026 [00:46<00:00, 255.68it/s]Loading weights: 100%|██████████| 1026/1026 [00:46<00:00, 22.21it/s]
+2026-04-09 01:12:29 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/generation_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:29 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/generation_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:29 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3.5-35B-A3B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/chat_template.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/chat_template.jinja "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:30 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/chat_template.jinja "HTTP/1.1 200 OK"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/audio_tokenizer_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:31 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/tokenizer_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3.5-35B-A3B/tree/main/additional_chat_templates?recursive=false&expand=false "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3.5-35B-A3B/tree/main?recursive=true&expand=false "HTTP/1.1 200 OK"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/tokenizer.model "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:32 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/added_tokens.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:33 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/special_tokens_map.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:34 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Qwen/Qwen3.5-35B-A3B "HTTP/1.1 200 OK"
+2026-04-09 01:12:34 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:34 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/video_preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:34 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/video_preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:34 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:34 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/processor_config.json "HTTP/1.1 404 Not Found"
+2026-04-09 01:12:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/video_preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/video_preprocessor_config.json "HTTP/1.1 200 OK"
+2026-04-09 01:12:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/preprocessor_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:12:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/preprocessor_config.json "HTTP/1.1 200 OK"
+trainable params: 2,088,960 || all params: 35,109,270,896 || trainable%: 0.0059
+Model loaded | vision encoder: True
+GPU memory: 65.40GB allocated, 65.45GB reserved
+Configuring SFT trainer...
+  Max sequence length: 2048
+  Vision layers: trainable
+warmup_ratio is deprecated and will be removed in v5.2. Use `warmup_steps` instead.
+Starting SFT training...
+GPU memory: 65.40GB allocated, 65.45GB reserved
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 248046, 'bos_token_id': None, 'pad_token_id': 248044}.
+  0%|          | 0/304 [00:00<?, ?it/s] 50%|████▉     | 151/304 [00:46<00:47,  3.25it/s] 50%|█████     | 152/304 [01:20<01:34,  1.60it/s] 50%|█████     | 153/304 [01:54<02:40,  1.06s/it] 51%|█████     | 154/304 [02:28<04:10,  1.67s/it] 51%|█████     | 155/304 [03:02<06:14,  2.51s/it]                                                 {'loss': '0.9562', 'grad_norm': '0.2056', 'learning_rate': '5.495e-06', 'entropy': '1.791', 'num_tokens': '7.003e+04', 'mean_token_accuracy': '0.7649', 'epoch': '0.5109'}
+ 51%|█████     | 155/304 [03:02<06:14,  2.51s/it] 51%|█████▏    | 156/304 [03:37<09:00,  3.65s/it] 52%|█████▏    | 157/304 [04:11<12:33,  5.13s/it] 52%|█████▏    | 158/304 [04:45<17:02,  7.00s/it] 52%|█████▏    | 159/304 [05:19<22:31,  9.32s/it] 53%|█████▎    | 160/304 [05:54<28:47, 12.00s/it]                                                 {'loss': '0.9342', 'grad_norm': '0.1904', 'learning_rate': '5.311e-06', 'entropy': '1.777', 'num_tokens': '1.403e+05', 'mean_token_accuracy': '0.7717', 'epoch': '0.5274'}
+ 53%|█████▎    | 160/304 [05:54<28:47, 12.00s/it] 53%|█████▎    | 161/304 [06:28<35:33, 14.92s/it] 53%|█████▎    | 162/304 [07:01<42:29, 17.96s/it] 54%|█████▎    | 163/304 [07:35<49:00, 20.85s/it] 54%|█████▍    | 164/304 [08:09<54:56, 23.54s/it] 54%|█████▍    | 165/304 [08:42<59:52, 25.85s/it]                                                 {'loss': '0.8959', 'grad_norm': '0.1922', 'learning_rate': '5.128e-06', 'entropy': '1.771', 'num_tokens': '2.105e+05', 'mean_token_accuracy': '0.7816', 'epoch': '0.5439'}
+ 54%|█████▍    | 165/304 [08:42<59:52, 25.85s/it] 55%|█████▍    | 166/304 [09:16<1:03:46, 27.73s/it] 55%|█████▍    | 167/304 [09:50<1:06:58, 29.33s/it] 55%|█████▌    | 168/304 [10:23<1:08:47, 30.35s/it] 56%|█████▌    | 169/304 [10:56<1:10:01, 31.12s/it] 56%|█████▌    | 170/304 [11:29<1:11:03, 31.82s/it]                                                   {'loss': '0.8787', 'grad_norm': '0.1982', 'learning_rate': '4.945e-06', 'entropy': '1.78', 'num_tokens': '2.806e+05', 'mean_token_accuracy': '0.7841', 'epoch': '0.5604'}
+ 56%|█████▌    | 170/304 [11:29<1:11:03, 31.82s/it] 56%|█████▋    | 171/304 [12:03<1:11:40, 32.33s/it] 57%|█████▋    | 172/304 [12:37<1:12:26, 32.93s/it] 57%|█████▋    | 173/304 [13:11<1:12:32, 33.23s/it] 57%|█████▋    | 174/304 [13:45<1:12:19, 33.38s/it] 58%|█████▊    | 175/304 [14:18<1:11:51, 33.42s/it]                                                   {'loss': '0.8589', 'grad_norm': '0.1891', 'learning_rate': '4.762e-06', 'entropy': '1.774', 'num_tokens': '3.508e+05', 'mean_token_accuracy': '0.7916', 'epoch': '0.5768'}
+ 58%|█████▊    | 175/304 [14:18<1:11:51, 33.42s/it] 58%|█████▊    | 176/304 [14:52<1:11:34, 33.55s/it] 58%|█████▊    | 177/304 [15:26<1:11:15, 33.66s/it] 59%|█████▊    | 178/304 [16:00<1:10:35, 33.62s/it] 59%|█████▉    | 179/304 [16:33<1:09:53, 33.55s/it] 59%|█████▉    | 180/304 [17:06<1:09:11, 33.48s/it]                                                   {'loss': '0.8471', 'grad_norm': '0.1897', 'learning_rate': '4.579e-06', 'entropy': '1.752', 'num_tokens': '4.21e+05', 'mean_token_accuracy': '0.7953', 'epoch': '0.5933'}
+ 59%|█████▉    | 180/304 [17:06<1:09:11, 33.48s/it] 60%|█████▉    | 181/304 [17:40<1:08:38, 33.48s/it] 60%|█████▉    | 182/304 [18:13<1:08:01, 33.45s/it] 60%|██████    | 183/304 [18:46<1:07:12, 33.33s/it] 61%|██████    | 184/304 [19:20<1:06:49, 33.41s/it] 61%|██████    | 185/304 [19:53<1:06:16, 33.41s/it]                                                   {'loss': '0.8268', 'grad_norm': '0.1958', 'learning_rate': '4.396e-06', 'entropy': '1.759', 'num_tokens': '4.911e+05', 'mean_token_accuracy': '0.8014', 'epoch': '0.6098'}
+ 61%|██████    | 185/304 [19:53<1:06:16, 33.41s/it] 61%|██████    | 186/304 [20:27<1:05:55, 33.52s/it] 62%|██████▏   | 187/304 [21:00<1:05:15, 33.47s/it] 62%|██████▏   | 188/304 [21:34<1:04:49, 33.53s/it] 62%|██████▏   | 189/304 [22:08<1:04:21, 33.58s/it] 62%|██████▎   | 190/304 [22:42<1:04:23, 33.89s/it]                                                   {'loss': '0.7905', 'grad_norm': '0.1972', 'learning_rate': '4.212e-06', 'entropy': '1.758', 'num_tokens': '5.612e+05', 'mean_token_accuracy': '0.809', 'epoch': '0.6263'}
+ 62%|██████▎   | 190/304 [22:42<1:04:23, 33.89s/it] 63%|██████▎   | 191/304 [23:17<1:04:23, 34.19s/it] 63%|██████▎   | 192/304 [23:52<1:04:05, 34.33s/it] 63%|██████▎   | 193/304 [24:26<1:03:34, 34.37s/it] 64%|██████▍   | 194/304 [25:01<1:02:53, 34.30s/it] 64%|██████▍   | 195/304 [25:34<1:01:46, 34.00s/it]                                                   {'loss': '0.7914', 'grad_norm': '0.1915', 'learning_rate': '4.029e-06', 'entropy': '1.75', 'num_tokens': '6.313e+05', 'mean_token_accuracy': '0.8055', 'epoch': '0.6428'}
+ 64%|██████▍   | 195/304 [25:34<1:01:46, 34.00s/it] 64%|██████▍   | 196/304 [26:07<1:00:44, 33.75s/it] 65%|██████▍   | 197/304 [26:40<59:53, 33.59s/it]   65%|██████▌   | 198/304 [27:15<59:42, 33.80s/it] 65%|██████▌   | 199/304 [27:48<59:02, 33.74s/it] 66%|██████▌   | 200/304 [28:22<58:28, 33.73s/it]                                                 {'loss': '0.775', 'grad_norm': '0.1856', 'learning_rate': '3.846e-06', 'entropy': '1.726', 'num_tokens': '7.015e+05', 'mean_token_accuracy': '0.813', 'epoch': '0.6593'}
+ 66%|██████▌   | 200/304 [28:22<58:28, 33.73s/it]
+  0%|          | 0/34 [00:00<?, ?it/s][A
+  6%|▌         | 2/34 [00:02<00:40,  1.25s/it][A
+  9%|▉         | 3/34 [00:05<00:59,  1.92s/it][A
+ 12%|█▏        | 4/34 [00:08<01:15,  2.52s/it][A
+ 15%|█▍        | 5/34 [00:11<01:16,  2.64s/it][A
+ 18%|█▊        | 6/34 [00:14<01:16,  2.72s/it][A
+ 21%|██        | 7/34 [00:17<01:14,  2.77s/it][A
+ 24%|██▎       | 8/34 [00:20<01:13,  2.81s/it][A
+ 26%|██▋       | 9/34 [00:23<01:08,  2.76s/it][A
+ 29%|██▉       | 10/34 [00:26<01:08,  2.84s/it][A
+ 32%|███▏      | 11/34 [00:28<01:04,  2.82s/it][A
+ 35%|███▌      | 12/34 [00:31<01:02,  2.82s/it][A
+ 38%|███▊      | 13/34 [00:34<00:59,  2.83s/it][A
+ 41%|████      | 14/34 [00:37<00:55,  2.78s/it][A
+ 44%|████▍     | 15/34 [00:39<00:52,  2.76s/it][A
+ 47%|████▋     | 16/34 [00:43<00:53,  2.96s/it][A
+ 50%|█████     | 17/34 [00:45<00:48,  2.86s/it][A
+ 53%|█████▎    | 18/34 [00:48<00:45,  2.82s/it][A
+ 56%|█████▌    | 19/34 [00:51<00:41,  2.78s/it][A
+ 59%|█████▉    | 20/34 [00:54<00:39,  2.80s/it][A
+ 62%|██████▏   | 21/34 [00:56<00:35,  2.72s/it][A
+ 65%|██████▍   | 22/34 [00:59<00:33,  2.76s/it][A
+ 68%|██████▊   | 23/34 [01:02<00:31,  2.83s/it][A
+ 71%|███████   | 24/34 [01:05<00:27,  2.79s/it][A
+ 74%|███████▎  | 25/34 [01:08<00:25,  2.79s/it][A
+ 76%|███████▋  | 26/34 [01:10<00:22,  2.80s/it][A
+ 79%|███████▉  | 27/34 [01:13<00:19,  2.79s/it][A
+ 82%|████████▏ | 28/34 [01:16<00:16,  2.74s/it][A
+ 85%|████████▌ | 29/34 [01:19<00:13,  2.79s/it][A
+ 88%|████████▊ | 30/34 [01:22<00:11,  2.86s/it][A
+ 91%|█████████ | 31/34 [01:24<00:08,  2.80s/it][A
+ 94%|█████████▍| 32/34 [01:28<00:05,  2.92s/it][A
+ 97%|█████████▋| 33/34 [01:30<00:02,  2.65s/it][A
+100%|██████████| 34/34 [01:31<00:00,  2.16s/it][A                                                 
+                                               [A{'eval_loss': '0.7596', 'eval_runtime': '95.27', 'eval_samples_per_second': '2.803', 'eval_steps_per_second': '0.357', 'eval_entropy': '1.731', 'eval_num_tokens': '7.015e+05', 'eval_mean_token_accuracy': '0.8146', 'epoch': '0.6593'}
+ 66%|██████▌   | 200/304 [29:57<58:28, 33.73s/it]
+100%|██████████| 34/34 [01:31<00:00,  2.16s/it][A
+                                               [A2026-04-09 01:42:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 01:42:35 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+ 66%|██████▌   | 201/304 [30:32<1:47:27, 62.60s/it] 66%|██████▋   | 202/304 [31:05<1:31:30, 53.82s/it] 67%|██████▋   | 203/304 [31:39<1:20:20, 47.73s/it] 67%|██████▋   | 204/304 [32:12<1:12:32, 43.52s/it] 67%|██████▋   | 205/304 [32:46<1:06:52, 40.53s/it]                                                   {'loss': '0.7494', 'grad_norm': '0.1939', 'learning_rate': '3.663e-06', 'entropy': '1.741', 'num_tokens': '7.719e+05', 'mean_token_accuracy': '0.8207', 'epoch': '0.6757'}
+ 67%|██████▋   | 205/304 [32:46<1:06:52, 40.53s/it] 68%|██████▊   | 206/304 [33:19<1:02:42, 38.39s/it] 68%|██████▊   | 207/304 [33:52<59:23, 36.74s/it]   68%|██████▊   | 208/304 [34:26<57:10, 35.73s/it] 69%|██████▉   | 209/304 [34:59<55:32, 35.08s/it] 69%|██████▉   | 210/304 [35:33<54:26, 34.75s/it]                                                 {'loss': '0.7162', 'grad_norm': '0.2073', 'learning_rate': '3.48e-06', 'entropy': '1.737', 'num_tokens': '8.419e+05', 'mean_token_accuracy': '0.8288', 'epoch': '0.6922'}
+ 69%|██████▉   | 210/304 [35:33<54:26, 34.75s/it] 69%|██████▉   | 211/304 [36:07<53:31, 34.54s/it] 70%|██████▉   | 212/304 [36:41<52:28, 34.23s/it] 70%|███████   | 213/304 [37:14<51:35, 34.02s/it] 70%|███████   | 214/304 [37:48<50:47, 33.86s/it] 71%|███████   | 215/304 [38:21<50:00, 33.72s/it]                                                 {'loss': '0.7424', 'grad_norm': '0.1897', 'learning_rate': '3.297e-06', 'entropy': '1.749', 'num_tokens': '9.122e+05', 'mean_token_accuracy': '0.8177', 'epoch': '0.7087'}
+ 71%|███████   | 215/304 [38:21<50:00, 33.72s/it] 71%|███████   | 216/304 [38:55<49:24, 33.68s/it] 71%|███████▏  | 217/304 [39:29<49:07, 33.88s/it] 72%|███████▏  | 218/304 [40:03<48:48, 34.05s/it] 72%|███████▏  | 219/304 [40:37<48:12, 34.02s/it] 72%|███████▏  | 220/304 [41:12<47:48, 34.15s/it]                                                 {'loss': '0.7389', 'grad_norm': '0.1841', 'learning_rate': '3.114e-06', 'entropy': '1.72', 'num_tokens': '9.826e+05', 'mean_token_accuracy': '0.8221', 'epoch': '0.7252'}
+ 72%|███████▏  | 220/304 [41:12<47:48, 34.15s/it] 73%|███████▎  | 221/304 [41:46<47:05, 34.04s/it] 73%|███████▎  | 222/304 [42:20<46:27, 33.99s/it] 73%|███████▎  | 223/304 [42:53<45:34, 33.76s/it] 74%|███████▎  | 224/304 [43:26<44:50, 33.63s/it] 74%|███████▍  | 225/304 [44:00<44:22, 33.70s/it]                                                 {'loss': '0.6808', 'grad_norm': '0.21', 'learning_rate': '2.93e-06', 'entropy': '1.729', 'num_tokens': '1.053e+06', 'mean_token_accuracy': '0.8353', 'epoch': '0.7417'}
+ 74%|███████▍  | 225/304 [44:00<44:22, 33.70s/it] 74%|███████▍  | 226/304 [44:34<43:47, 33.69s/it] 75%|███████▍  | 227/304 [45:07<43:05, 33.58s/it] 75%|███████▌  | 228/304 [45:41<42:35, 33.63s/it] 75%|███████▌  | 229/304 [46:14<42:01, 33.62s/it] 76%|███████▌  | 230/304 [46:48<41:33, 33.69s/it]                                                 {'loss': '0.6651', 'grad_norm': '0.1946', 'learning_rate': '2.747e-06', 'entropy': '1.713', 'num_tokens': '1.123e+06', 'mean_token_accuracy': '0.839', 'epoch': '0.7581'}
+ 76%|███████▌  | 230/304 [46:48<41:33, 33.69s/it] 76%|███████▌  | 231/304 [47:22<41:04, 33.76s/it] 76%|███████▋  | 232/304 [47:56<40:26, 33.70s/it] 77%|███████▋  | 233/304 [48:29<39:48, 33.65s/it] 77%|███████▋  | 234/304 [49:03<39:11, 33.60s/it] 77%|███████▋  | 235/304 [49:38<39:09, 34.05s/it]                                                 {'loss': '0.6481', 'grad_norm': '0.2009', 'learning_rate': '2.564e-06', 'entropy': '1.723', 'num_tokens': '1.193e+06', 'mean_token_accuracy': '0.8394', 'epoch': '0.7746'}
+ 77%|███████▋  | 235/304 [49:38<39:09, 34.05s/it] 78%|███████▊  | 236/304 [50:13<39:02, 34.44s/it] 78%|███████▊  | 237/304 [50:48<38:34, 34.54s/it] 78%|███████▊  | 238/304 [51:22<37:46, 34.34s/it] 79%|███████▊  | 239/304 [51:55<36:56, 34.10s/it] 79%|███████▉  | 240/304 [52:29<36:08, 33.88s/it]                                                 {'loss': '0.6445', 'grad_norm': '0.2159', 'learning_rate': '2.381e-06', 'entropy': '1.731', 'num_tokens': '1.263e+06', 'mean_token_accuracy': '0.8385', 'epoch': '0.7911'}
+ 79%|███████▉  | 240/304 [52:29<36:08, 33.88s/it] 79%|███████▉  | 241/304 [53:02<35:20, 33.66s/it] 80%|███████▉  | 242/304 [53:35<34:37, 33.50s/it] 80%|███████▉  | 243/304 [54:09<34:05, 33.53s/it] 80%|████████  | 244/304 [54:42<33:23, 33.40s/it] 81%|████████  | 245/304 [55:15<32:43, 33.29s/it]                                                 {'loss': '0.6536', 'grad_norm': '0.1978', 'learning_rate': '2.198e-06', 'entropy': '1.706', 'num_tokens': '1.333e+06', 'mean_token_accuracy': '0.8392', 'epoch': '0.8076'}
+ 81%|████████  | 245/304 [55:15<32:43, 33.29s/it] 81%|████████  | 246/304 [55:48<32:12, 33.32s/it] 81%|████████▏ | 247/304 [56:21<31:39, 33.32s/it] 82%|████████▏ | 248/304 [56:55<31:10, 33.40s/it] 82%|████████▏ | 249/304 [57:29<30:41, 33.48s/it] 82%|████████▏ | 250/304 [58:02<30:11, 33.54s/it]                                                 {'loss': '0.6466', 'grad_norm': '0.1798', 'learning_rate': '2.015e-06', 'entropy': '1.709', 'num_tokens': '1.403e+06', 'mean_token_accuracy': '0.8436', 'epoch': '0.8241'}
+ 82%|████████▏ | 250/304 [58:02<30:11, 33.54s/it]
+  0%|          | 0/34 [00:00<?, ?it/s][A
+  6%|▌         | 2/34 [00:02<00:46,  1.46s/it][A
+  9%|▉         | 3/34 [00:05<01:03,  2.04s/it][A
+ 12%|█▏        | 4/34 [00:08<01:10,  2.35s/it][A
+ 15%|█▍        | 5/34 [00:11<01:13,  2.55s/it][A
+ 18%|█▊        | 6/34 [00:14<01:13,  2.63s/it][A
+ 21%|██        | 7/34 [00:17<01:12,  2.70s/it][A
+ 24%|██▎       | 8/34 [00:20<01:11,  2.76s/it][A
+ 26%|██▋       | 9/34 [00:22<01:09,  2.80s/it][A
+ 29%|██▉       | 10/34 [00:25<01:08,  2.85s/it][A
+ 32%|███▏      | 11/34 [00:28<01:05,  2.86s/it][A
+ 35%|███▌      | 12/34 [00:31<01:02,  2.86s/it][A
+ 38%|███▊      | 13/34 [00:34<00:58,  2.81s/it][A
+ 41%|████      | 14/34 [00:37<00:56,  2.81s/it][A
+ 44%|████▍     | 15/34 [00:39<00:51,  2.74s/it][A
+ 47%|████▋     | 16/34 [00:42<00:49,  2.78s/it][A
+ 50%|█████     | 17/34 [00:45<00:46,  2.76s/it][A
+ 53%|█████▎    | 18/34 [00:48<00:45,  2.82s/it][A
+ 56%|█████▌    | 19/34 [00:50<00:41,  2.78s/it][A
+ 59%|█████▉    | 20/34 [00:54<00:40,  2.91s/it][A
+ 62%|██████▏   | 21/34 [00:56<00:36,  2.78s/it][A
+ 65%|██████▍   | 22/34 [00:59<00:33,  2.79s/it][A
+ 68%|██████▊   | 23/34 [01:02<00:29,  2.72s/it][A
+ 71%|███████   | 24/34 [01:04<00:27,  2.75s/it][A
+ 74%|███████▎  | 25/34 [01:07<00:24,  2.76s/it][A
+ 76%|███████▋  | 26/34 [01:10<00:22,  2.78s/it][A
+ 79%|███████▉  | 27/34 [01:13<00:19,  2.85s/it][A
+ 82%|████████▏ | 28/34 [01:16<00:17,  2.90s/it][A
+ 85%|████████▌ | 29/34 [01:19<00:14,  2.82s/it][A
+ 88%|████████▊ | 30/34 [01:22<00:11,  2.89s/it][A
+ 91%|█████████ | 31/34 [01:24<00:08,  2.80s/it][A
+ 94%|█████████▍| 32/34 [01:27<00:05,  2.77s/it][A
+ 97%|█████████▋| 33/34 [01:29<00:02,  2.59s/it][A
+100%|██████████| 34/34 [01:30<00:00,  2.12s/it][A                                                 
+                                               [A{'eval_loss': '0.6502', 'eval_runtime': '95.01', 'eval_samples_per_second': '2.81', 'eval_steps_per_second': '0.358', 'eval_entropy': '1.708', 'eval_num_tokens': '1.403e+06', 'eval_mean_token_accuracy': '0.8395', 'epoch': '0.8241'}
+ 82%|████████▏ | 250/304 [59:37<30:11, 33.54s/it]
+100%|██████████| 34/34 [01:30<00:00,  2.12s/it][A
+                                               [A2026-04-09 02:12:16 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 02:12:16 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+ 83%|████████▎ | 251/304 [1:00:13<55:22, 62.70s/it] 83%|████████▎ | 252/304 [1:00:46<46:38, 53.82s/it] 83%|████████▎ | 253/304 [1:01:20<40:32, 47.70s/it] 84%|████████▎ | 254/304 [1:01:54<36:19, 43.59s/it] 84%|████████▍ | 255/304 [1:02:27<33:06, 40.53s/it]                                                   {'loss': '0.6724', 'grad_norm': '0.2138', 'learning_rate': '1.832e-06', 'entropy': '1.721', 'num_tokens': '1.473e+06', 'mean_token_accuracy': '0.8345', 'epoch': '0.8405'}
+ 84%|████████▍ | 255/304 [1:02:27<33:06, 40.53s/it] 84%|████████▍ | 256/304 [1:03:00<30:39, 38.33s/it] 85%|████████▍ | 257/304 [1:03:33<28:49, 36.80s/it] 85%|████████▍ | 258/304 [1:04:06<27:19, 35.65s/it] 85%|████████▌ | 259/304 [1:04:40<26:11, 34.93s/it] 86%|████████▌ | 260/304 [1:05:13<25:18, 34.51s/it]                                                   {'loss': '0.6098', 'grad_norm': '0.1876', 'learning_rate': '1.648e-06', 'entropy': '1.727', 'num_tokens': '1.543e+06', 'mean_token_accuracy': '0.8497', 'epoch': '0.857'}
+ 86%|████████▌ | 260/304 [1:05:13<25:18, 34.51s/it] 86%|████████▌ | 261/304 [1:05:46<24:27, 34.13s/it] 86%|████████▌ | 262/304 [1:06:20<23:42, 33.86s/it] 87%|████████▋ | 263/304 [1:06:53<23:02, 33.72s/it] 87%|████████▋ | 264/304 [1:07:27<22:28, 33.70s/it] 87%|████████▋ | 265/304 [1:08:00<21:55, 33.73s/it]                                                   {'loss': '0.6248', 'grad_norm': '0.1871', 'learning_rate': '1.465e-06', 'entropy': '1.695', 'num_tokens': '1.613e+06', 'mean_token_accuracy': '0.8478', 'epoch': '0.8735'}
+ 87%|████████▋ | 265/304 [1:08:00<21:55, 33.73s/it] 88%|████████▊ | 266/304 [1:08:34<21:15, 33.58s/it] 88%|████████▊ | 267/304 [1:09:07<20:39, 33.51s/it] 88%|████████▊ | 268/304 [1:09:40<20:03, 33.43s/it] 88%|████████▊ | 269/304 [1:10:14<19:30, 33.45s/it] 89%|████████▉ | 270/304 [1:10:48<19:03, 33.64s/it]                                                   {'loss': '0.6635', 'grad_norm': '0.1907', 'learning_rate': '1.282e-06', 'entropy': '1.719', 'num_tokens': '1.683e+06', 'mean_token_accuracy': '0.8381', 'epoch': '0.89'}
+ 89%|████████▉ | 270/304 [1:10:48<19:03, 33.64s/it] 89%|████████▉ | 271/304 [1:11:22<18:32, 33.71s/it] 89%|████████▉ | 272/304 [1:11:55<17:57, 33.69s/it] 90%|████████▉ | 273/304 [1:12:29<17:26, 33.76s/it] 90%|█████████ | 274/304 [1:13:03<16:51, 33.72s/it] 90%|█████████ | 275/304 [1:13:36<16:16, 33.68s/it]                                                   {'loss': '0.5751', 'grad_norm': '0.2148', 'learning_rate': '1.099e-06', 'entropy': '1.713', 'num_tokens': '1.753e+06', 'mean_token_accuracy': '0.8559', 'epoch': '0.9065'}
+ 90%|█████████ | 275/304 [1:13:36<16:16, 33.68s/it] 91%|█████████ | 276/304 [1:14:11<15:47, 33.84s/it] 91%|█████████ | 277/304 [1:14:44<15:10, 33.72s/it] 91%|█████████▏| 278/304 [1:15:18<14:34, 33.65s/it] 92%|█████████▏| 279/304 [1:15:51<14:01, 33.67s/it] 92%|█████████▏| 280/304 [1:16:25<13:27, 33.63s/it]                                                   {'loss': '0.6102', 'grad_norm': '0.1892', 'learning_rate': '9.158e-07', 'entropy': '1.703', 'num_tokens': '1.823e+06', 'mean_token_accuracy': '0.8493', 'epoch': '0.923'}
+ 92%|█████████▏| 280/304 [1:16:25<13:27, 33.63s/it] 92%|█████████▏| 281/304 [1:16:58<12:52, 33.59s/it] 93%|█████████▎| 282/304 [1:17:32<12:17, 33.51s/it] 93%|█████████▎| 283/304 [1:18:06<11:47, 33.69s/it] 93%|█████████▎| 284/304 [1:18:39<11:13, 33.66s/it] 94%|█████████▍| 285/304 [1:19:13<10:38, 33.61s/it]                                                   {'loss': '0.6029', 'grad_norm': '0.1933', 'learning_rate': '7.326e-07', 'entropy': '1.71', 'num_tokens': '1.894e+06', 'mean_token_accuracy': '0.8524', 'epoch': '0.9394'}
+ 94%|█████████▍| 285/304 [1:19:13<10:38, 33.61s/it] 94%|█████████▍| 286/304 [1:19:47<10:08, 33.80s/it] 94%|█████████▍| 287/304 [1:20:20<09:31, 33.61s/it] 95%|█████████▍| 288/304 [1:20:53<08:55, 33.47s/it] 95%|█████████▌| 289/304 [1:21:27<08:20, 33.39s/it] 95%|█████████▌| 290/304 [1:22:00<07:45, 33.25s/it]                                                   {'loss': '0.5795', 'grad_norm': '0.1998', 'learning_rate': '5.495e-07', 'entropy': '1.714', 'num_tokens': '1.963e+06', 'mean_token_accuracy': '0.8596', 'epoch': '0.9559'}
+ 95%|█████████▌| 290/304 [1:22:00<07:45, 33.25s/it] 96%|█████████▌| 291/304 [1:22:33<07:12, 33.25s/it] 96%|█████████▌| 292/304 [1:23:06<06:39, 33.28s/it] 96%|█████████▋| 293/304 [1:23:40<06:07, 33.37s/it] 97%|█████████▋| 294/304 [1:24:13<05:34, 33.40s/it] 97%|█████████▋| 295/304 [1:24:46<05:00, 33.37s/it]                                                   {'loss': '0.6335', 'grad_norm': '0.1851', 'learning_rate': '3.663e-07', 'entropy': '1.715', 'num_tokens': '2.034e+06', 'mean_token_accuracy': '0.8458', 'epoch': '0.9724'}
+ 97%|█████████▋| 295/304 [1:24:46<05:00, 33.37s/it] 97%|█████████▋| 296/304 [1:25:20<04:27, 33.42s/it] 98%|█████████▊| 297/304 [1:25:53<03:53, 33.41s/it] 98%|█████████▊| 298/304 [1:26:27<03:20, 33.35s/it] 98%|█████████▊| 299/304 [1:27:00<02:47, 33.48s/it] 99%|█████████▊| 300/304 [1:27:34<02:13, 33.39s/it]                                                   {'loss': '0.5727', 'grad_norm': '0.1997', 'learning_rate': '1.832e-07', 'entropy': '1.713', 'num_tokens': '2.104e+06', 'mean_token_accuracy': '0.8583', 'epoch': '0.9889'}
+ 99%|█████████▊| 300/304 [1:27:34<02:13, 33.39s/it]
+  0%|          | 0/34 [00:00<?, ?it/s][A
+  6%|▌         | 2/34 [00:03<00:49,  1.56s/it][A
+  9%|▉         | 3/34 [00:06<01:09,  2.25s/it][A
+ 12%|█▏        | 4/34 [00:09<01:15,  2.50s/it][A
+ 15%|█▍        | 5/34 [00:12<01:19,  2.76s/it][A
+ 18%|█▊        | 6/34 [00:15<01:16,  2.72s/it][A
+ 21%|██        | 7/34 [00:17<01:14,  2.76s/it][A
+ 24%|██▎       | 8/34 [00:20<01:11,  2.76s/it][A
+ 26%|██▋       | 9/34 [00:23<01:10,  2.81s/it][A
+ 29%|██▉       | 10/34 [00:26<01:05,  2.73s/it][A
+ 32%|███▏      | 11/34 [00:29<01:03,  2.76s/it][A
+ 35%|███▌      | 12/34 [00:31<00:59,  2.71s/it][A
+ 38%|███▊      | 13/34 [00:34<01:00,  2.88s/it][A
+ 41%|████      | 14/34 [00:37<00:55,  2.77s/it][A
+ 44%|████▍     | 15/34 [00:40<00:55,  2.93s/it][A
+ 47%|████▋     | 16/34 [00:43<00:52,  2.89s/it][A
+ 50%|█████     | 17/34 [00:46<00:50,  2.98s/it][A
+ 53%|█████▎    | 18/34 [00:49<00:48,  3.03s/it][A
+ 56%|█████▌    | 19/34 [00:52<00:45,  3.06s/it][A
+ 59%|█████▉    | 20/34 [00:56<00:42,  3.07s/it][A
+ 62%|██████▏   | 21/34 [00:59<00:39,  3.08s/it][A
+ 65%|██████▍   | 22/34 [01:02<00:36,  3.08s/it][A
+ 68%|██████▊   | 23/34 [01:05<00:32,  3.00s/it][A
+ 71%|███████   | 24/34 [01:08<00:30,  3.02s/it][A
+ 74%|███████▎  | 25/34 [01:10<00:26,  2.89s/it][A
+ 76%|███████▋  | 26/34 [01:13<00:23,  2.91s/it][A
+ 79%|███████▉  | 27/34 [01:16<00:20,  2.86s/it][A
+ 82%|████████▏ | 28/34 [01:19<00:17,  2.94s/it][A
+ 85%|████████▌ | 29/34 [01:22<00:14,  2.96s/it][A
+ 88%|████████▊ | 30/34 [01:25<00:12,  3.06s/it][A
+ 91%|█████████ | 31/34 [01:28<00:09,  3.01s/it][A
+ 94%|█████████▍| 32/34 [01:32<00:06,  3.09s/it][A
+ 97%|█████████▋| 33/34 [01:34<00:02,  2.84s/it][A
+100%|██████████| 34/34 [01:35<00:00,  2.30s/it][A                                                   
+                                               [A{'eval_loss': '0.6143', 'eval_runtime': '100.1', 'eval_samples_per_second': '2.668', 'eval_steps_per_second': '0.34', 'eval_entropy': '1.701', 'eval_num_tokens': '2.104e+06', 'eval_mean_token_accuracy': '0.8486', 'epoch': '0.9889'}
+ 99%|█████████▊| 300/304 [1:29:14<02:13, 33.39s/it]
+100%|██████████| 34/34 [01:35<00:00,  2.30s/it][A
+                                               [A2026-04-09 02:41:52 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 02:41:52 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+ 99%|█████████▉| 301/304 [1:29:48<03:11, 63.71s/it] 99%|█████████▉| 302/304 [1:30:21<01:49, 54.60s/it]100%|█████████▉| 303/304 [1:30:55<00:48, 48.18s/it]2026-04-09 02:43:34 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:34 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:34 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:34 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:38 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:38 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:38 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:38 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:42 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:42 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:42 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+2026-04-09 02:43:42 [INFO] accelerate.accelerator: [RANK 0] The used dataset had no length, returning gathered tensors. You should drop the remainder yourself.
+100%|██████████| 304/304 [1:31:07<00:00, 37.51s/it]
+  0%|          | 0/34 [00:00<?, ?it/s][A
+  6%|▌         | 2/34 [00:02<00:44,  1.38s/it][A
+  9%|▉         | 3/34 [00:05<01:02,  2.02s/it][A
+ 12%|█▏        | 4/34 [00:08<01:07,  2.26s/it][A
+ 15%|█▍        | 5/34 [00:11<01:11,  2.47s/it][A
+ 18%|█▊        | 6/34 [00:13<01:09,  2.49s/it][A
+ 21%|██        | 7/34 [00:16<01:12,  2.67s/it][A
+ 24%|██▎       | 8/34 [00:19<01:08,  2.63s/it][A
+ 26%|██▋       | 9/34 [00:22<01:08,  2.72s/it][A
+ 29%|██▉       | 10/34 [00:24<01:05,  2.73s/it][A
+ 32%|███▏      | 11/34 [00:28<01:05,  2.87s/it][A
+ 35%|███▌      | 12/34 [00:30<01:02,  2.85s/it][A
+ 38%|███▊      | 13/34 [00:34<01:02,  2.97s/it][A
+ 41%|████      | 14/34 [00:37<00:59,  2.96s/it][A
+ 44%|████▍     | 15/34 [00:40<00:56,  2.95s/it][A
+ 47%|████▋     | 16/34 [00:43<00:55,  3.06s/it][A
+ 50%|█████     | 17/34 [00:46<00:53,  3.12s/it][A
+ 53%|█████▎    | 18/34 [00:49<00:50,  3.13s/it][A
+ 56%|█████▌    | 19/34 [00:52<00:44,  2.99s/it][A
+ 59%|█████▉    | 20/34 [00:55<00:41,  2.99s/it][A
+ 62%|██████▏   | 21/34 [00:58<00:38,  2.93s/it][A
+ 65%|██████▍   | 22/34 [01:01<00:36,  3.00s/it][A
+ 68%|██████▊   | 23/34 [01:04<00:33,  3.06s/it][A
+ 71%|███████   | 24/34 [01:07<00:29,  2.99s/it][A
+ 74%|███████▎  | 25/34 [01:10<00:27,  3.01s/it][A
+ 76%|███████▋  | 26/34 [01:12<00:22,  2.83s/it][A
+ 79%|███████▉  | 27/34 [01:16<00:20,  2.93s/it][A
+ 82%|████████▏ | 28/34 [01:18<00:16,  2.82s/it][A
+ 85%|████████▌ | 29/34 [01:21<00:14,  2.82s/it][A
+ 88%|████████▊ | 30/34 [01:24<00:11,  2.77s/it][A
+ 91%|█████████ | 31/34 [01:27<00:08,  2.86s/it][A
+ 94%|█████████▍| 32/34 [01:29<00:05,  2.79s/it][A
+ 97%|█████████▋| 33/34 [01:32<00:02,  2.62s/it][A
+100%|██████████| 34/34 [01:33<00:00,  2.14s/it][A                                                   
+                                               [A{'eval_loss': '0.6135', 'eval_runtime': '97.69', 'eval_samples_per_second': '2.733', 'eval_steps_per_second': '0.348', 'eval_entropy': '1.7', 'eval_num_tokens': '2.151e+06', 'eval_mean_token_accuracy': '0.8478', 'epoch': '1'}
+100%|██████████| 304/304 [1:32:45<00:00, 37.51s/it]
+100%|██████████| 34/34 [01:33<00:00,  2.14s/it][A
+                                               [A2026-04-09 02:45:23 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/Qwen/Qwen3.5-35B-A3B/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-04-09 02:45:23 [INFO] httpx: HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/Qwen/Qwen3.5-35B-A3B/ec2d4ece1ffb563322cbee9a48fe0e3fcbce0307/config.json "HTTP/1.1 200 OK"
+                                                   {'train_runtime': '5566', 'train_samples_per_second': '0.436', 'train_steps_per_second': '0.055', 'train_loss': '0.3628', 'epoch': '1'}
+100%|██████████| 304/304 [1:32:46<00:00, 37.51s/it]100%|██████████| 304/304 [1:32:46<00:00, 18.31s/it]
+Training complete!
+GPU memory: 65.48GB allocated, 133.70GB reserved
+2026-04-09 02:45:24 [INFO] sft: Training complete — saving model...
+Saving merged model to /workspace/outputs/sft/final_model/merged_16bit...
+Writing model shards:   0%|          | 0/2 [00:00<?, ?it/s]
