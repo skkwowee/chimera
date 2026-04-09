@@ -252,9 +252,11 @@ Key observations:
 
 ## Next steps
 1. [DONE] F05b — GRPO smoke test passed (manual loop, 20 steps)
-2. Re-train SFT model — previous merged model incomplete (1/2 shards)
-   - Need full SFT model as GRPO base (currently using base Qwen)
-   - Previous config: r=4 α=8, dropout=0.1, lr=1e-5, 1 epoch, 3322 samples
+2. [DONE] Re-train SFT — resumed from ckpt-150 on H200, completed step 304
+   - LoRA adapter saved: checkpoints/sft-r4-checkpoint-304/ (8.4MB, in git)
+   - Merge to full model deferred (pod disk quota issue)
+   - To merge: load base + PeftModel.from_pretrained(ckpt-304) → merge_and_unload()
+   - Final: train loss 0.573, eval loss 0.614, eval token accuracy 84.8%
 3. F05c: Wire RECALL into GRPO trainer
    - recall.py has: RECALLIndex, tactical_embedding, action_embedding, recall_advantage
    - Missing: index build from training data, integration into train_grpo.py reward mode
