@@ -93,10 +93,12 @@ class Qwen3VLInference:
         model_name: str = "Qwen/Qwen3.5-35B-A3B",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
+        lora_adapter: str | None = None,
     ):
         self.model_name: str = model_name
         self.device: str = device
         self.dtype: torch.dtype = getattr(torch, torch_dtype)
+        self.lora_adapter: str | None = lora_adapter
         self.model: Any = None
         self.processor: Any = None
 
@@ -111,6 +113,13 @@ class Qwen3VLInference:
             device_map="auto",
             torch_dtype=self.dtype,
         )
+
+        if self.lora_adapter:
+            from peft import PeftModel
+            print(f"Loading LoRA adapter: {self.lora_adapter}")
+            self.model = PeftModel.from_pretrained(self.model, self.lora_adapter)
+            self.model = self.model.merge_and_unload()
+
         self.model.eval()
 
         self.processor = AutoProcessor.from_pretrained(self.model_name)

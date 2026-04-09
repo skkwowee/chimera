@@ -186,6 +186,8 @@ def main():
                         help="Prompt phase: perception (HUD-only), planning (strategy from game_state), or combined")
     parser.add_argument("--model-name", type=str, default=None,
                         help="Override default Qwen model name/path")
+    parser.add_argument("--lora-adapter", type=str, default=None,
+                        help="Path to LoRA adapter to merge with base model")
     parser.add_argument("--perception-run", type=str, default=None,
                         help="Path to previous perception comparison JSON (required for --phase planning)")
     parser.add_argument("--tolerance", action="store_true",
@@ -241,6 +243,8 @@ def main():
         qwen_kwargs = {}
         if args.model_name:
             qwen_kwargs["model_name"] = args.model_name
+        if args.lora_adapter:
+            qwen_kwargs["lora_adapter"] = args.lora_adapter
         models["Qwen"] = Qwen3VLInference(**qwen_kwargs)
         print("Loading Qwen model...")
 
