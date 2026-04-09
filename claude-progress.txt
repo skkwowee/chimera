@@ -27,6 +27,11 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
   - To merge: PeftModel.from_pretrained(base, ckpt-304).merge_and_unload()
   - OOM on H100 at step 200 (80GB not enough for some long sequences)
   - H200 (144GB) ran without issues; merge OOM'd due to 100GB volume quota
+- 10-sample eval with compare_models.py on new pod:
+  - Exact match: 64.6%, Tolerance: 72.4%
+  - Note: different samples than original run (different file ordering on new pod)
+  - Inference is non-deterministic (do_sample=True, temperature=0.7)
+  - 10 samples too small for stable numbers — running 50-sample eval for reliable accuracy
 - F05b GRPO smoke test PASSED — manual GRPO loop bypassing TRL multimodal bug
   - Built train_manual() in grpo_trainer.py: full GRPO loop without TRL
     - Sequential generation (avoids TRL prompt repetition crash on Qwen3-VL)
@@ -98,20 +103,24 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - Eval on 10 samples (seed=42, same as baselines): SFT 67.3% vs Opus 50% vs Base Qwen 50%
 
 ### SFT Final Eval (10 samples, seed=42)
-| Field              | Opus 4.6 | Base Qwen | SFT Final |
-|--------------------|----------|-----------|-----------|
-| player_health      |   90%    |    90%    |   100%    |
-| player_armor       |   70%    |    90%    |   100%    |
-| player_money       |    -     |    90%    |   100%    |
-| round_phase        |    -     |    60%    |   100%    |
-| weapon_primary     |   40%    |    57%    |    71%    |
-| player_side        |   50%    |    20%    |    60%    |
-| alive_enemies      |   60%    |    50%    |    50%    |
-| alive_teammates    |   10%    |    40%    |    40%    |
-| map_name           |   90%    |    10%    |    40%    |
-| weapon_secondary   |    -     |    30%    |    40%    |
-| bomb_status        |   50%    |    20%    |    40%    |
-| **Overall**        | **50%**  |  **50%**  |  **67%**  |
+| Field              | Opus 4.6 | Base Qwen | SFT Final | SFT ckpt-304 (new pod) |
+|--------------------|----------|-----------|-----------|------------------------|
+| player_health      |   90%    |    90%    |   100%    |         --             |
+| player_armor       |   70%    |    90%    |   100%    |         --             |
+| player_money       |    -     |    90%    |   100%    |         --             |
+| round_phase        |    -     |    60%    |   100%    |         --             |
+| weapon_primary     |   40%    |    57%    |    71%    |         --             |
+| player_side        |   50%    |    20%    |    60%    |         --             |
+| alive_enemies      |   60%    |    50%    |    50%    |         --             |
+| alive_teammates    |   10%    |    40%    |    40%    |         --             |
+| map_name           |   90%    |    10%    |    40%    |         --             |
+| weapon_secondary   |    -     |    30%    |    40%    |         --             |
+| bomb_status        |   50%    |    20%    |    40%    |         --             |
+| **Overall**        | **50%**  |  **50%**  |  **67%**  |  **64.6% exact / 72.4% tol** |
+
+Note: ckpt-304 "new pod" used different 10 samples (file ordering differs on new pod)
+and inference is non-deterministic (do_sample=True, temp=0.7). Per-field breakdown
+not yet recorded — need 50-sample eval for stable per-field numbers.
 
 Key observations:
   - Perfect on numerical fields: health, armor, money, round_phase (all 100%)
@@ -266,11 +275,14 @@ Key observations:
    - Merge to full model deferred (pod disk quota issue)
    - To merge: load base + PeftModel.from_pretrained(ckpt-304) → merge_and_unload()
    - Final: train loss 0.573, eval loss 0.614, eval token accuracy 84.8%
-3. F05c: Wire RECALL into GRPO trainer
+3. Run proper 50-sample eval for stable accuracy numbers
+   - 10 samples too noisy — results vary 64-74% across runs/pods
+   - Need per-field breakdown at 50 samples with both exact and tolerance scoring
+4. F05c: Wire RECALL into GRPO trainer
    - recall.py has: RECALLIndex, tactical_embedding, action_embedding, recall_advantage
    - Missing: index build from training data, integration into train_grpo.py reward mode
    - Need: add recall_index to CS2GRPOConfig, build index before training loop
-4. F06: Full GRPO training with SFT model + manual loop
+5. F06: Full GRPO training with SFT model + manual loop
    - Use --manual flag (TRL multimodal bug still open)
    - Re-extract smoke_test.jsonl WITH images (--captures-dir) for multimodal training
    - Scale up: more steps, full dataset, SFT model as base
@@ -282,7 +294,7 @@ Key observations:
 - Viewer: see cs2-demo-viewer repo (site/ directory removed from this repo)
 
 ## Key files for next steps
-- scripts/compare_models.py — eval script (needs tolerance scoring addition)
+- scripts/compare_models.py — eval script (exact + tolerance scoring)
 - scripts/train_grpo.py — GRPO training CLI
 - scripts/run_sft_pod.sh — SSH-safe pod training launcher (nohup, signal handling)
 - src/training/sft_trainer.py — CS2SFTTrainer (LoRA r=4 α=8, vision trainable)
@@ -291,14 +303,20 @@ Key observations:
 - src/training/recall.py — RECALL skeleton (FAISS, embeddings, advantage calc)
 - src/training/data_utils.py — data loading, conversation format, train/val split
 - src/inference/vlm.py — Qwen3VLInference (supports custom model paths for SFT eval)
+- checkpoints/sft-r4-checkpoint-304/ — final SFT LoRA adapter (8.4MB)
 - data/training/grpo/smoke_test.jsonl — 2013 pre-extracted GRPO samples
 - data/predictions/comparison_20260407_231038.json — SFT eval results (69.2% exact)
 - data/predictions/comparison_20260407_231352.json — SFT eval results (74.8% tolerance)
+- data/predictions/comparison_20260409_*.json — ckpt-304 eval on new pod (64.6% exact, 72.4% tol)
 - scripts/pod_setup.sh — pod bootstrap (clone, deps, data pull)
 
-## Pod setup notes (2026-04-07)
+## Pod setup notes (2026-04-08)
 - RunPod template needs: torch>=2.6, torchvision>=0.21 (for CUDA 12.4 compat)
 - pip install: datasets peft trl bitsandbytes accelerate qwen-vl-utils anthropic python-dotenv
 - Set PYTHONUTF8=1 to avoid TRL model card Unicode errors
 - Symlink captures: ln -sf /workspace/chimera-data/captures /workspace/chimera/data/captures
 - Symlink labels: for d in captures/*/labels/; do ln -sf $d/*.json data/labeled/; done
+- H200 (144GB): works without OOM for SFT training and inference
+- H100 (80GB): OOM'd at step 200 on long sequences — not enough VRAM
+- Pod volume quota: ~100GB effective even if df shows more (merge fails due to quota)
+- Port can change on pod restart — re-check SSH port after restart

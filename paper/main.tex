@@ -78,6 +78,10 @@ We fine-tune Qwen3.5-35B-A3B (MoE, 35B total / 3B active parameters) using LoRA~
 % TODO: KL regularization (λ=0.02) prevents mode collapse
 % TODO: Describe outcome reward asymmetry: deviating from winning play not penalized hard, endorsing losing play is
 
+Phase~2 applies Group Relative Policy Optimization (GRPO) to teach strategic reasoning on top of the perception foundation established by SFT. A key implementation challenge is that the standard TRL~\cite{vonwerra2022trl} library's multimodal GRPO path contains a bug that causes index-out-of-bounds errors on repeated image prompts (specifically, \texttt{image\_grid\_thw} indexing fails when the same image appears across multiple rollouts within a group). We address this by implementing a manual GRPO training loop that handles vision token bookkeeping directly, bypassing TRL's multimodal collation.
+
+A 20-step smoke test validates that the manual loop functions correctly: rewards differentiate between high- and low-quality completions, gradients flow through the language model layers, and the format compliance rate improves from 25\% to 75\% over the course of the short run. Full GRPO training results are pending.
+
 \subsection{Reward Design}
 \label{sec:reward}
 
@@ -130,7 +134,7 @@ We evaluate on the HUD perception task: given a CS2 screenshot, output a structu
 
 \paragraph{SFT hyperparameters.} LoRA rank $r{=}4$, $\alpha{=}8$, dropout $0.1$, learning rate $1 \times 10^{-5}$ (cosine schedule), batch size 8 (gradient accumulation 4), 1 epoch (304 steps), 1h40m wall time. Both vision encoder and language layers are trainable. An initial run with $r{=}32$ over 3 epochs severely overfit (train loss 0.033 / val loss 17.5), motivating the aggressive regularization.
 
-\paragraph{Evaluation.} We report per-field exact-match accuracy over 11 HUD fields. Each field is compared independently; overall accuracy is the mean across all evaluated fields.
+\paragraph{Evaluation.} We report per-field exact-match accuracy over 11 HUD fields. Each field is compared independently; overall accuracy is the mean across all evaluated fields. We additionally compute a tolerance-based score that awards partial credit for near-miss predictions on numeric fields (e.g., health off by $\leq5$, money off by $\leq100$); tolerance-based scoring yields approximately 72--75\% overall accuracy for the SFT model, though we report exact-match throughout for conservatism.
 
 \subsection{Baselines}
 \label{sec:baselines}
@@ -142,7 +146,7 @@ We compare against three zero-shot baselines on the same 10-sample test set:
     \item \textbf{Qwen3.5-35B-A3B (base)}: The unfine-tuned base model, using \texttt{enable\_thinking=False} and temperature 0.6 to produce valid JSON (default thinking mode outputs prose, yielding 0\% format compliance).
 \end{itemize}
 
-% TODO: Add SFT+GRPO (C) and GRPO-only (D) after GRPO training completes
+% TODO: Add SFT+GRPO (C) and GRPO-only (D) after full GRPO training (smoke test passed, manual loop validated)
 
 \subsection{Results}
 \label{sec:results}
@@ -231,9 +235,10 @@ GRPO only (D) & -- & -- & -- & -- & -- \\
 
 \paragraph{The overfitting boundary.} Our experience with $r{=}32$ (catastrophic overfitting at 257:1 params-to-tokens ratio) versus $r{=}4$ (healthy training at 5:1) establishes a practical scaling law for LoRA on small VLM datasets. With vision layers trainable, the effective parameter count includes vision LoRA adapters, making rank reduction doubly important.
 
-% TODO: Add GRPO analysis after Phase 2 training
+% TODO: Add GRPO analysis after Phase 2 training (smoke test passed; awaiting full run)
 % TODO: Mechanical skill confound analysis (D015)
 % TODO: Explore computational efficiency gains from freezing vision layers during GRPO
+% NOTE: Manual GRPO loop validated (TRL multimodal bug required custom implementation)
 
 \section{Conclusion}
 \label{sec:conclusion}

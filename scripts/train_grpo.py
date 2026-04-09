@@ -4,9 +4,10 @@ GRPO training script for CS2 VLM fine-tuning.
 
 Uses transformers + peft for LoRA training of Qwen3.5-35B-A3B MoE (bf16).
 
-Revised reward architecture (D013):
+Revised reward architecture (D024):
   - Multiplicative format gate (invalid JSON -> zero total reward)
-  - 3 weighted signals: R_percept (0.20), R_decision (0.30), R_outcome (0.50)
+  - 2 simplified signals: R_percept + R_strategy (D024 — replaces legacy 3-signal D013)
+  - R_decision and R_outcome are ablation baselines only
   - KL regularization (lambda=0.02) prevents mode collapse
 
 Usage:
