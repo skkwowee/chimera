@@ -596,33 +596,24 @@ class CS2GRPOTrainer:
                     k: v for k, v in inputs.items() if k not in gen_input_keys
                 }
 
-                # --- Step 1: Generate G completions (batched) ---
+                # --- Step 1: Generate G completions ---
                 completions_text: list[str] = []
                 completions_ids: list[Any] = []
 
-                # Disable gradient checkpointing for generation (enables KV cache).
-                # Peft wraps models deeply — disable at every level and force config flag.
+                # Disable gradient checkpointing for generation (enables KV cache)
                 self.model.eval()
-                for m in [self.model, getattr(self.model, "base_model", None)]:
-                    if m is not None:
-                        if hasattr(m, "gradient_checkpointing_disable"):
-                            m.gradient_checkpointing_disable()
-                        inner = getattr(m, "model", None)
-                        if inner is not None and hasattr(inner, "gradient_checkpointing_disable"):
-                            inner.gradient_checkpointing_disable()
+                self.model.gradient_checkpointing_disable()
                 self.model.config.use_cache = True
                 with torch.no_grad():
-                    outputs = self.model.generate(
-                        input_ids=inputs["input_ids"],
-                        attention_mask=inputs["attention_mask"],
-                        generation_config=gen_config,
-                        num_return_sequences=config.num_generations,
-                        **model_extra_kwargs,
-                    )
-                    # outputs shape: [G, total_seq_len]
-                    decode_fn = self.tokenizer if not has_images else self.processor
-                    for g_idx in range(outputs.shape[0]):
-                        gen_ids = outputs[g_idx, prompt_len:]
+                    for _g in range(config.num_generations):
+                        output = self.model.generate(
+                            input_ids=inputs["input_ids"],
+                            attention_mask=inputs["attention_mask"],
+                            generation_config=gen_config,
+                            **model_extra_kwargs,
+                        )
+                        gen_ids = output[0, prompt_len:]
+                        decode_fn = self.tokenizer if not has_images else self.processor
                         text = decode_fn.decode(gen_ids, skip_special_tokens=True)
                         completions_text.append(text)
                         completions_ids.append(gen_ids)
