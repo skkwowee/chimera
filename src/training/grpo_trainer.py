@@ -293,12 +293,16 @@ class CS2GRPOTrainer:
                     results = []
                     for completion, gt in zip(completions, ground_truths, strict=False):
                         text = CS2GRPOTrainer._extract_completion_text(completion)
-                        # Multiplicative format gate: invalid JSON -> 0.0 for all signals
-                        gate = format_gate_reward(text)
+                        gate = format_gate_reward(
+                            text, perception_only=self.config.perception_only,
+                        )
                         if gate == 0.0:
                             results.append(0.0)
                         else:
-                            results.append(reward_fn(text, ground_truth=gt))
+                            results.append(reward_fn(
+                                text, ground_truth=gt,
+                                recall_index=self.recall_index,
+                            ))
                     return results
                 return wrapper
             wrappers.append(make_wrapper(fn))
@@ -307,16 +311,14 @@ class CS2GRPOTrainer:
 
     def train(self, resume_from: str | None = None):
         """
-        Run GRPO training.
+        Run GRPO training using TRL's GRPOTrainer.
+
+        With use_vllm=True, TRL handles model loading and uses vLLM for
+        fast generation. Without vLLM, falls back to HF generate.
 
         Args:
             resume_from: Path to checkpoint to resume from
         """
-        if self.model is None:
-            self.load_model()
-        assert self.model is not None
-        assert self.processor is not None
-
         if self.train_dataset is None:
             raise ValueError("No training data prepared. Call prepare_data() first.")
 
@@ -329,6 +331,7 @@ class CS2GRPOTrainer:
             ) from err
 
         print("Configuring GRPO trainer...")
+        print(f"  vLLM: {self.config.use_vllm}")
         print(f"  Reward signals: {len(self.reward_fns)}")
         print(f"  Reward weights: {self.config.reward_weights}")
         print(f"  KL coefficient: {self.config.kl_coef}")
@@ -344,7 +347,7 @@ class CS2GRPOTrainer:
             json.dump(self.config.to_dict(), f, indent=2)
 
         # GRPO training configuration
-        grpo_config = GRPOConfig(
+        grpo_kwargs: dict[str, Any] = dict(
             output_dir=str(output_dir),
             num_train_epochs=self.config.num_epochs,
             max_steps=self.config.max_steps,
@@ -372,10 +375,28 @@ class CS2GRPOTrainer:
             # Reporting — use wandb if available, otherwise none
             report_to="none",
         )
+        # vLLM for fast generation (text-only — multimodal hits TRL #5120)
+        if self.config.use_vllm:
+            grpo_kwargs["use_vllm"] = True
+            grpo_kwargs["vllm_gpu_memory_utilization"] = 0.7
+        grpo_config = GRPOConfig(**grpo_kwargs)
+
+        # With vLLM, TRL manages model loading — pass model name string.
+        # Without vLLM, load model ourselves and pass the object.
+        if self.config.use_vllm:
+            model_ref = self.config.model_name
+            # Load tokenizer/processor for reward wrappers
+            if self.processor is None:
+                from transformers import AutoProcessor
+                self.processor = AutoProcessor.from_pretrained(self.config.model_name)
+        else:
+            if self.model is None:
+                self.load_model()
+            model_ref = self.model
 
         # Create GRPO trainer with separate reward functions
         trainer = GRPOTrainer(
-            model=self.model,  # type: ignore[reportArgumentType]
+            model=model_ref,  # type: ignore[reportArgumentType]
             processing_class=self.processor,
             args=grpo_config,
             train_dataset=self.train_dataset,
@@ -384,7 +405,6 @@ class CS2GRPOTrainer:
         )
 
         print("Starting GRPO training...")
-        self._print_memory_usage()
 
         # Train
         if resume_from:
@@ -393,7 +413,6 @@ class CS2GRPOTrainer:
             trainer.train()
 
         print("Training complete!")
-        self._print_memory_usage()
 
         return trainer
 
