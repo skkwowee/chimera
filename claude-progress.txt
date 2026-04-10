@@ -17,6 +17,20 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning (40/50 steps, GPU crash, checkpoint-25 saved)
 - [ ] F07 — Evaluation & analysis
 
+## What changed this session (2026-04-10, session 2)
+- Attempted vLLM integration for fast GRPO generation — blocked by dependency conflicts:
+  - vLLM 0.19 requires transformers <5, Qwen3.5 MoE needs transformers >=5.5
+  - causal-conv1d ABI mismatch with torch 2.8/2.10 (undefined symbol errors)
+  - pip install cascades break the environment (torch upgrades, vLLM breaks)
+- TRL GRPOTrainer with use_vllm=True: code added to grpo_trainer.py train() method
+  - Works in principle but can't satisfy all version constraints simultaneously
+- New pod (cuddly_crimson_snipe) with torch 2.8 + CUDA 12.8:
+  - causal-conv1d installed but ABI mismatch with torch
+  - vLLM 0.19 installed but needs transformers <5
+  - Environment got trashed by dependency cascades
+- Resolution: need pre-built Docker image with Qwen3.5 + vLLM, or accept slow manual loop
+- Existing results still valid: 50-sample eval (62.1%/67.7%), GRPO 40 steps (checkpoint-25)
+
 ## What changed this session (2026-04-10)
 - 50-sample SFT eval on H200 pod:
   - Exact match: 62.1% (399/643 fields)
