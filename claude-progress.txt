@@ -13,9 +13,37 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F05 — GRPO dataset from demos
 - [x] F05a — Data sparsity diagnostic (L0: 96.2%, L1: 27.0%)
 - [x] F05b — Small-scale GRPO smoke test (manual loop, 20 steps, all criteria pass)
-- [ ] F05c — RECALL — Retrieval-based advantage estimation
-- [ ] F06 — GRPO training — strategic reasoning
+- [x] F05c — RECALL — Retrieval-based advantage estimation
+- [ ] F06 — GRPO training — strategic reasoning (40/50 steps, GPU crash, checkpoint-25 saved)
 - [ ] F07 — Evaluation & analysis
+
+## What changed this session (2026-04-10)
+- 50-sample SFT eval on H200 pod:
+  - Exact match: 62.1% (399/643 fields)
+  - Tolerance: 67.7% (435/643 fields)
+  - Saved: comparison_20260409_215921.json (exact), comparison_20260409_221254.json (tol)
+  - Model load ~3 min, inference ~15 min for 50 samples, total ~16 min per eval run
+- GRPO training with RECALL — 40/50 steps completed, GPU driver crash at step 40:
+  - Used --reward-mode recall (R_percept 0.20 + R_RECALL 0.80)
+  - RECALL index: 1811 samples indexed from smoke_test.jsonl
+  - Config: base Qwen3.5-35B-A3B + LoRA r=4 α=8, G=4, accum=4, --perception-only
+  - Rewards improved: 0.006 → 0.038 (6× over 40 steps)
+  - Format pass rate: 97.5% → 80% (some degradation late)
+  - Grad norms stable: 32-50 (no explosion)
+  - Checkpoint-25 saved locally: outputs/grpo/recall_run1/checkpoint-25/
+  - GPU driver crash (NVML failure) killed the run at step 40
+- CRITICAL pod issue: torch 2.4 compiled for CUDA 13.0, but pod had CUDA 12.4
+  - causal-conv1d and flash-linear-attention failed to install (CUDA mismatch)
+  - Without these: Mamba fast path unavailable → torch inductor compiled everything
+  - Result: 35 compile workers, 30+ min compile phase, ~20 min per 5 steps
+  - Total: 14h wall clock for 40 steps (should be ~1-2h with fast path)
+  - FIX: use runpod/pytorch:2.6.0-py3.11-cuda12.4.1 or matching template
+- Code fixes during session:
+  - Wired RECALL into GRPO trainer (F05c)
+  - Attempted batched generation (num_return_sequences=G) — reverted, peft incompatible
+  - Added use_cache=True config toggle for generation phase
+  - Reduced perception max_new_tokens 1024→256
+  - Serial generation loop with G=4 (matches working smoke test config)
 
 ## What changed this session (2026-04-09)
 - F05c RECALL wired into GRPO trainer — ~20 lines across 2 files:
@@ -285,15 +313,16 @@ Key observations:
 1. [DONE] F05b — GRPO smoke test passed (manual loop, 20 steps)
 2. [DONE] Re-train SFT — resumed from ckpt-150 on H200, completed step 304
 3. [DONE] F05c — RECALL wired into GRPO trainer (2026-04-09)
-4. Run proper 50-sample eval for stable accuracy numbers
-   - 10 samples too noisy — results vary 64-74% across runs/pods
-   - Need per-field breakdown at 50 samples with both exact and tolerance scoring
-   - Command: python scripts/compare_models.py --samples 50 --tolerance --lora-adapter checkpoints/sft-r4-checkpoint-304
-5. F06: Full GRPO training with SFT model + manual loop + RECALL
-   - Use --manual --reward-mode recall flags
-   - Re-extract smoke_test.jsonl WITH images (--captures-dir) for multimodal training
-   - Scale up: more steps, full dataset, SFT model as base
-   - H200 required (~90GB VRAM for GRPO)
+4. [DONE] 50-sample eval: 62.1% exact, 67.7% tolerance (2026-04-10)
+   - Per-field breakdown still needed from the saved JSON files
+5. F06: Resume GRPO training from checkpoint-25 (or restart with proper pod)
+   - MUST use pod with matching torch/CUDA so causal-conv1d installs
+   - Recommended: runpod/pytorch:2.6.0-py3.11-cuda12.4.1 or similar
+   - pip install causal-conv1d flash-linear-attention BEFORE training
+   - Resume: --resume outputs/grpo/recall_run1/checkpoint-25
+   - Or restart fresh with more steps (100+) on proper pod
+   - Still need: SFT model as base (not raw base), multimodal data with images
+6. F07: Evaluation & analysis — compare SFT-only vs SFT+GRPO
 
 ## Data available
 - 4 parsed demos: Furia vs Vitality (Mirage, Inferno, Nuke, Overpass)
@@ -318,13 +347,20 @@ Key observations:
 - data/predictions/comparison_20260409_*.json — ckpt-304 eval on new pod (64.6% exact, 72.4% tol)
 - scripts/pod_setup.sh — pod bootstrap (clone, deps, data pull)
 
-## Pod setup notes (2026-04-08)
-- RunPod template needs: torch>=2.6, torchvision>=0.21 (for CUDA 12.4 compat)
-- pip install: datasets peft trl bitsandbytes accelerate qwen-vl-utils anthropic python-dotenv
+## Pod setup notes (2026-04-10)
+- CRITICAL: Pod torch version MUST match pod CUDA version for Mamba fast path
+  - Without causal-conv1d + flash-linear-attention: 10-100× slower (torch inductor fallback)
+  - Recommended template: runpod/pytorch:2.6.0-py3.11-cuda12.4.1
+  - Verify after launch: python -c "import torch; print(torch.version.cuda)"
+  - Then: pip install causal-conv1d flash-linear-attention
+- pip install: datasets peft trl bitsandbytes accelerate qwen-vl-utils faiss-cpu anthropic python-dotenv
 - Set PYTHONUTF8=1 to avoid TRL model card Unicode errors
-- Symlink captures: ln -sf /workspace/chimera-data/captures /workspace/chimera/data/captures
-- Symlink labels: for d in captures/*/labels/; do ln -sf $d/*.json data/labeled/; done
-- H200 (144GB): works without OOM for SFT training and inference
-- H100 (80GB): OOM'd at step 200 on long sequences — not enough VRAM
+- Set PYTHONPATH=/workspace/chimera for src imports
+- Data pull: python scripts/data.py pull (public HF repo, no auth needed)
+- Screenshots land in data/raw/ (flat), but compare_models.py expects data/captures/*/raw/
+  - Fix: mkdir -p data/captures/all && ln -sf /workspace/chimera/data/raw data/captures/all/raw
+- H200 (144GB): works without OOM for SFT training, inference, and GRPO (G=4)
+- H100 (80GB): OOM'd at step 200 on long SFT sequences — not enough VRAM
 - Pod volume quota: ~100GB effective even if df shows more (merge fails due to quota)
 - Port can change on pod restart — re-check SSH port after restart
+- SSH direct TCP works: ssh -T -o StrictHostKeyChecking=no -p PORT -i ~/.ssh/id_ed25519 root@IP
