@@ -236,6 +236,25 @@ python scripts/generate_review.py --compare --embed
 | SFT Training (bf16 + LoRA) | ~80 GB | H200 SXM (141GB) |
 | GRPO Training (bf16 + LoRA) | ~90 GB | H200 SXM (141GB) |
 
+## Artifact Locations
+
+Training artifacts are split between this repo and HuggingFace. Use `python scripts/data.py` to sync.
+
+| Artifact | Location | How to access |
+|----------|----------|---------------|
+| Screenshots (4,353 PNGs) | [HF: skkwowee/chimera-cs2](https://huggingface.co/datasets/skkwowee/chimera-cs2) | `python scripts/data.py pull` |
+| Labels (5,309 JSONs) | [HF: skkwowee/chimera-cs2](https://huggingface.co/datasets/skkwowee/chimera-cs2) | `python scripts/data.py pull` |
+| SFT checkpoints (150, 250, 300, 304) | [HF: skkwowee/chimera-cs2/checkpoints/](https://huggingface.co/datasets/skkwowee/chimera-cs2/tree/main/checkpoints) | `python scripts/data.py pull` |
+| Demo Parquets (4 matches) | [HF: skkwowee/chimera-cs2/demos/](https://huggingface.co/datasets/skkwowee/chimera-cs2/tree/main/demos) | `python scripts/data.py pull --all` |
+| GRPO checkpoint-25 | Pod only (`outputs/grpo/recall_run1/`) | **Not yet pushed to HF** |
+| GRPO smoke test data | Git tracked | `data/training/grpo/` |
+| Prediction comparisons | Git tracked | `data/predictions/` |
+| Training logs | Git tracked | `data/training/` |
+| Checkpoint configs (JSON) | Git tracked | `checkpoints/*/adapter_config.json` etc. |
+| Checkpoint weights (safetensors) | HF only (untracked from git) | `python scripts/data.py pull` |
+
+> **Note:** `.safetensors` and `tokenizer.json` are excluded from git via `.gitignore` — the canonical copies live on HuggingFace. Config/metadata JSONs remain in git for quick reference.
+
 ## Why This Matters Beyond Games
 
 The general principle — *learn reasoning from cheap structured data, then ground in vision with minimal labels* — applies to robotics (sim logs → real-world), medical imaging (patient records → radiology), and autonomous driving (telemetry → camera perception). Games are the controlled environment to prove the paradigm.
