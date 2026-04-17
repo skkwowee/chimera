@@ -107,6 +107,9 @@ TRAIN_CMD="cd $REPO_DIR && \
     PYTHONUTF8=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=$REPO_DIR \
+    CUDA_HOME=/usr/local/cuda \
+    PATH=/usr/local/cuda/bin:\$PATH \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64:\${LD_LIBRARY_PATH:-} \
     $VENV_PY scripts/train_grpo.py --manual $ARGS_STR"
 
 echo

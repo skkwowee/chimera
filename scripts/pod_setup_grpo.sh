@@ -93,25 +93,69 @@ if ! command -v uv >/dev/null 2>&1; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# If venv exists with a different torch than system, nuke it. The kernel
+# build chain is fundamentally tied to torch's CUDA version, and the system
+# torch is what matches the pod's installed nvcc.
+SYSTEM_TORCH=$(/usr/bin/python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "missing")
+if [ -d "$VENV_DIR" ]; then
+    VENV_TORCH=$("$VENV_DIR/bin/python" -c "import torch; print(torch.__version__)" 2>/dev/null || echo "missing")
+    if [ "$SYSTEM_TORCH" != "$VENV_TORCH" ]; then
+        echo "Venv torch ($VENV_TORCH) differs from system torch ($SYSTEM_TORCH). Recreating venv..."
+        rm -rf "$VENV_DIR"
+    fi
+fi
+
 if [ ! -d "$VENV_DIR" ]; then
     echo "Creating venv at $VENV_DIR (--system-site-packages, sees system torch)..."
     uv venv --system-site-packages "$VENV_DIR"
 fi
 VENV_PY="$VENV_DIR/bin/python"
 
-# Sanity: the venv must see the system torch, not need to reinstall it.
-"$VENV_PY" -c "import torch; print(f'  venv torch: {torch.__version__} cuda={torch.version.cuda}')" \
-    || { echo "ABORT: venv cannot see system torch"; exit 1; }
+# Sanity: the venv must see the system torch, not its own.
+"$VENV_PY" -c "import torch; print(f'  venv-visible torch: {torch.__version__} cuda={torch.version.cuda}')" \
+    || { echo "ABORT: venv cannot see torch"; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 4. Base deps into the venv
+# 4. Base deps into the venv (torch/torchvision excluded — passthrough only)
 # ---------------------------------------------------------------------------
-echo "--- Installing base deps into $VENV_DIR ---"
-VIRTUAL_ENV="$VENV_DIR" uv pip install -r requirements.txt
+# Letting uv resolve `torch>=2.0.0` pulls the latest wheel (cu13) into the
+# venv, which then shadows the system torch and breaks the build chain.
+# Filter torch/torchvision so the venv only ever sees the system torch
+# (which matches the installed nvcc 12.8 toolkit).
+echo "--- Installing base deps into $VENV_DIR (excluding torch) ---"
+REQ_FILTERED=$(mktemp)
+grep -vE '^(torch|torchvision)([><=!~]|$| )' requirements.txt > "$REQ_FILTERED"
+VIRTUAL_ENV="$VENV_DIR" uv pip install -r "$REQ_FILTERED"
+rm -f "$REQ_FILTERED"
 
 # ---------------------------------------------------------------------------
 # 5. Fast-path kernels — install in this order, verify each (all into venv)
 # ---------------------------------------------------------------------------
+echo
+echo "--- Setting up CUDA toolchain for kernel builds ---"
+
+# nvcc must match torch's CUDA version. System torch is cu128, pod has CUDA 12.8
+# toolkit at /usr/local/cuda-12.8 (symlinked from /usr/local/cuda) but it's not
+# on PATH by default. Wire it up explicitly.
+export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
+export PATH="$CUDA_HOME/bin:$PATH"
+export LD_LIBRARY_PATH="$CUDA_HOME/lib64:${LD_LIBRARY_PATH:-}"
+
+if ! command -v nvcc >/dev/null 2>&1; then
+    echo "ABORT: nvcc not found at $CUDA_HOME/bin/nvcc. Install CUDA toolkit:"
+    echo "       apt-get install cuda-toolkit-12-8"
+    exit 1
+fi
+NVCC_CUDA=$(nvcc --version | grep -oP 'release \K[0-9]+\.[0-9]+')
+TORCH_CUDA_VENV=$("$VENV_PY" -c "import torch; print(torch.version.cuda)")
+echo "  nvcc CUDA: $NVCC_CUDA"
+echo "  torch CUDA: $TORCH_CUDA_VENV"
+if [ "$NVCC_CUDA" != "$TORCH_CUDA_VENV" ]; then
+    echo "ABORT: nvcc ($NVCC_CUDA) != torch CUDA ($TORCH_CUDA_VENV). Kernels won't build."
+    exit 1
+fi
+echo "  toolchain matches. OK."
+
 echo
 echo "--- Installing fast-path kernels ---"
 
