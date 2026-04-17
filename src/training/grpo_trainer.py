@@ -31,6 +31,54 @@ from .rewards import (
 )
 
 
+def _preflight_kernels(allow_fallback: bool = False) -> None:
+    """Verify Qwen3.5 MoE fast-path kernels are loadable. Raises unless allow_fallback=True.
+
+    Without these, the model runs on a Python reference impl that is 5-10x slower
+    per step and provokes a ~30 min torch.compile storm. Symptom on the last run:
+    14h wall clock for 40 steps instead of 1-2h. Fail fast rather than discover this
+    after burning a pod.
+
+    Root cause when it fails: torch's CUDA build doesn't match the pod's CUDA runtime,
+    so the wheels can't link. Verify with `python -c "import torch; print(torch.version.cuda)"`
+    against `nvidia-smi` and pick a matching pod template (see scripts/pod_setup_grpo.sh).
+    """
+    missing: list[str] = []
+    cuda_runtime = torch.version.cuda
+    torch_version = torch.__version__
+
+    try:
+        import causal_conv1d  # noqa: F401
+    except ImportError as e:
+        missing.append(f"causal_conv1d ({e})")
+
+    try:
+        import flash_linear_attention  # noqa: F401
+    except ImportError:
+        try:
+            import fla  # noqa: F401  # PyPI name is `fla`
+        except ImportError as e:
+            missing.append(f"flash_linear_attention/fla ({e})")
+
+    if not missing:
+        print("  fast-path kernels: causal_conv1d ✓  flash_linear_attention ✓")
+        return
+
+    msg = (
+        "Fast-path kernels not importable: " + ", ".join(missing) + "\n"
+        f"  torch: {torch_version}, torch.version.cuda: {cuda_runtime}\n"
+        "  Without these the run will be ~5-10x slower (last attempt: 14h/40 steps).\n"
+        "  Fix: use a pod template whose CUDA matches torch.version.cuda, then\n"
+        "  `pip install causal-conv1d flash-linear-attention` BEFORE training.\n"
+        "  See scripts/pod_setup_grpo.sh.\n"
+        "  To override (not recommended), pass --allow-slow-fallback."
+    )
+    if allow_fallback:
+        print("WARNING: " + msg)
+        return
+    raise RuntimeError(msg)
+
+
 @dataclass
 class CS2GRPOConfig:
     """Configuration for GRPO training."""
@@ -88,6 +136,16 @@ class CS2GRPOConfig:
     save_steps: int = 100
     logging_steps: int = 10
 
+    # Performance / kernel settings
+    # Qwen3.5 MoE relies on causal_conv1d + flash_linear_attention for the fast path.
+    # If those imports fail, transformers falls back to a Python ref impl that is 5-10x
+    # slower per step *and* triggers a torch.compile storm (~30 min) trying to recover.
+    # The preflight in load_model() raises unless allow_slow_fallback=True.
+    allow_slow_fallback: bool = False
+    # FlashAttention-2 ships as a wheel and is independent of the causal_conv1d stack.
+    # Use "sdpa" if FA2 is unavailable; "eager" only as a last resort.
+    attn_implementation: str = "flash_attention_2"
+
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
         return {
@@ -128,16 +186,20 @@ class CS2GRPOTrainer:
         from peft import LoraConfig, get_peft_model
         from transformers import AutoProcessor, AutoTokenizer, Qwen3_5MoeForConditionalGeneration
 
+        _preflight_kernels(allow_fallback=self.config.allow_slow_fallback)
+
         dtype = getattr(torch, self.config.torch_dtype)
 
         print(f"Loading {self.config.model_name}...")
         print(f"  vLLM fast inference: {self.config.use_vllm}")
         print(f"  LoRA: {self.config.use_lora}")
+        print(f"  attn_implementation: {self.config.attn_implementation}")
 
         self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
             self.config.model_name,
             device_map="auto",
             torch_dtype=dtype,
+            attn_implementation=self.config.attn_implementation,
         )
 
         self.model.gradient_checkpointing_enable()

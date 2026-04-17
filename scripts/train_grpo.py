@@ -278,6 +278,20 @@ def parse_args():
         help="Use manual GRPO loop (bypasses TRL — required for multimodal Qwen3-VL)",
     )
     parser.add_argument(
+        "--allow-slow-fallback",
+        action="store_true",
+        help="Skip the kernel preflight. Without causal_conv1d + flash_linear_attention "
+             + "the run is 5-10x slower (last attempt: 14h/40 steps). Do not use in prod.",
+    )
+    parser.add_argument(
+        "--attn-impl",
+        type=str,
+        default="flash_attention_2",
+        choices=["flash_attention_2", "sdpa", "eager"],
+        help="Attention backend. flash_attention_2 is wheel-installable and unrelated "
+             + "to the causal_conv1d install — use it. sdpa is a fine fallback.",
+    )
+    parser.add_argument(
         "--perception-only",
         action="store_true",
         help="Relax format gate to only require game_state key (for text-only smoke tests)",
@@ -339,6 +353,8 @@ def main():
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
         perception_only=args.perception_only,
+        allow_slow_fallback=args.allow_slow_fallback,
+        attn_implementation=args.attn_impl,
     )
 
     print("=" * 60)
