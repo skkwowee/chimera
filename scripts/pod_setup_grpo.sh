@@ -115,16 +115,16 @@ VIRTUAL_ENV="$VENV_DIR" uv pip install -r requirements.txt
 echo
 echo "--- Installing fast-path kernels ---"
 
-# Use venv pip directly so installs land in $VENV_DIR. uv pip is fast for
-# resolution but the kernels need --no-build-isolation so they see torch
-# during build; the venv pip handles that cleanly.
-VENV_PIP="$VENV_DIR/bin/pip"
+# `uv venv` does not install pip into the venv — use `uv pip install --python $VENV_PY`
+# instead. --no-build-isolation lets the build see torch (required for causal-conv1d
+# and fla setup.py to detect ABI flags).
+UV_PIP=(uv pip install --python "$VENV_PY" --no-build-isolation)
 
 # FlashAttention-2 first; ships as a prebuilt wheel for common torch/cuda combos.
 # Independent of causal-conv1d. If this fails, fall back to attn_implementation=sdpa.
 if ! "$VENV_PY" -c "import flash_attn" 2>/dev/null; then
     echo "Installing flash-attn..."
-    "$VENV_PIP" install --no-build-isolation flash-attn==2.7.4.post1 || {
+    "${UV_PIP[@]}" flash-attn==2.7.4.post1 || {
         echo "  flash-attn install failed — will use --attn-impl sdpa as fallback"
     }
 fi
@@ -133,13 +133,13 @@ fi
 # compiles against the local torch ABI — slower install but the only reliable path.
 if ! "$VENV_PY" -c "import causal_conv1d" 2>/dev/null; then
     echo "Installing causal-conv1d (building from source against local torch)..."
-    CAUSAL_CONV1D_FORCE_BUILD=1 "$VENV_PIP" install --no-build-isolation causal-conv1d
+    CAUSAL_CONV1D_FORCE_BUILD=1 "${UV_PIP[@]}" causal-conv1d
 fi
 
 # flash-linear-attention. PyPI name is `fla`.
 if ! "$VENV_PY" -c "import fla" 2>/dev/null; then
     echo "Installing flash-linear-attention (fla)..."
-    "$VENV_PIP" install --no-build-isolation fla
+    "${UV_PIP[@]}" fla
 fi
 
 # ---------------------------------------------------------------------------
