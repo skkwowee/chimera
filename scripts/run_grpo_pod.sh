@@ -61,6 +61,8 @@ SSH_OPTS=(-o StrictHostKeyChecking=no -o ConnectTimeout=10)
 ssh_cmd() { ssh "${SSH_OPTS[@]}" "$USER_HOST" "$@"; }
 
 REPO_DIR="/workspace/chimera"
+VENV_DIR="${VENV_DIR:-/workspace/venv}"
+VENV_PY="$VENV_DIR/bin/python"
 OUTPUT_DIR="/workspace/outputs/grpo"
 
 echo "Checking SSH..."
@@ -74,10 +76,11 @@ echo
 echo "=== Pulling latest code ==="
 ssh_cmd "cd $REPO_DIR && git pull origin main 2>&1 | tail -3"
 
-# --- Re-verify kernels before launching (cheap, catches a stale env) ---
+# --- Re-verify kernels in venv before launching (cheap, catches a stale env) ---
 echo
-echo "=== Re-verifying fast-path kernels on pod ==="
-ssh_cmd "python3 -c '
+echo "=== Re-verifying fast-path kernels in $VENV_DIR ==="
+ssh_cmd "[ -x $VENV_PY ] || { echo 'ABORT: venv missing at $VENV_DIR. Run scripts/pod_setup_grpo.sh first.'; exit 1; }
+$VENV_PY -c '
 import sys
 ok = True
 for mod, label in [(\"causal_conv1d\", \"causal_conv1d\"), (\"fla\", \"flash-linear-attention\")]:
@@ -104,7 +107,7 @@ TRAIN_CMD="cd $REPO_DIR && \
     PYTHONUTF8=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=$REPO_DIR \
-    python3 scripts/train_grpo.py --manual $ARGS_STR"
+    $VENV_PY scripts/train_grpo.py --manual $ARGS_STR"
 
 echo
 echo "=== Launching GRPO (nohup) ==="

@@ -21,6 +21,7 @@
 set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-/workspace/chimera}"
+VENV_DIR="${VENV_DIR:-/workspace/venv}"
 export HF_HOME="${HF_HOME:-/workspace/.cache/huggingface}"
 
 echo "=== Chimera GRPO Pod Setup ==="
@@ -78,51 +79,75 @@ if ! git lfs version >/dev/null 2>&1; then
     git lfs install
 fi
 
+# ---------------------------------------------------------------------------
+# 3. Venv at $VENV_DIR with system-site-packages
+# ---------------------------------------------------------------------------
+# Why a venv: ubuntu 24.04 templates mark system Python externally-managed
+# (PEP 668), so `uv pip install --system` is blocked. A uv venv with
+# --system-site-packages keeps fast install (uv) AND sees the system torch
+# (no 70GB redownload) AND keeps our installs isolated from /usr.
+# All later invocations must use $VENV_PY, not /usr/bin/python3.
 if ! command -v uv >/dev/null 2>&1; then
+    echo "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
-# ---------------------------------------------------------------------------
-# 3. Base deps (matches requirements.txt)
-# ---------------------------------------------------------------------------
-echo "--- Installing base deps ---"
-uv pip install --system -r requirements.txt
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating venv at $VENV_DIR (--system-site-packages, sees system torch)..."
+    uv venv --system-site-packages "$VENV_DIR"
+fi
+VENV_PY="$VENV_DIR/bin/python"
+
+# Sanity: the venv must see the system torch, not need to reinstall it.
+"$VENV_PY" -c "import torch; print(f'  venv torch: {torch.__version__} cuda={torch.version.cuda}')" \
+    || { echo "ABORT: venv cannot see system torch"; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 4. Fast-path kernels — install in this order, verify each
+# 4. Base deps into the venv
+# ---------------------------------------------------------------------------
+echo "--- Installing base deps into $VENV_DIR ---"
+VIRTUAL_ENV="$VENV_DIR" uv pip install -r requirements.txt
+
+# ---------------------------------------------------------------------------
+# 5. Fast-path kernels — install in this order, verify each (all into venv)
 # ---------------------------------------------------------------------------
 echo
 echo "--- Installing fast-path kernels ---"
 
+# Use venv pip directly so installs land in $VENV_DIR. uv pip is fast for
+# resolution but the kernels need --no-build-isolation so they see torch
+# during build; the venv pip handles that cleanly.
+VENV_PIP="$VENV_DIR/bin/pip"
+
 # FlashAttention-2 first; ships as a prebuilt wheel for common torch/cuda combos.
 # Independent of causal-conv1d. If this fails, fall back to attn_implementation=sdpa.
-if ! python3 -c "import flash_attn" 2>/dev/null; then
+if ! "$VENV_PY" -c "import flash_attn" 2>/dev/null; then
     echo "Installing flash-attn..."
-    pip install --no-build-isolation flash-attn==2.7.4.post1 || {
+    "$VENV_PIP" install --no-build-isolation flash-attn==2.7.4.post1 || {
         echo "  flash-attn install failed — will use --attn-impl sdpa as fallback"
     }
 fi
 
 # causal-conv1d. CAUSAL_CONV1D_FORCE_BUILD=1 skips the prebuilt-wheel cache and
 # compiles against the local torch ABI — slower install but the only reliable path.
-if ! python3 -c "import causal_conv1d" 2>/dev/null; then
+if ! "$VENV_PY" -c "import causal_conv1d" 2>/dev/null; then
     echo "Installing causal-conv1d (building from source against local torch)..."
-    CAUSAL_CONV1D_FORCE_BUILD=1 pip install --no-build-isolation causal-conv1d
+    CAUSAL_CONV1D_FORCE_BUILD=1 "$VENV_PIP" install --no-build-isolation causal-conv1d
 fi
 
 # flash-linear-attention. PyPI name is `fla`.
-if ! python3 -c "import fla" 2>/dev/null; then
+if ! "$VENV_PY" -c "import fla" 2>/dev/null; then
     echo "Installing flash-linear-attention (fla)..."
-    pip install --no-build-isolation fla
+    "$VENV_PIP" install --no-build-isolation fla
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Hard verify — fail fast if anything is broken
+# 6. Hard verify — fail fast if anything is broken
 # ---------------------------------------------------------------------------
 echo
-echo "--- Verifying kernels ---"
-python3 - <<'PY'
+echo "--- Verifying kernels (in venv) ---"
+"$VENV_PY" - <<'PY'
 import sys
 problems = []
 try:
@@ -151,18 +176,20 @@ if problems:
 PY
 
 # ---------------------------------------------------------------------------
-# 6. Pull data
+# 7. Pull data
 # ---------------------------------------------------------------------------
 echo
 echo "--- Pulling data from Hub ---"
-python3 scripts/data.py pull --all
+"$VENV_PY" scripts/data.py pull --all
 
 echo
 echo "=== Setup complete ==="
 echo
+echo "Venv: $VENV_DIR (use $VENV_PY for all training commands)"
+echo
 echo "Recommended GRPO command:"
 echo "  TORCHDYNAMO_DISABLE=1 PYTHONUTF8=1 PYTHONPATH=$REPO_DIR \\"
-echo "    python3 scripts/train_grpo.py --manual \\"
+echo "    $VENV_PY scripts/train_grpo.py --manual \\"
 echo "      --model-name <SFT-checkpoint-or-merged-path> \\"
 echo "      --data data/training/grpo/smoke_test.jsonl \\"
 echo "      --reward-mode recall --kl-coef 0.02 \\"
