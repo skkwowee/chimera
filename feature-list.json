@@ -20,7 +20,7 @@
   {
     "id": "F04",
     "name": "SFT training — visual grounding",
-    "description": "SFT on Qwen3.5-35B-A3B MoE to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA r=4 α=8 on vision + language layers, 1 epoch, 3322 samples, 1h40m on 2x H100. Final eval: 67.3% field accuracy (vs 50% Opus, 50% base Qwen). Perfect on health/armor/money/round_phase. Merged 66GB model at outputs/sft/final_model/merged_16bit.",
+    "description": "SFT on Qwen3.5-35B-A3B MoE to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA r=4 α=8 on vision + language layers, 1 epoch, 3322 samples, 1h40m on 1x H200. Final eval: 67.3% field accuracy (vs 50% Opus, 50% base Qwen). Perfect on health/armor/money/round_phase. Merged 66GB model at outputs/sft/final_model/merged_16bit.",
     "passes": true
   },
   {

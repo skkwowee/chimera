@@ -207,15 +207,14 @@ python scripts/evaluate.py --predictions data/predictions --labels data/labeled
 python scripts/train_sft.py --screenshots data/raw --labels data/labeled
 python scripts/train_sft.py --dry-run  # check VRAM
 
-# Phase 1: SFT with LoRA adapter
-python scripts/train_sft.py --lora-adapter checkpoints/checkpoint-304
+# Phase 1: Resume SFT from checkpoint
+python scripts/train_sft.py --resume checkpoints/sft-r4-checkpoint-304
 
 # Evaluate SFT model
-python scripts/evaluate.py --predictions data/predictions --labels data/labeled --lora-adapter checkpoints/checkpoint-304
+python scripts/compare_models.py --lora-adapter checkpoints/sft-r4-checkpoint-304
 
 # Phase 2: GRPO (uses SFT output, --manual bypasses TRL bug)
 python scripts/train_grpo.py --manual \
-    --lora-adapter checkpoints/checkpoint-304 \
     --screenshots data/raw --labels data/labeled \
     --reward-mode simplified --kl-coef 0.02
 python scripts/train_grpo.py --manual --reward-mode recall  # uses RECALL advantage estimation

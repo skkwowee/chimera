@@ -78,7 +78,7 @@ We fine-tune Qwen3.5-35B-A3B (MoE, 35B total / 3B active parameters) using LoRA~
 % TODO: KL regularization (λ=0.02) prevents mode collapse
 % TODO: Describe outcome reward asymmetry: deviating from winning play not penalized hard, endorsing losing play is
 
-Phase~2 applies Group Relative Policy Optimization (GRPO) to teach strategic reasoning on top of the perception foundation established by SFT. A key implementation challenge is that the standard TRL~\cite{vonwerra2022trl} library's multimodal GRPO path contains a bug that causes index-out-of-bounds errors on repeated image prompts (specifically, \texttt{image\_grid\_thw} indexing fails when the same image appears across multiple rollouts within a group). We address this by implementing a manual GRPO training loop that handles vision token bookkeeping directly, bypassing TRL's multimodal collation.
+Phase~2 applies Group Relative Policy Optimization (GRPO) to teach strategic reasoning on top of the perception foundation established by SFT. A key implementation challenge is that the standard TRL~\cite{vonwerra2023trl} library's multimodal GRPO path contains a bug that causes index-out-of-bounds errors on repeated image prompts (specifically, \texttt{image\_grid\_thw} indexing fails when the same image appears across multiple rollouts within a group). We address this by implementing a manual GRPO training loop that handles vision token bookkeeping directly, bypassing TRL's multimodal collation.
 
 A 20-step smoke test validates that the manual loop functions correctly: rewards differentiate between high- and low-quality completions, gradients flow through the language model layers, and the format compliance rate improves from 25\% to 75\% over the course of the short run. Full GRPO training results are pending.
 
@@ -130,7 +130,7 @@ We evaluate on the HUD perception task: given a CS2 screenshot, output a structu
 
 \paragraph{Data.} We parse 4 professional demo files (Furia vs Vitality, IEM Katowice 2025) across Mirage, Inferno, Nuke, and Overpass. Demo playback with automated screenshot capture yields 4{,}353 screenshots. Temporal alignment with demo tick data produces 5{,}309 labeled game state instances. After deduplication and quality filtering, 3{,}322 samples are used for SFT training.
 
-\paragraph{Model.} Qwen3.5-35B-A3B~\cite{yang2024qwen2} is a Mixture-of-Experts VLM with 35B total parameters and 3B active per token. We train in bf16 on 2$\times$ NVIDIA H100 SXM GPUs.
+\paragraph{Model.} Qwen3.5-35B-A3B~\cite{yang2024qwen2} is a Mixture-of-Experts VLM with 35B total parameters and 3B active per token. We train in bf16 on a single NVIDIA H200 SXM GPU (141\,GB).
 
 \paragraph{SFT hyperparameters.} LoRA rank $r{=}4$, $\alpha{=}8$, dropout $0.1$, learning rate $1 \times 10^{-5}$ (cosine schedule), batch size 8 (gradient accumulation 4), 1 epoch (304 steps), 1h40m wall time. Both vision encoder and language layers are trainable. An initial run with $r{=}32$ over 3 epochs severely overfit (train loss 0.033 / val loss 17.5), motivating the aggressive regularization.
 
@@ -186,7 +186,7 @@ JSON valid           & 10/10 & 10/10 & 0/10$^\ddagger$ & 10/10 \\
 \centering
 \fbox{\parbox{0.9\linewidth}{
 \small
-\textbf{SFT Training Curve} (1 epoch, 304 steps, 2$\times$H100) \\[4pt]
+\textbf{SFT Training Curve} (1 epoch, 304 steps, 1$\times$H200) \\[4pt]
 \begin{tabular}{rcccc}
 \textbf{Step} & \textbf{Train Loss} & \textbf{Token Acc} & \textbf{Eval Loss} & \textbf{Eval Acc} \\
 5   & 1.804 & 62.7\% & -- & -- \\

@@ -530,7 +530,32 @@ class CS2GRPOTrainer:
 
         # Training log
         log_path = output_dir / "training_log.jsonl"
-        log_f = open(log_path, "a")
+        log_f = open(log_path, "a")  # noqa: SIM115
+
+        try:
+            self._train_manual_loop(
+                config, output_dir, log_f, optimizer, scheduler,
+                trainable_params, gen_config, reward_weights, total_steps,
+            )
+        finally:
+            log_f.close()
+
+    def _train_manual_loop(
+        self,
+        config: CS2GRPOConfig,
+        output_dir: Path,
+        log_f: Any,
+        optimizer: Any,
+        scheduler: Any,
+        trainable_params: list[Any],
+        gen_config: Any,
+        reward_weights: list[float],
+        total_steps: int,
+    ) -> None:
+        """Inner training loop for train_manual — separated so the caller can wrap in try/finally."""
+        assert self.model is not None
+        assert self.processor is not None
+        assert self.train_dataset is not None
 
         global_step = 0
         optimizer.zero_grad()
@@ -765,9 +790,8 @@ class CS2GRPOTrainer:
             if config.max_steps <= 0 and epoch >= config.num_epochs:
                 break
 
-        log_f.close()
         print(f"\nManual GRPO training complete — {global_step} steps")
-        print(f"Log: {log_path}")
+        print(f"Log: {log_f.name}")
         self._print_memory_usage()
 
     def save_model(
