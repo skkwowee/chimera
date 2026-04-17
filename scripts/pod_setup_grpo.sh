@@ -116,17 +116,24 @@ VENV_PY="$VENV_DIR/bin/python"
     || { echo "ABORT: venv cannot see torch"; exit 1; }
 
 # ---------------------------------------------------------------------------
-# 4. Base deps into the venv (torch/torchvision excluded — passthrough only)
+# 4. Base deps into the venv
 # ---------------------------------------------------------------------------
-# Letting uv resolve `torch>=2.0.0` pulls the latest wheel (cu13) into the
-# venv, which then shadows the system torch and breaks the build chain.
-# Filter torch/torchvision so the venv only ever sees the system torch
-# (which matches the installed nvcc 12.8 toolkit).
-echo "--- Installing base deps into $VENV_DIR (excluding torch) ---"
-REQ_FILTERED=$(mktemp)
-grep -vE '^(torch|torchvision)([><=!~]|$| )' requirements.txt > "$REQ_FILTERED"
-VIRTUAL_ENV="$VENV_DIR" uv pip install -r "$REQ_FILTERED"
-rm -f "$REQ_FILTERED"
+# Pre-pin torch to the system version+CUDA inside the venv. uv's resolver does
+# NOT count system-site-packages as "installed", so without this, transitive
+# torch deps from transformers/trl/peft pull the latest wheel (cu130) and
+# shadow the system torch. The kernels then can't find a matching nvcc.
+SYSTEM_TORCH_FULL=$(/usr/bin/python3 -c "import torch; print(torch.__version__)")
+SYSTEM_TORCH_VERSION="${SYSTEM_TORCH_FULL%+*}"          # e.g. "2.8.0"
+SYSTEM_TORCH_CUDA_TAG="${SYSTEM_TORCH_FULL##*+}"        # e.g. "cu128"
+echo "--- Pinning venv torch to system: $SYSTEM_TORCH_VERSION+$SYSTEM_TORCH_CUDA_TAG ---"
+VIRTUAL_ENV="$VENV_DIR" uv pip install \
+    "torch==$SYSTEM_TORCH_VERSION" \
+    --index-url "https://download.pytorch.org/whl/$SYSTEM_TORCH_CUDA_TAG" \
+    --extra-index-url "https://pypi.org/simple"
+
+# Now install requirements.txt — uv sees torch is satisfied and won't upgrade.
+echo "--- Installing remaining base deps into $VENV_DIR ---"
+VIRTUAL_ENV="$VENV_DIR" uv pip install -r requirements.txt
 
 # ---------------------------------------------------------------------------
 # 5. Fast-path kernels — install in this order, verify each (all into venv)
