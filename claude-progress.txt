@@ -17,6 +17,83 @@ CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen
 - [ ] F06 — GRPO training — strategic reasoning (40/50 steps, GPU crash, checkpoint-25 saved)
 - [ ] F07 — Evaluation & analysis
 
+## What changed this session (2026-04-17 → 04-18) — GRPO speed fix
+
+Took the failed F06 run from 14h/40 steps (~21 min/step) down to ~5-7 min/step
+on the same H200 pod, before attempting prefix sharing for the next 20-30%.
+
+### Root cause of the 14h slowness (diagnosed)
+- Pod's torch was built for CUDA 13.0 but pod's nvcc was 12.4 → causal-conv1d
+  and flash-linear-attention wheels couldn't link → transformers fell back to
+  Python ref impl. Torch inductor then tried to JIT-rescue the fallback path
+  (~30 min compile storm with 35 workers, never recovered perf because of
+  graph breaks on dynamic MoE expert routing). Net: 14h for 40 steps.
+- A second-order issue compounded it: with peft, gradient_checkpointing kept
+  the "use_cache=True is incompatible with gradient checkpointing" warning
+  firing every generate() call → KV cache off → O(n²) decode per token.
+
+### Fixes applied (commits 129456c → 3eae3e4)
+- src/training/grpo_trainer.py:
+  - _preflight_kernels(): hard-fail at load_model() if causal_conv1d or
+    flash_linear_attention can't import. Aborts in ~10 sec instead of 14h.
+  - attn_implementation="flash_attention_2" default + --attn-impl CLI flag.
+  - gradient_checkpointing=False default (was unconditionally on). Since
+    H200 has 144GB and the model is 65GB, we have ~80GB activation headroom
+    — memory isn't the bottleneck. Removing GC fixes the use_cache warning.
+  - _set_generation_mode(): walks PeftModel.get_base_model() to set use_cache
+    on the base model config (which the wrapper does NOT propagate to).
+- scripts/pod_setup_grpo.sh (new): venv-based pod bootstrap. Iteratively fixed:
+  - PEP 668 blocks `uv pip install --system` on Ubuntu 24.04 → use uv venv
+    with --system-site-packages.
+  - `uv venv` doesn't ship pip → use `uv pip install --python $VENV_PY`.
+  - Transitive deps (transformers, trl, peft) auto-upgrade torch to cu130
+    even with --system-site-packages → pre-pin venv torch to system version
+    via pytorch.org wheel index.
+  - PyPI dist name is `flash-linear-attention`, not `fla` (only the import
+    name is `fla`).
+  - Wire CUDA_HOME=/usr/local/cuda + PATH so causal-conv1d build finds nvcc.
+  - Strict CUDA major check was a false positive (nvidia-smi "CUDA Version"
+    is the max-supported by the driver, not the installed runtime). Loosened
+    to warn-only.
+- scripts/run_grpo_pod.sh (new): launcher with TORCHDYNAMO_DISABLE=1
+  (skips the ~30 min inductor compile storm), kernel re-verify, nohup.
+- requirements.txt: added faiss-cpu (RECALL needed it; was crashing the
+  speed test before model load).
+
+### Speedup measured (5-step manual GRPO smoke test, base Qwen3.5-35B-A3B,
+### LoRA r=16 α=32, G=4, max_new_tokens=256, --reward-mode recall, sdpa attn)
+- Old broken (no kernels, no fix):     ~21 min/step  (14h projected for 40)
+- + fast-path kernels installed:       ~7-8 min/step (~3x)
+- + gradient_checkpointing OFF:        ~5-7 min/step (~3.5-4x)
+- Target after prefix sharing:         ~3-4 min/step (~5-7x)
+- Aspirational (vLLM would deliver):   ~1-2 min/step
+
+### Sample training health (3 steps with the fix in place)
+  step 1 | loss 1.0042 | reward 0.010±0.015 | fmt 38% | grad 156.881
+  step 2 | loss 1.9325 | reward 0.030±0.016 | fmt 69% | grad 169.449
+  step 3 | loss 1.1696 | reward 0.005±0.025 | fmt 88% | grad 151.425
+Format pass climbing fast (38→69→88%), grads stable, GPU at 23% util
+(sequential G=4 generation is now the dominant bottleneck).
+
+### Operational notes for next pod
+- Pod template needs torch CUDA matching driver. Verified working:
+  runpod base image + system torch 2.8.0+cu128 + apt-installed CUDA 12.8
+  toolkit at /usr/local/cuda-12.8 (driver 13.0 supports backward compat).
+- /workspace/venv = uv venv with system torch passthrough + cu128-matched
+  causal-conv1d 1.6.1 + flash-linear-attention 0.4.2 + faiss-cpu.
+- flash-attn install was killed because it compiles for 4 GPU archs (~30-60
+  min). Currently running on --attn-impl sdpa (~80% of FA2's speed). To
+  rebuild flash-attn fast: FLASH_ATTN_CUDA_ARCHS=9.0 to limit to H200.
+- Tarball /workspace/venv → upload to HF dataset → next pod skips ~10 min
+  of kernel build. Not yet implemented.
+
+### Open follow-ups
+- Prefix-shared KV across G=4 generations (single prefill, fork cache, G
+  decodes). Expected ~20-30% on overall step time. NEXT.
+- Tarball venv to HF for warm-start on future pods.
+- flash-attn install with FLASH_ATTN_CUDA_ARCHS=9.0.
+- Resume real F06 GRPO training for 100+ steps using SFT ckpt-304 as base.
+
 ## What changed this session (2026-04-10, session 2)
 - Attempted vLLM integration for fast GRPO generation — blocked by dependency conflicts:
   - vLLM 0.19 requires transformers <5, Qwen3.5 MoE needs transformers >=5.5
