@@ -93,10 +93,26 @@ if ! command -v uv >/dev/null 2>&1; then
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# Find the system python that has torch installed. uv venv defaults to uv's
+# managed python (often a different minor version than system), and
+# --system-site-packages can't bridge interpreter versions. Reuse this for
+# venv creation AND for reading system torch version / recreation check.
+SYSTEM_PY=""
+for candidate in /usr/bin/python3 /usr/local/bin/python3 python3; do
+    if "$candidate" -c "import torch" 2>/dev/null; then
+        SYSTEM_PY="$candidate"
+        break
+    fi
+done
+if [ -z "$SYSTEM_PY" ]; then
+    echo "ABORT: no system python with torch found. Tried /usr/bin/python3, /usr/local/bin/python3, python3."
+    exit 1
+fi
+
 # If venv exists with a different torch than system, nuke it. The kernel
-# build chain is fundamentally tied to torch's CUDA version, and the system
-# torch is what matches the pod's installed nvcc.
-SYSTEM_TORCH=$(/usr/bin/python3 -c "import torch; print(torch.__version__)" 2>/dev/null || echo "missing")
+# build chain is tied to torch's CUDA version, and the system torch is what
+# matches the pod's installed nvcc.
+SYSTEM_TORCH=$("$SYSTEM_PY" -c "import torch; print(torch.__version__)" 2>/dev/null || echo "missing")
 if [ -d "$VENV_DIR" ]; then
     VENV_TORCH=$("$VENV_DIR/bin/python" -c "import torch; print(torch.__version__)" 2>/dev/null || echo "missing")
     if [ "$SYSTEM_TORCH" != "$VENV_TORCH" ]; then
@@ -106,8 +122,8 @@ if [ -d "$VENV_DIR" ]; then
 fi
 
 if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating venv at $VENV_DIR (--system-site-packages, sees system torch)..."
-    uv venv --system-site-packages "$VENV_DIR"
+    echo "Creating venv at $VENV_DIR (-p $SYSTEM_PY, --system-site-packages)..."
+    uv venv --python "$SYSTEM_PY" --system-site-packages "$VENV_DIR"
 fi
 VENV_PY="$VENV_DIR/bin/python"
 
@@ -122,7 +138,7 @@ VENV_PY="$VENV_DIR/bin/python"
 # NOT count system-site-packages as "installed", so without this, transitive
 # torch deps from transformers/trl/peft pull the latest wheel (cu130) and
 # shadow the system torch. The kernels then can't find a matching nvcc.
-SYSTEM_TORCH_FULL=$(/usr/bin/python3 -c "import torch; print(torch.__version__)")
+SYSTEM_TORCH_FULL=$("$SYSTEM_PY" -c "import torch; print(torch.__version__)")
 SYSTEM_TORCH_VERSION="${SYSTEM_TORCH_FULL%+*}"          # e.g. "2.8.0"
 SYSTEM_TORCH_CUDA_TAG="${SYSTEM_TORCH_FULL##*+}"        # e.g. "cu128"
 echo "--- Pinning venv torch to system: $SYSTEM_TORCH_VERSION+$SYSTEM_TORCH_CUDA_TAG ---"
