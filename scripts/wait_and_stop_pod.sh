@@ -48,11 +48,23 @@ echo "[$(date -Iseconds)] Watchdog starting. action=$ACTION poll=${POLL_SECONDS}
 echo "  watch processes: ${WATCH_PROCS[*]:-(none)}"
 echo "  watch logs:      ${WATCH_LOGS[*]:-(none)}"
 
+SELF_PID=$$
+PARENT_PID=$PPID
+
 while true; do
-    # Liveness check: any watched process still alive?
+    # Liveness check: any watched process (other than us) still alive?
+    # pgrep -f matches the FULL command line, and our own argv contains the
+    # watched patterns. Exclude ourselves and our parent shell.
     ALIVE_PROCS=()
     for pat in "${WATCH_PROCS[@]}"; do
-        if pgrep -f "$pat" > /dev/null 2>&1; then
+        FOUND=""
+        for pid in $(pgrep -f "$pat" 2>/dev/null); do
+            if [ "$pid" != "$SELF_PID" ] && [ "$pid" != "$PARENT_PID" ]; then
+                FOUND="$pid"
+                break
+            fi
+        done
+        if [ -n "$FOUND" ]; then
             ALIVE_PROCS+=("$pat")
         fi
     done
@@ -79,8 +91,18 @@ while true; do
     if [ ${#STALE_LOGS[@]} -gt 0 ]; then
         echo "[$(date -Iseconds)] Hang detected: log(s) stale > ${HANG_MINUTES}m: ${STALE_LOGS[*]}"
         echo "  Killing live watched processes: ${ALIVE_PROCS[*]}"
+        # CAREFUL: pkill -f matches the FULL command line. Our own command
+        # line contains the watched patterns as --watch-process arguments,
+        # so pkill -f "$pat" would kill US too. Resolve PIDs first, exclude
+        # our own PID and our parent shell, then kill by PID.
+        SELF_PID=$$
+        PARENT_PID=$PPID
         for pat in "${ALIVE_PROCS[@]}"; do
-            pkill -9 -f "$pat" 2>/dev/null || true
+            for pid in $(pgrep -f "$pat" 2>/dev/null); do
+                if [ "$pid" != "$SELF_PID" ] && [ "$pid" != "$PARENT_PID" ]; then
+                    kill -9 "$pid" 2>/dev/null || true
+                fi
+            done
         done
         REASON="hang-detected"
         break
