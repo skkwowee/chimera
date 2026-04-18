@@ -87,8 +87,80 @@ Format pass climbing fast (38→69→88%), grads stable, GPU at 23% util
 - Tarball /workspace/venv → upload to HF dataset → next pod skips ~10 min
   of kernel build. Not yet implemented.
 
+### Round 3 result (2026-04-18, ~06:10) — landed at ~3.8 min/step
+End-to-end 5-step smoke test, base Qwen3.5-35B-A3B + LoRA r=16, G=4,
+max_new_tokens=128, --reward-mode recall, sdpa attention:
+  Total wall: 18m 56s for 5 steps  →  ~3.8 min/step
+  Per-sample timing (4 samples per step at gradient_accumulation=4):
+    gen=9.8s   decode=0.00s   bwd=1.0s   fmt_pass=2-3/4
+  Generation is now ~90% of compute. We're at HF generate's floor.
+
+Speedup vs the original 14h/40-step (= 21 min/step) failure:
+  21.0 min/step  →  baseline (broken)
+   7-8 min/step  →  +kernels (causal-conv1d + fla actually loaded)
+   5-7 min/step  →  +gradient_checkpointing OFF (fixes KV cache during gen)
+  ~3.8 min/step  →  +num_return_sequences=G + max_new_tokens 256→128
+  ~5.5x cumulative.
+
+What changed in round 3:
+- src/training/grpo_trainer.py: replaced manual deepcopy(past_key_values)
+  prefix-share (which hung silently — DynamicCache + peft) with HF's native
+  num_return_sequences=G in generate(). HF batches the prompt G times in
+  dim 0, prefills once, decodes G in parallel.
+- Added per-sample timing prints (gen/decode/bwd elapsed) since SYS_PTRACE
+  is unavailable in RunPod containers (no py-spy).
+- max_new_tokens 256 → 128 in launcher: --perception-only only needs the
+  game_state JSON (~80-100 tokens). Halves decode work.
+- pod_setup_grpo.sh: FLASH_ATTN_CUDA_ARCHS=9.0 + MAX_JOBS=8 by default for
+  flash-attn build (~10-15 min vs the 30-60 min for all 4 archs).
+
+### Realistic floor without vLLM: ~1-2 min/step
+At 3.8 min/step, generation is 90% of compute. The remaining levers:
+- vLLM separate-process integration: ~5-10x on gen alone, ~2.7x net step
+  speedup. The version conflict (vLLM 0.19 needs transformers<5, Qwen3.5
+  MoE needs >=5.5) has several plausible workarounds, none fully tested:
+    1. Newer vLLM (0.20+) may have lifted the pin
+    2. SGLang has more permissive pins
+    3. trust_remote_code with Qwen's shipped modeling code (vLLM's
+       transformers backend route)
+    4. pip install vllm --no-deps + manual transformers 5.5
+    5. Two-venv split (always works, ~1-2 days incl LoRA sync)
+- flash-attn FA2 instead of sdpa: another 1.3-1.8x on attention.
+- Reduce G 4→2: halves gen, halves reward-signal variance.
+- Larger sample batch (currently 1): amortizes prefill across samples.
+
+### How to resume next session (pod data NOT persistent)
+The /workspace/venv has to be rebuilt. Plan:
+1. Spin up RunPod H200 with matched torch/CUDA template (verified working:
+   image with system torch 2.8.0+cu128 + CUDA 12.8 toolkit at /usr/local/cuda).
+2. ssh in, set up SSH keys (echo pubkey >> ~/.ssh/authorized_keys).
+3. git clone chimera into /workspace/chimera.
+4. bash scripts/pod_setup_grpo.sh
+   - Builds /workspace/venv (uv venv with system torch passthrough)
+   - Installs flash-attn (sm_90 only, ~10-15 min)
+   - Installs causal-conv1d + flash-linear-attention (~5 min)
+   - Pulls data
+   - Final import verification
+5. Smoke test (5 steps, ~20 min):
+     bash /workspace/run_speed_test.sh  # if you wrote it again, OR
+     # equivalent inline:
+     CUDA_HOME=/usr/local/cuda PATH=/usr/local/cuda/bin:$PATH \
+     TORCHDYNAMO_DISABLE=1 PYTHONUTF8=1 \
+     /workspace/venv/bin/python scripts/train_grpo.py --manual \
+       --data data/training/grpo/smoke_test.jsonl \
+       --reward-mode recall --num-generations 4 --max-tokens 128 \
+       --max-steps 5 --save-steps 100 --logging-steps 1 \
+       --perception-only --attn-impl flash_attention_2 \
+       --kl-coef 0.02 --output /workspace/outputs/grpo/smoke
+   Expected: ~3.8 min/step. If much slower, the kernel preflight should
+   have caught the regression — re-check pod_setup_grpo.sh output.
+6. Real F06 run: same command but with SFT ckpt-304 as --model-name and
+   --max-steps 100+ (or however far we want to push it).
+
 ### Open follow-ups
-- Tarball venv to HF for warm-start on future pods.
+- Tarball venv to HF for warm-start on future pods (skip the ~25 min kernel
+  rebuild). Not yet implemented.
+- vLLM integration (see "realistic floor" above for paths).
 - Resume real F06 GRPO training for 100+ steps using SFT ckpt-304 as base.
 
 ### Round 2 (2026-04-18, late) — prefix sharing + instrumentation
