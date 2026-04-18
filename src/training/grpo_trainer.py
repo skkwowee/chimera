@@ -15,6 +15,7 @@ Legacy/ablation mode (D013 — 3-signal):
   - Selectable via REWARD_FUNCTIONS / DEFAULT_REWARD_WEIGHTS from rewards.py
 """
 
+import copy
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -735,23 +736,39 @@ class CS2GRPOTrainer:
                     k: v for k, v in inputs.items() if k not in gen_input_keys
                 }
 
-                # --- Step 1: Generate G completions ---
+                # --- Step 1: Generate G completions (prefix-shared) ---
                 completions_text: list[str] = []
                 completions_ids: list[Any] = []
 
-                # Switch to inference mode with KV cache enabled. The peft wrapper does
-                # NOT reliably propagate gradient_checkpointing_disable() or use_cache=True
-                # to the base model, so without _set_generation_mode the model still runs
-                # gradient-checkpointed without KV cache during generate() — emits the
-                # "use_cache=True is incompatible with gradient checkpointing" warning
-                # and turns each completion into O(n^2) work per token. Kills throughput
-                # by ~3-5x even when the fast-path kernels are present.
+                # Switch to inference mode with KV cache enabled. The peft wrapper
+                # does NOT propagate use_cache=True to the base model — _set_generation_mode
+                # walks to base via get_base_model() to set it on both.
                 self._set_generation_mode(generate=True)
+
+                # Prefix sharing: prefill the prompt ONCE, then fork the KV cache for
+                # each of G completions. Without this we'd pay the prompt prefill G
+                # times (G=4 here) for the same prompt — strictly wasted work since
+                # all G completions share the same prefix. Saves the prefill cost
+                # (G-1)/G of the time, ~20-30% on overall step time.
                 with torch.no_grad():
+                    prefill_out = self.model(
+                        input_ids=inputs["input_ids"],
+                        attention_mask=inputs["attention_mask"],
+                        use_cache=True,
+                        return_dict=True,
+                        **model_extra_kwargs,
+                    )
+                    shared_kv = prefill_out.past_key_values
+
                     for _g in range(config.num_generations):
+                        # Each completion forks a fresh copy of the shared prefill cache;
+                        # generate() will append G-1 new entries during decode and would
+                        # otherwise mutate the shared object across completions.
+                        kv_fork = copy.deepcopy(shared_kv)
                         output = self.model.generate(
                             input_ids=inputs["input_ids"],
                             attention_mask=inputs["attention_mask"],
+                            past_key_values=kv_fork,
                             generation_config=gen_config,
                             **model_extra_kwargs,
                         )
@@ -760,6 +777,7 @@ class CS2GRPOTrainer:
                         text = decode_fn.decode(gen_ids, skip_special_tokens=True)
                         completions_text.append(text)
                         completions_ids.append(gen_ids)
+                    del shared_kv
 
                 # --- Step 2: Score completions ---
                 rewards = []
