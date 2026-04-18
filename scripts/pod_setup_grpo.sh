@@ -187,10 +187,10 @@ if ! "$VENV_PY" -c "import causal_conv1d" 2>/dev/null; then
     CAUSAL_CONV1D_FORCE_BUILD=1 "${UV_PIP[@]}" causal-conv1d
 fi
 
-# flash-linear-attention. PyPI name is `fla`.
+# flash-linear-attention. PyPI name is `flash-linear-attention`; imports as `fla`.
 if ! "$VENV_PY" -c "import fla" 2>/dev/null; then
-    echo "Installing flash-linear-attention (fla)..."
-    "${UV_PIP[@]}" fla
+    echo "Installing flash-linear-attention..."
+    "${UV_PIP[@]}" flash-linear-attention
 fi
 
 # ---------------------------------------------------------------------------
