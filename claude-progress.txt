@@ -155,6 +155,59 @@ The /workspace/venv has to be rebuilt. Plan:
 - vLLM integration (see "realistic floor" above for paths).
 - Resume real F06 GRPO training for 100+ steps using SFT ckpt-304 as base.
 
+### Session picked up 2026-04-18 afternoon — new pod on JP network volume
+Pod gleaming_aquamarine_whale: H200, torch 2.4.1+cu124, nvcc 12.4 (match).
+Network volume at /workspace persists — venv + HF cache + repo all live there.
+
+pod_setup_grpo.sh ran through multiple fixes (committed):
+  - Detect SYSTEM_PY so uv venv uses the python that has torch (pod's
+    /usr/bin/python3 = 3.11, uv default = 3.12 → --system-site-packages
+    bridges nothing). 33792b3.
+  - After `uv pip install -r requirements.txt` strip venv-local torch so
+    --system-site-packages reveals the system torch (pytorch.org/whl/cu124
+    has no cp311 wheel for 2.4.1, uv falls through to PyPI's cu121
+    which then shadows system cu124). a9ee1b9.
+  - --no-deps on kernel installs so flash-attn/causal-conv1d/fla don't
+    re-pull the latest torch 2.11.0+cu130 as a transitive dep. 9b34667.
+  - Post-kernel torch re-verify (catches drift if any of the above leaks).
+
+With all that in place: venv torch stays at 2.4.1+cu124, kernels all install
+cleanly (causal_conv1d 1.6.1, flash-linear-attention, flash_attn 2.7.4.post1
+for sm_9.0 only via FLASH_ATTN_CUDA_ARCHS=9.0 + MAX_JOBS=8).
+
+### BLOCKER — transformers 5.5.4 on this pod lacks Qwen3_5 classes
+Smoke test aborts at model load with:
+  ModuleNotFoundError: Could not import module 'Qwen3_5MoeForConditionalGeneration'
+
+transformers 5.5.4 is installed but `dir(transformers)` only shows Qwen2*
+classes — NO Qwen3* or Qwen3_5* at all. Same transformers 5.5.4 worked on
+the previous pod (torch 2.8.0+cu128). Difference is torch version — torch
+2.4.1+cu124 may be too old for transformers to enable its Qwen3 MoE code
+path (modeling file has an import guard that silently fails on old torch).
+
+### Next session (pick up here)
+Possible fixes, untested:
+1. Check `pip show transformers` version string for a pre-release tag or
+   custom wheel path. Newer transformers (5.6+?) may be required.
+2. Install transformers from HF git main:
+     /workspace/venv/bin/pip install --no-deps --upgrade \
+       git+https://github.com/huggingface/transformers.git@main
+3. Use `trust_remote_code=True` in load_model and let HF fetch the modeling
+   code from the Qwen model repo directly (if Qwen ships one, which they
+   usually do for new models). This is the most version-tolerant path.
+4. Upgrade pod torch to >=2.5 — risks nvcc 12.4 mismatch vs newer torch
+   cu128. Would require a new pod template.
+
+Recommend starting with (3): smallest risk, no new installs, tests whether
+the model just needs its own modeling code loaded via the HF Hub.
+
+Network volume state (safe across pod cycles):
+- /workspace/venv       — built, kernels installed, verified
+- /workspace/chimera    — repo at commit 9b34667
+- /workspace/.cache/huggingface — empty (model wasn't downloaded yet; died
+  at import before load)
+- No outputs, no checkpoints written.
+
 ### Round 2 (2026-04-18, late) — prefix sharing + instrumentation
 Tried two approaches to prefix sharing across G generations:
 - Manual: prefill once, deepcopy(past_key_values), G generate() calls. HUNG
