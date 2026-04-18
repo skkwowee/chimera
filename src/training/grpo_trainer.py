@@ -17,6 +17,7 @@ Legacy/ablation mode (D013 — 3-signal):
 
 import copy
 import json
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -736,7 +737,7 @@ class CS2GRPOTrainer:
                     k: v for k, v in inputs.items() if k not in gen_input_keys
                 }
 
-                # --- Step 1: Generate G completions (prefix-shared) ---
+                # --- Step 1: Generate G completions (batched, prefix-shared) ---
                 completions_text: list[str] = []
                 completions_ids: list[Any] = []
 
@@ -745,39 +746,31 @@ class CS2GRPOTrainer:
                 # walks to base via get_base_model() to set it on both.
                 self._set_generation_mode(generate=True)
 
-                # Prefix sharing: prefill the prompt ONCE, then fork the KV cache for
-                # each of G completions. Without this we'd pay the prompt prefill G
-                # times (G=4 here) for the same prompt — strictly wasted work since
-                # all G completions share the same prefix. Saves the prefill cost
-                # (G-1)/G of the time, ~20-30% on overall step time.
+                # Prefix sharing via num_return_sequences=G: HF batches the prompt
+                # G times in dim 0, does ONE prefill, then decodes G in parallel.
+                # Cleaner than manual deepcopy of past_key_values (which hung last
+                # attempt — DynamicCache deepcopy is finicky with peft).
+                # Saves ~20-30% on overall step time vs sequential generation.
+                t_gen = time.time()
                 with torch.no_grad():
-                    prefill_out = self.model(
+                    output = self.model.generate(
                         input_ids=inputs["input_ids"],
                         attention_mask=inputs["attention_mask"],
-                        use_cache=True,
-                        return_dict=True,
+                        generation_config=gen_config,
+                        num_return_sequences=config.num_generations,
                         **model_extra_kwargs,
                     )
-                    shared_kv = prefill_out.past_key_values
+                gen_elapsed = time.time() - t_gen
 
-                    for _g in range(config.num_generations):
-                        # Each completion forks a fresh copy of the shared prefill cache;
-                        # generate() will append G-1 new entries during decode and would
-                        # otherwise mutate the shared object across completions.
-                        kv_fork = copy.deepcopy(shared_kv)
-                        output = self.model.generate(
-                            input_ids=inputs["input_ids"],
-                            attention_mask=inputs["attention_mask"],
-                            past_key_values=kv_fork,
-                            generation_config=gen_config,
-                            **model_extra_kwargs,
-                        )
-                        gen_ids = output[0, prompt_len:]
-                        decode_fn = self.tokenizer if not has_images else self.processor
-                        text = decode_fn.decode(gen_ids, skip_special_tokens=True)
-                        completions_text.append(text)
-                        completions_ids.append(gen_ids)
-                    del shared_kv
+                # output shape: [G, prompt_len + new_tokens]
+                t_decode = time.time()
+                for g_idx in range(output.shape[0]):
+                    gen_ids = output[g_idx, prompt_len:]
+                    decode_fn = self.tokenizer if not has_images else self.processor
+                    text = decode_fn.decode(gen_ids, skip_special_tokens=True)
+                    completions_text.append(text)
+                    completions_ids.append(gen_ids)
+                decode_elapsed = time.time() - t_decode
 
                 # --- Step 2: Score completions ---
                 rewards = []
@@ -810,6 +803,7 @@ class CS2GRPOTrainer:
                 self._set_generation_mode(generate=False)
                 sample_loss = torch.tensor(0.0, device=self.model.device)
 
+                t_bwd = time.time()
                 for g_idx in range(config.num_generations):
                     gen_ids = completions_ids[g_idx]
                     if len(gen_ids) == 0:
@@ -837,6 +831,15 @@ class CS2GRPOTrainer:
                 # Scale by gradient accumulation
                 scaled_loss = sample_loss / config.gradient_accumulation_steps
                 scaled_loss.backward()
+                bwd_elapsed = time.time() - t_bwd
+
+                # Per-sample timing breakdown so we can see where time goes.
+                print(
+                    f"  [sample] gen={gen_elapsed:.1f}s decode={decode_elapsed:.2f}s "
+                    f"bwd={bwd_elapsed:.1f}s G={config.num_generations} "
+                    f"new_tokens<={config.max_new_tokens} fmt_pass={format_passes}/{config.num_generations}",
+                    flush=True,
+                )
 
                 # Accumulate metrics
                 accum_loss += sample_loss.item()
