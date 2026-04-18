@@ -88,11 +88,31 @@ Format pass climbing fast (38→69→88%), grads stable, GPU at 23% util
   of kernel build. Not yet implemented.
 
 ### Open follow-ups
-- Prefix-shared KV across G=4 generations (single prefill, fork cache, G
-  decodes). Expected ~20-30% on overall step time. NEXT.
 - Tarball venv to HF for warm-start on future pods.
-- flash-attn install with FLASH_ATTN_CUDA_ARCHS=9.0.
 - Resume real F06 GRPO training for 100+ steps using SFT ckpt-304 as base.
+
+### Round 2 (2026-04-18, late) — prefix sharing + instrumentation
+Tried two approaches to prefix sharing across G generations:
+- Manual: prefill once, deepcopy(past_key_values), G generate() calls. HUNG
+  silently after 17+ min on first sample — DynamicCache deepcopy is finicky
+  with peft. Reverted.
+- HF native: num_return_sequences=G in a single generate() call. HF batches
+  prompt G times in dim 0, prefills once, decodes G in parallel. Cleaner
+  and lets HF handle whatever cache plumbing is needed. (Was tried before
+  the gradient_checkpointing fix and noted "peft incompatible" — retrying
+  now that use_cache actually sticks.) Commit 9ec972f.
+- Added per-sample timing prints: gen / decode / bwd in seconds. Without
+  py-spy (RunPod containers don't ship SYS_PTRACE) this is the only way to
+  see which phase is the bottleneck.
+
+flash-attn install for the H200 specifically:
+- pod_setup_grpo.sh now defaults to FLASH_ATTN_CUDA_ARCHS=9.0 + MAX_JOBS=8
+  (limits the build to sm_90 only — ~10-15 min vs the 30-60 min that
+  building all four arches would take on this hardware).
+
+Other knobs lowered to test:
+- max_new_tokens 256 → 128 in the speed-test launcher (--perception-only
+  needs only the game_state JSON; ~80-100 tokens is enough).
 
 ## What changed this session (2026-04-10, session 2)
 - Attempted vLLM integration for fast GRPO generation — blocked by dependency conflicts:

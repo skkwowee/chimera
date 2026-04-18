@@ -171,10 +171,17 @@ echo "--- Installing fast-path kernels ---"
 # and fla setup.py to detect ABI flags).
 UV_PIP=(uv pip install --python "$VENV_PY" --no-build-isolation)
 
-# FlashAttention-2 first; ships as a prebuilt wheel for common torch/cuda combos.
-# Independent of causal-conv1d. If this fails, fall back to attn_implementation=sdpa.
+# FlashAttention-2. Builds from source if no matching prebuilt wheel.
+# CRITICAL: limit GPU archs or the build compiles for sm_80, sm_90, sm_100, sm_120
+# (~30-60 min on H200). FLASH_ATTN_CUDA_ARCHS=9.0 limits to H200's arch only
+# (~10-15 min). MAX_JOBS=8 parallelizes the per-arch nvcc compiles.
+# Override with FLASH_ATTN_CUDA_ARCHS in the env if running on a different GPU.
+# Independent of causal-conv1d. If install fails, --attn-impl sdpa is the fallback
+# (~80% of FA2's speed).
 if ! "$VENV_PY" -c "import flash_attn" 2>/dev/null; then
-    echo "Installing flash-attn..."
+    echo "Installing flash-attn (sm_${FLASH_ATTN_CUDA_ARCHS:-9.0} only, MAX_JOBS=${MAX_JOBS:-8})..."
+    FLASH_ATTN_CUDA_ARCHS="${FLASH_ATTN_CUDA_ARCHS:-9.0}" \
+    MAX_JOBS="${MAX_JOBS:-8}" \
     "${UV_PIP[@]}" flash-attn==2.7.4.post1 || {
         echo "  flash-attn install failed — will use --attn-impl sdpa as fallback"
     }
