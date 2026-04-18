@@ -142,18 +142,10 @@ The /workspace/venv has to be rebuilt. Plan:
    - Pulls data
    - Final import verification
 5. Smoke test (5 steps, ~20 min):
-     bash /workspace/run_speed_test.sh  # if you wrote it again, OR
-     # equivalent inline:
-     CUDA_HOME=/usr/local/cuda PATH=/usr/local/cuda/bin:$PATH \
-     TORCHDYNAMO_DISABLE=1 PYTHONUTF8=1 \
-     /workspace/venv/bin/python scripts/train_grpo.py --manual \
-       --data data/training/grpo/smoke_test.jsonl \
-       --reward-mode recall --num-generations 4 --max-tokens 128 \
-       --max-steps 5 --save-steps 100 --logging-steps 1 \
-       --perception-only --attn-impl flash_attention_2 \
-       --kl-coef 0.02 --output /workspace/outputs/grpo/smoke
-   Expected: ~3.8 min/step. If much slower, the kernel preflight should
-   have caught the regression — re-check pod_setup_grpo.sh output.
+     bash scripts/run_grpo_smoke.sh
+   Auto-detects flash-attn vs sdpa, nohup'd, logs to /workspace/grpo_smoke.log.
+   Expected: ~3.8 min/step. If much slower, the kernel preflight in load_model()
+   should have caught the regression — re-check pod_setup_grpo.sh output.
 6. Real F06 run: same command but with SFT ckpt-304 as --model-name and
    --max-steps 100+ (or however far we want to push it).
 
