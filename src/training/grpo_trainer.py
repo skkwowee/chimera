@@ -241,6 +241,37 @@ class CS2GRPOTrainer:
             reserved = torch.cuda.memory_reserved() / 1024**3
             print(f"GPU memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
 
+    def _set_generation_mode(self, generate: bool) -> None:
+        """Toggle KV cache + gradient checkpointing for the underlying base model.
+
+        With peft, calling self.model.gradient_checkpointing_disable() and
+        self.model.config.use_cache = True does NOT propagate to the wrapped base
+        model — the base keeps its old config and emits the
+        "use_cache=True is incompatible with gradient checkpointing" warning
+        on every generate() call. Result: KV cache stays off during generation
+        and each completion runs O(n^2) per token. Walk to the base model and
+        toggle both flags explicitly so generate() actually gets the cache.
+        """
+        # peft: PeftModel.get_base_model() returns the wrapped transformers model
+        base = self.model
+        if hasattr(base, "get_base_model"):
+            base = base.get_base_model()
+
+        if generate:
+            self.model.eval()
+            for m in (self.model, base):
+                if hasattr(m, "gradient_checkpointing_disable"):
+                    m.gradient_checkpointing_disable()
+                if hasattr(m, "config") and hasattr(m.config, "use_cache"):
+                    m.config.use_cache = True
+        else:
+            self.model.train()
+            for m in (self.model, base):
+                if hasattr(m, "config") and hasattr(m.config, "use_cache"):
+                    m.config.use_cache = False
+                if hasattr(m, "gradient_checkpointing_enable"):
+                    m.gradient_checkpointing_enable()
+
     def prepare_data(
         self,
         train_data: list[dict[str, Any]],
@@ -706,10 +737,14 @@ class CS2GRPOTrainer:
                 completions_text: list[str] = []
                 completions_ids: list[Any] = []
 
-                # Disable gradient checkpointing for generation (enables KV cache)
-                self.model.eval()
-                self.model.gradient_checkpointing_disable()
-                self.model.config.use_cache = True
+                # Switch to inference mode with KV cache enabled. The peft wrapper does
+                # NOT reliably propagate gradient_checkpointing_disable() or use_cache=True
+                # to the base model, so without _set_generation_mode the model still runs
+                # gradient-checkpointed without KV cache during generate() — emits the
+                # "use_cache=True is incompatible with gradient checkpointing" warning
+                # and turns each completion into O(n^2) work per token. Kills throughput
+                # by ~3-5x even when the fast-path kernels are present.
+                self._set_generation_mode(generate=True)
                 with torch.no_grad():
                     for _g in range(config.num_generations):
                         output = self.model.generate(
@@ -751,10 +786,8 @@ class CS2GRPOTrainer:
                 advantages = (rewards_t - rewards_t.mean()) / (reward_std + 1e-8)
 
                 # --- Step 4: Compute policy gradient loss ---
-                # Re-enable gradient checkpointing for training forward/backward
-                self.model.train()
-                self.model.config.use_cache = False
-                self.model.gradient_checkpointing_enable()
+                # Re-enable gradient checkpointing for training forward/backward.
+                self._set_generation_mode(generate=False)
                 sample_loss = torch.tensor(0.0, device=self.model.device)
 
                 for g_idx in range(config.num_generations):
