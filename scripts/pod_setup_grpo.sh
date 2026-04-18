@@ -151,6 +151,25 @@ VIRTUAL_ENV="$VENV_DIR" uv pip install \
 echo "--- Installing remaining base deps into $VENV_DIR ---"
 VIRTUAL_ENV="$VENV_DIR" uv pip install -r requirements.txt
 
+# Drop venv-local torch/torchvision so --system-site-packages reveals the
+# SYSTEM torch (which was installed by the pod template against the pod's
+# nvcc). Required when pytorch.org/whl/<cuda_tag> doesn't have a wheel for
+# the exact (version, python, cuda) triple we need — uv then falls through
+# to the plain PyPI wheel which ships cu121 universal, shadowing the system
+# cu124 install and breaking the nvcc/torch match check below.
+echo "--- Dropping venv-local torch (fall through to system cu$SYSTEM_TORCH_CUDA_TAG) ---"
+rm -rf "$VENV_DIR"/lib/python*/site-packages/torch \
+       "$VENV_DIR"/lib/python*/site-packages/torchvision \
+       "$VENV_DIR"/lib/python*/site-packages/torch-*.dist-info \
+       "$VENV_DIR"/lib/python*/site-packages/torchvision-*.dist-info
+VENV_TORCH_POST=$("$VENV_PY" -c "import torch; print(torch.__version__)")
+if [ "$VENV_TORCH_POST" != "$SYSTEM_TORCH_FULL" ]; then
+    echo "ABORT: after cleanup venv torch is $VENV_TORCH_POST, expected $SYSTEM_TORCH_FULL."
+    echo "       System torch at $SYSTEM_PY must be importable for fallback to work."
+    exit 1
+fi
+echo "  venv torch now: $VENV_TORCH_POST (via system-site-packages)"
+
 # ---------------------------------------------------------------------------
 # 5. Fast-path kernels — install in this order, verify each (all into venv)
 # ---------------------------------------------------------------------------
