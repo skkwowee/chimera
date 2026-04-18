@@ -145,6 +145,11 @@ class CS2GRPOConfig:
     # FlashAttention-2 ships as a wheel and is independent of the causal_conv1d stack.
     # Use "sdpa" if FA2 is unavailable; "eager" only as a last resort.
     attn_implementation: str = "flash_attention_2"
+    # Gradient checkpointing trades activation memory for ~30% extra compute and (more
+    # importantly) breaks KV cache during generation under peft — generate() then runs
+    # O(n^2) per token. On H200 (144GB) with this 65GB model we have ~80GB of activation
+    # headroom, so default OFF. Set True only if VRAM is the bottleneck.
+    gradient_checkpointing: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
@@ -202,7 +207,11 @@ class CS2GRPOTrainer:
             attn_implementation=self.config.attn_implementation,
         )
 
-        self.model.gradient_checkpointing_enable()
+        if self.config.gradient_checkpointing:
+            self.model.gradient_checkpointing_enable()
+            print("  gradient_checkpointing: ON (saves activation memory, slower; breaks KV cache during gen)")
+        else:
+            print("  gradient_checkpointing: OFF (full activations, KV cache works during gen)")
 
         self.processor = AutoProcessor.from_pretrained(self.config.model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
@@ -242,17 +251,14 @@ class CS2GRPOTrainer:
             print(f"GPU memory: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
 
     def _set_generation_mode(self, generate: bool) -> None:
-        """Toggle KV cache + gradient checkpointing for the underlying base model.
+        """Toggle KV cache for generation vs training, on both the peft wrapper
+        and the underlying base model.
 
-        With peft, calling self.model.gradient_checkpointing_disable() and
-        self.model.config.use_cache = True does NOT propagate to the wrapped base
-        model — the base keeps its old config and emits the
-        "use_cache=True is incompatible with gradient checkpointing" warning
-        on every generate() call. Result: KV cache stays off during generation
-        and each completion runs O(n^2) per token. Walk to the base model and
-        toggle both flags explicitly so generate() actually gets the cache.
+        With peft, setting self.model.config.use_cache does NOT propagate to the
+        wrapped base model. Walk to base via get_base_model() and set use_cache
+        on both. (Gradient checkpointing is handled by config.gradient_checkpointing
+        at load time and is not toggled per-step here — see load_model().)
         """
-        # peft: PeftModel.get_base_model() returns the wrapped transformers model
         base = self.model
         if hasattr(base, "get_base_model"):
             base = base.get_base_model()
@@ -260,8 +266,6 @@ class CS2GRPOTrainer:
         if generate:
             self.model.eval()
             for m in (self.model, base):
-                if hasattr(m, "gradient_checkpointing_disable"):
-                    m.gradient_checkpointing_disable()
                 if hasattr(m, "config") and hasattr(m.config, "use_cache"):
                     m.config.use_cache = True
         else:
@@ -269,8 +273,6 @@ class CS2GRPOTrainer:
             for m in (self.model, base):
                 if hasattr(m, "config") and hasattr(m.config, "use_cache"):
                     m.config.use_cache = False
-                if hasattr(m, "gradient_checkpointing_enable"):
-                    m.gradient_checkpointing_enable()
 
     def prepare_data(
         self,
