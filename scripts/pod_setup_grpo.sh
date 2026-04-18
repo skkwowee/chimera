@@ -201,10 +201,13 @@ echo "  toolchain matches. OK."
 echo
 echo "--- Installing fast-path kernels ---"
 
-# `uv venv` does not install pip into the venv — use `uv pip install --python $VENV_PY`
-# instead. --no-build-isolation lets the build see torch (required for causal-conv1d
-# and fla setup.py to detect ABI flags).
-UV_PIP=(uv pip install --python "$VENV_PY" --no-build-isolation)
+# Kernel installs:
+#  --no-build-isolation lets the build see venv's (system) torch during setup.py
+#  --no-deps prevents uv from re-pulling torch (or any other dep) into the venv.
+#    Without this, flash-attn's install resolves its torch dep and installs
+#    the latest (e.g., 2.11.0+cu130), shadowing the system torch we just
+#    wired up and breaking the nvcc match.
+UV_PIP=(uv pip install --python "$VENV_PY" --no-build-isolation --no-deps)
 
 # FlashAttention-2. Builds from source if no matching prebuilt wheel.
 # CRITICAL: limit GPU archs or the build compiles for sm_80, sm_90, sm_100, sm_120
@@ -238,6 +241,23 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Hard verify — fail fast if anything is broken
 # ---------------------------------------------------------------------------
+echo
+echo "--- Re-verify torch is still the system cu tag (kernels sometimes re-pull) ---"
+VENV_TORCH_CHECK=$("$VENV_PY" -c "import torch; print(torch.__version__)")
+if [ "$VENV_TORCH_CHECK" != "$SYSTEM_TORCH_FULL" ]; then
+    echo "  venv torch drifted to $VENV_TORCH_CHECK; cleaning again..."
+    rm -rf "$VENV_DIR"/lib/python*/site-packages/torch \
+           "$VENV_DIR"/lib/python*/site-packages/torchvision \
+           "$VENV_DIR"/lib/python*/site-packages/torch-*.dist-info \
+           "$VENV_DIR"/lib/python*/site-packages/torchvision-*.dist-info
+    VENV_TORCH_CHECK=$("$VENV_PY" -c "import torch; print(torch.__version__)")
+    if [ "$VENV_TORCH_CHECK" != "$SYSTEM_TORCH_FULL" ]; then
+        echo "  ABORT: after re-cleanup venv torch is $VENV_TORCH_CHECK, expected $SYSTEM_TORCH_FULL"
+        exit 1
+    fi
+fi
+echo "  venv torch: $VENV_TORCH_CHECK"
+
 echo
 echo "--- Verifying kernels (in venv) ---"
 "$VENV_PY" - <<'PY'
