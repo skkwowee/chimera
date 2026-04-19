@@ -699,8 +699,9 @@ class CS2GRPOTrainer:
                 system_msg = {
                     "role": "system",
                     "content": (
-                        "You are a CS2 game analyst. Respond ONLY with a JSON object "
-                        "containing a game_state key. No other text."
+                        "You are a CS2 game analyst. Respond ONLY with a single-line "
+                        "compact JSON object (no whitespace, no newlines) containing a "
+                        "game_state key. No other text."
                     ),
                 }
                 messages = [system_msg] + messages
