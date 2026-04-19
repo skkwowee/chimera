@@ -34,8 +34,23 @@ cd "$REPO_DIR"
 # Wrap the user command + auto-stop in a single bash that nohup keeps alive.
 # The auto-stop runs regardless of whether training succeeds (|| true), so a
 # crash still releases the pod.
+#
+# Env vars needed by train_grpo.py (matching run_grpo_smoke.sh):
+#   PYTHONPATH=$REPO_DIR  — so `from src.training import ...` resolves
+#   CUDA_HOME, PATH, LD_LIBRARY_PATH — for any kernel/CUDA lookups at runtime
+#   TORCHDYNAMO_DISABLE=1 — skip the inductor compile storm on Qwen3.5 MoE
+#   PYTHONUTF8=1 — TRL model card writer is locale-fragile
+#   PYTHONUNBUFFERED=1 — so stdout shows up in $LOG live
 nohup bash -c "
     cd $REPO_DIR
+    export PYTHONPATH=$REPO_DIR
+    export CUDA_HOME=/usr/local/cuda
+    export PATH=/usr/local/cuda/bin:\$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:\${LD_LIBRARY_PATH:-}
+    export TORCHDYNAMO_DISABLE=1
+    export PYTHONUTF8=1
+    export PYTHONUNBUFFERED=1
+    export HF_HOME=\${HF_HOME:-/workspace/.cache/huggingface}
     echo '[START]' \$(date -Iseconds) >> '$LOG'
     $* >> '$LOG' 2>&1
     EXIT=\$?
