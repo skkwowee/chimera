@@ -592,3 +592,111 @@ Key observations:
 - Pod volume quota: ~100GB effective even if df shows more (merge fails due to quota)
 - Port can change on pod restart — re-check SSH port after restart
 - SSH direct TCP works: ssh -T -o StrictHostKeyChecking=no -p PORT -i ~/.ssh/id_ed25519 root@IP
+
+## What changed this session (2026-04-19) — F06 GRPO ran end-to-end + RECALL=0 finding
+
+Spent the session getting GRPO to actually complete a 100-step run with auto-stop,
+hit a chain of pipeline bugs (none in the model — all in surrounding tooling),
+ran F06, and discovered the trained run did NOT exercise the RECALL reward.
+
+### Pipeline bugs fixed (commits b2aa462 → 0970ff8)
+- run_grpo_with_auto_stop.sh: missing PYTHONPATH/CUDA_HOME exports → train_grpo
+  crashed with ModuleNotFoundError before producing a single step.
+- pod_setup_grpo.sh: PyPI flash-linear-attention 0.4.2 lacks fla.modules
+  (transformers' modeling_qwen3_5_moe imports FusedRMSNormGated from there) →
+  install from git main (>=0.5.0).
+- pod_setup_grpo.sh: install + patch tilelang. fla's gated_delta_rule bwd has
+  a hard-block on Triton >= 3.4 + Hopper (correctness bug) and falls back to
+  tilelang. tilelang 0.1.7/0.1.8 ship a TVMDerivedObject wrapper whose dynamic
+  subclass inherits from a fully-slotted MRO (every base has __slots__=()), so
+  `self._inst = ...` crashes with AttributeError. Fix: add `__slots__ =
+  ("_inst", "key", "handle", "__weakref__")` to the dynamic subclass at install
+  time. Idempotent. Without this, GRPO step 1 backward pass dies.
+- grpo_trainer.evaluate(): three independent bugs that each made eval useless.
+  (a) Read sample["messages"] (always empty) instead of sample["prompt"];
+  apply_chat_template then crashed with IndexError on the first sample.
+  (b) Missing enable_thinking=False on the chat template -> Qwen3.5 wrapped the
+  assistant turn in <think>...</think>; with greedy decoding it spent the full
+  256-token budget reciting its prompt analysis and never reached the JSON.
+  (c) Called format_gate_reward(response) without perception_only=
+  config.perception_only -> required game_state+analysis+advice for any signal
+  to count, gating every percep-only response to 0. Smoke run scored 0/202
+  format_gate even though responses were perfectly valid.
+- train_grpo.py: added --max-eval-samples to cap final eval (smoke at the full
+  202 samples = ~80 min wall time, useless after 5 train steps).
+- run_grpo_smoke.sh: bumped --max-tokens 128 -> 256. Even with thinking off,
+  pretty-printed JSON for a typical CS2 round needs ~150-200 tokens; 128
+  truncated mid-structure and json.loads couldn't parse the prefix.
+- System prompt: tightened to demand single-line compact JSON. Doesn't help
+  the SFT-locked model (it pretty-prints regardless), kept anyway as a hint
+  for future training runs that retrain on the wording.
+
+### F06 actually ran (2026-04-19, 100 steps, ~2.2hr total)
+Model:        Qwen3.5-35B-A3B (BASE, no SFT) + LoRA r=16 alpha=32
+Data:         data/training/grpo/smoke_test.jsonl (1811 train / 202 val)
+Reward:       --reward-mode recall, weights [0.20 percept, 0.80 RECALL]
+Mode:         --perception-only, --max-tokens 256, --kl-coef 0.02
+Throughput:   ~75 s/step (4 samples x G=4 generations x ~14 s/sample)
+Auto-stop:    fired clean on completion - pod terminated itself, no idle billing.
+Outputs:      /workspace/outputs/grpo/f06/{checkpoint-25,50,75,100,final_model}/
+
+### F06 results (eval on 50 val samples, capped via --max-eval-samples)
+mean_format_gate:        0.58   (0->1, max 1.0 on 29/50 samples)
+mean_perceptual_accuracy: 0.082  (max sample 0.231)
+mean_strategy:           0.000  (every sample, by structural reason below)
+mean_weighted_total:     0.016
+
+### Training log decile trends (training_log.jsonl; per-signal breakdown not stored)
+bin    steps     mean_rew  reward_std  fmt_pass   loss      grad_norm
+1      1- 10     -0.003    0.026       37%       -147       8986
+2      11- 20    +0.006    0.022       43%       -555      10286
+3      21- 30    -0.005    0.023       53%       -499       9239
+4      31- 40    +0.002    0.027       59%       -807       7513
+5      41- 50    +0.005    0.020       66%      -1290      10116
+6      51- 60    +0.003    0.018       67%       -809       7687
+7      61- 70    +0.009    0.022       65%      -1288      12022
+8      71- 80    +0.020    0.028       66%       -925      10982
+9      81- 90    +0.015    0.022       56%      -1488      18618
+10     91-100    +0.005    0.018       62%      -2584      19887
+
+Format-pass climbs 37->67% then plateaus around 60. Loss going more negative +
+grad norm doubling in late bins (~20k vs ~10k) suggests KL drift / instability
+on the small effective sample size (100 steps x 4 grad-accum = 400 unique
+samples seen out of 1811).
+
+### Why mean_strategy == 0 (the actual finding for next run)
+recall_reward signature is recall_reward(response, ground_truth=None,
+recall_index=None, **kwargs). Two independent issues both forced 0:
+  (a) evaluate() called the reward fns directly and never forwarded
+      recall_index. The training path forwards it via
+      _create_reward_wrappers. **Fixed in 0970ff8** -- eval now passes
+      self.recall_index to each fn.
+  (b) Even with recall_index forwarded, --perception-only trains the model to
+      emit only `game_state`. recall_reward extracts advice.primary_action,
+      finds nothing, returns 0. Structural -- not a bug.
+
+Implication: for F06 the **0.80 weight on RECALL was effectively dead during
+training too** (training wraps the index, but the model itself never produces
+advice for the index to score against). All learnable signal flowed through
+the 0.20-weighted perceptual_accuracy. F06 is a perception-tuning run dressed
+as a RECALL run.
+
+### Next run requires three changes
+1. Drop --perception-only so format_gate requires game_state+analysis+advice.
+2. Start GRPO from the SFT-trained model (checkpoints/sft-r4-checkpoint-304),
+   NOT base Qwen -- base doesn't reliably emit analysis/advice given any
+   system prompt; SFT was specifically trained on full-format labels.
+3. Trainer needs a way to load a starting LoRA. Currently load_model() only
+   accepts --model-name (a base). Plan: add --sft-adapter PATH; in
+   load_model, after loading base: PeftModel.from_pretrained(base, sft_path),
+   merge_and_unload() to fold SFT into the frozen weights, then
+   get_peft_model() with the GRPO LoRA on top. SFT becomes part of the base,
+   GRPO LoRA learns the reasoning deltas. ~10 lines of trainer change +
+   one-time SFT-adapter upload to /workspace/checkpoints/.
+
+### Useful debug scripts now in repo
+- scripts/inspect_eval_outputs.py -- load saved LoRA, print 3 raw eval responses.
+  Used to diagnose enable_thinking + JSON-truncation issues.
+- scripts/debug_eval.py -- monkey-patch processor.decode to print every eval
+  response. Used to diagnose the perception_only format_gate bug.
+  Kept around for next "why is the reward zero" hunt.
