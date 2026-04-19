@@ -1058,8 +1058,9 @@ class CS2GRPOTrainer:
                 skip_special_tokens=True,
             )
 
-            # Format gate (multiplicative)
-            gate = format_gate_reward(response)
+            # Format gate (multiplicative). Match training: when perception_only
+            # is configured, only require the game_state key.
+            gate = format_gate_reward(response, perception_only=self.config.perception_only)
             metrics["format_gate"].append(gate)
 
             # Compute each reward signal (gated)
