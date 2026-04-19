@@ -50,7 +50,7 @@ echo
 nohup "$VENV_PY" scripts/train_grpo.py --manual \
     --data data/training/grpo/smoke_test.jsonl \
     --reward-mode recall \
-    --num-generations 4 --max-tokens 128 \
+    --num-generations 4 --max-tokens 256 \
     --max-steps 5 --save-steps 100 \
     --logging-steps 1 \
     --perception-only \
