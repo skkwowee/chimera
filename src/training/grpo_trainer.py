@@ -992,17 +992,55 @@ class CS2GRPOTrainer:
         for sample in tqdm(eval_dataset, desc="Evaluating"):
             # Generate response (sample is a dict from either list[dict] or HF Dataset)
             sample_dict: dict[str, Any] = dict(sample) if not isinstance(sample, dict) else sample
-            messages = sample_dict.get("messages", [])
             ground_truth = sample_dict.get("ground_truth", {})
 
-            # Format for generation
-            inputs = self.processor.apply_chat_template(
-                messages,
-                tokenize=True,
-                add_generation_prompt=True,
-                return_dict=True,
-                return_tensors="pt",
-            ).to(self.model.device)
+            # Build messages from `prompt` field, mirroring the training path
+            # (data has `prompt` content blocks, not pre-built `messages`).
+            prompt_content = sample_dict["prompt"]
+            has_images = False
+            if isinstance(prompt_content, list):
+                if prompt_content and isinstance(prompt_content[0], dict) and "type" in prompt_content[0]:
+                    has_images = any(b.get("type") == "image" for b in prompt_content)
+                    if has_images:
+                        messages = [{"role": "user", "content": prompt_content}]
+                    else:
+                        text_parts = [
+                            b["text"] for b in prompt_content
+                            if b.get("type") == "text" and "text" in b
+                        ]
+                        messages = [{"role": "user", "content": "\n".join(text_parts)}]
+                else:
+                    messages = prompt_content
+            elif isinstance(prompt_content, str):
+                messages = [{"role": "user", "content": prompt_content}]
+            else:
+                messages = prompt_content
+            messages = [{
+                "role": "system",
+                "content": (
+                    "You are a CS2 game analyst. Respond ONLY with a JSON object "
+                    "containing a game_state key. No other text."
+                ),
+            }] + messages
+
+            # Format for generation — use processor for multimodal, tokenizer for text-only
+            if has_images:
+                inputs = self.processor.apply_chat_template(
+                    messages,
+                    tokenize=True,
+                    add_generation_prompt=True,
+                    return_dict=True,
+                    return_tensors="pt",
+                ).to(self.model.device)
+            else:
+                input_text = self.tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+                inputs = self.tokenizer(
+                    input_text, return_tensors="pt"
+                ).to(self.model.device)
 
             with torch.no_grad():
                 output_ids = self.model.generate(

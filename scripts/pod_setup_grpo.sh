@@ -241,6 +241,38 @@ if ! "$VENV_PY" -c "from fla.modules import FusedRMSNormGated" 2>/dev/null; then
     "${UV_PIP[@]}" "flash-linear-attention @ git+https://github.com/fla-org/flash-linear-attention.git@main"
 fi
 
+# tilelang. fla's gated_delta_rule chunk_bwd_dqkwg falls back to tilelang on
+# Hopper GPUs (H100/H200) because Triton >= 3.4.0 has a known correctness bug
+# there (fla-org/flash-linear-attention#640). Without tilelang, the GRPO
+# backward pass crashes with RuntimeError on the first optimizer step.
+if ! "$VENV_PY" -c "import tilelang" 2>/dev/null; then
+    echo "Installing tilelang (required by fla on Hopper GPUs)..."
+    "${UV_PIP[@]}" tilelang
+fi
+
+# Patch tilelang's bundled TVM. tilelang 0.1.7/0.1.8 ship a TVMDerivedObject
+# wrapper whose dynamic subclass inherits from a fully-slotted CObject MRO
+# (every base has __slots__=()). The wrapper tries `self._inst = ...` which
+# fails with AttributeError: '_NestedLoopCheckVisitor' object has no attribute
+# '_inst'. Fix: declare __slots__ on the wrapper itself so _inst (plus the
+# weakref the wrapper takes of self) actually have storage. Idempotent.
+TVM_SUPPORT_PY=$("$VENV_PY" -c "import tilelang, os; print(os.path.join(os.path.dirname(tilelang.__file__), '3rdparty/tvm/python/tvm/runtime/support.py'))")
+if [ -f "$TVM_SUPPORT_PY" ] && ! grep -q '__slots__ = ("_inst", "key", "handle", "__weakref__")' "$TVM_SUPPORT_PY"; then
+    echo "Patching tilelang TVM support.py to add __slots__ to TVMDerivedObject..."
+    "$VENV_PY" - "$TVM_SUPPORT_PY" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+old = 'class TVMDerivedObject(metadata["cls"]):  # type: ignore\n        """The derived object to avoid cyclic dependency."""\n\n        _cls = cls'
+new = 'class TVMDerivedObject(metadata["cls"]):  # type: ignore\n        """The derived object to avoid cyclic dependency."""\n\n        __slots__ = ("_inst", "key", "handle", "__weakref__")\n        _cls = cls'
+if old not in s:
+    print("ABORT: tilelang support.py pattern not found — upstream may have changed it")
+    sys.exit(1)
+open(p, 'w').write(s.replace(old, new))
+print("  patched", p)
+PY
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Hard verify — fail fast if anything is broken
 # ---------------------------------------------------------------------------
@@ -276,6 +308,11 @@ try:
     print(f"  fla (flash-linear-attention) {getattr(fla, '__version__', '?')} OK")
 except Exception as e:
     problems.append(f"fla: {e}")
+try:
+    import tilelang
+    print(f"  tilelang {getattr(tilelang, '__version__', '?')} OK")
+except Exception as e:
+    problems.append(f"tilelang: {e}")
 try:
     import flash_attn
     print(f"  flash_attn {getattr(flash_attn, '__version__', '?')} OK")
