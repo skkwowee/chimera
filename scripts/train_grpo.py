@@ -223,6 +223,13 @@ def parse_args():
         default=0.02,
         help="KL divergence penalty coefficient (prevents mode collapse)",
     )
+    grpo_group.add_argument(
+        "--max-eval-samples",
+        type=int,
+        default=None,
+        help="Cap on number of val samples for the final evaluation. "
+             "Default: use the full val split.",
+    )
 
     # Reward configuration
     reward_group = parser.add_argument_group("Reward settings")
@@ -483,8 +490,13 @@ def main():
     )
 
     # Final evaluation
-    print("\nRunning final evaluation...")
-    results = trainer.evaluate()
+    eval_data = None
+    if args.max_eval_samples is not None and trainer.val_dataset is not None:
+        eval_data = list(trainer.val_dataset)[: args.max_eval_samples]
+        print(f"\nRunning final evaluation on {len(eval_data)} samples (capped from {len(trainer.val_dataset)})...")
+    else:
+        print("\nRunning final evaluation...")
+    results = trainer.evaluate(eval_data=eval_data)
 
     print("\n" + "=" * 60)
     print("Training complete!")

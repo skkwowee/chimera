@@ -53,6 +53,7 @@ nohup "$VENV_PY" scripts/train_grpo.py --manual \
     --num-generations 4 --max-tokens 256 \
     --max-steps 5 --save-steps 100 \
     --logging-steps 1 \
+    --max-eval-samples 50 \
     --perception-only \
     --attn-impl "$ATTN_IMPL" \
     --kl-coef 0.02 \
