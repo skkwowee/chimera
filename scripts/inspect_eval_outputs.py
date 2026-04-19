@@ -73,7 +73,7 @@ for i, sample in enumerate(samples):
 
     with torch.no_grad():
         out = model.generate(
-            **inputs, max_new_tokens=128, do_sample=False,
+            **inputs, max_new_tokens=256, do_sample=False,
         )
     gen = tokenizer.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
 

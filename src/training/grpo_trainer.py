@@ -1063,9 +1063,15 @@ class CS2GRPOTrainer:
             gate = format_gate_reward(response, perception_only=self.config.perception_only)
             metrics["format_gate"].append(gate)
 
-            # Compute each reward signal (gated)
+            # Compute each reward signal (gated). Mirror training's wrapper:
+            # forward recall_index so RECALL-style rewards can do their kNN
+            # lookup. Reward fns that don't accept it absorb via **kwargs.
             scores = [
-                gate * fn(response, ground_truth=ground_truth)
+                gate * fn(
+                    response,
+                    ground_truth=ground_truth,
+                    recall_index=self.recall_index,
+                )
                 for fn in reward_fns
             ]
 
