@@ -232,10 +232,13 @@ if ! "$VENV_PY" -c "import causal_conv1d" 2>/dev/null; then
     CAUSAL_CONV1D_FORCE_BUILD=1 "${UV_PIP[@]}" causal-conv1d
 fi
 
-# flash-linear-attention. PyPI name is `flash-linear-attention`; imports as `fla`.
-if ! "$VENV_PY" -c "import fla" 2>/dev/null; then
-    echo "Installing flash-linear-attention..."
-    "${UV_PIP[@]}" flash-linear-attention
+# flash-linear-attention. PyPI's `flash-linear-attention==0.4.2` is missing the
+# `fla.modules` submodule that transformers' modeling_qwen3_5_moe.py imports.
+# Use the git main version (0.5.0+) which has fla.modules.FusedRMSNormGated.
+# Verify with: python -c "from fla.modules import FusedRMSNormGated"
+if ! "$VENV_PY" -c "from fla.modules import FusedRMSNormGated" 2>/dev/null; then
+    echo "Installing flash-linear-attention from git main (PyPI 0.4.2 lacks fla.modules)..."
+    "${UV_PIP[@]}" "flash-linear-attention @ git+https://github.com/fla-org/flash-linear-attention.git@main"
 fi
 
 # ---------------------------------------------------------------------------
