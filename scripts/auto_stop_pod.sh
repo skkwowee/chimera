@@ -38,15 +38,32 @@ if [ -f /workspace/.env ]; then
     set +a
 fi
 
+# RunPod sets RUNPOD_POD_ID and RUNPOD_API_KEY in PID 1's environ (the
+# pod entrypoint), but new shells (e.g. ssh sessions) do NOT inherit them.
+# Fall back to /proc/1/environ so this works from any pod-side context.
+read_pid1_env() {
+    local var="$1"
+    if [ -r /proc/1/environ ]; then
+        tr '\0' '\n' < /proc/1/environ | grep -E "^${var}=" | head -1 | cut -d= -f2-
+    fi
+}
+
 if [ -z "${RUNPOD_API_KEY:-}" ]; then
-    echo "ABORT: RUNPOD_API_KEY not set."
+    RUNPOD_API_KEY=$(read_pid1_env RUNPOD_API_KEY)
+fi
+if [ -z "${RUNPOD_POD_ID:-}" ]; then
+    RUNPOD_POD_ID=$(read_pid1_env RUNPOD_POD_ID)
+fi
+
+if [ -z "${RUNPOD_API_KEY:-}" ]; then
+    echo "ABORT: RUNPOD_API_KEY not set in env, /workspace/.env, or PID 1's environ."
     echo "       Put it in /workspace/.env on the pod:"
     echo "         echo 'RUNPOD_API_KEY=rpa_...' >> /workspace/.env"
     echo "         chmod 600 /workspace/.env"
     exit 1
 fi
 if [ -z "${RUNPOD_POD_ID:-}" ]; then
-    echo "ABORT: RUNPOD_POD_ID not set. This script must run inside a RunPod pod."
+    echo "ABORT: RUNPOD_POD_ID not in env or PID 1's environ. Not running inside a RunPod pod?"
     exit 1
 fi
 
