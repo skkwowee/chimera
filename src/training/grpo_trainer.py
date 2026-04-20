@@ -718,13 +718,20 @@ class CS2GRPOTrainer:
                 else:
                     messages = prompt_content
 
-                # Add system prompt for JSON output format
+                # System prompt asks for whichever schema the format gate expects.
+                # If we asked for game_state only but the gate needs all three,
+                # the model will dutifully emit only game_state and every sample
+                # gets gated to 0 -- the F08 100% skip-rate symptom.
+                if config.perception_only:
+                    schema_request = "containing a game_state key"
+                else:
+                    schema_request = "containing game_state, analysis, and advice keys"
                 system_msg = {
                     "role": "system",
                     "content": (
                         "You are a CS2 game analyst. Respond ONLY with a single-line "
-                        "compact JSON object (no whitespace, no newlines) containing a "
-                        "game_state key. No other text."
+                        f"compact JSON object (no whitespace, no newlines) {schema_request}. "
+                        "No other text."
                     ),
                 }
                 messages = [system_msg] + messages
@@ -1067,11 +1074,19 @@ class CS2GRPOTrainer:
                 messages = [{"role": "user", "content": prompt_content}]
             else:
                 messages = prompt_content
+            # Mirror training: the system prompt schema must match what the
+            # format gate is going to evaluate against, otherwise the model
+            # honours the prompt and fails the gate.
+            if self.config.perception_only:
+                schema_request = "containing a game_state key"
+            else:
+                schema_request = "containing game_state, analysis, and advice keys"
             messages = [{
                 "role": "system",
                 "content": (
-                    "You are a CS2 game analyst. Respond ONLY with a JSON object "
-                    "containing a game_state key. No other text."
+                    "You are a CS2 game analyst. Respond ONLY with a single-line "
+                    f"compact JSON object (no whitespace, no newlines) {schema_request}. "
+                    "No other text."
                 ),
             }] + messages
 
