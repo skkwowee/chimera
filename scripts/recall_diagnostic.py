@@ -196,19 +196,14 @@ def main():
     model = PeftModel.from_pretrained(model, args.lora)
     model.eval()
 
-    # Build RECALL index same way the trainer does
+    # Build RECALL index same way the trainer does. build_from_samples walks
+    # sample["ground_truth"] itself; pass the full samples through.
     print(f"Building RECALL index from {args.train_data}...")
     samples = [json.loads(l) for l in open(args.train_data)]
     recall = RECALLIndex()
-    # RECALLIndex.build_from_samples expects dicts with game_state, pro_action, etc.
-    # Training split was last 10% reserved for val; use first 90% as train (mirror trainer).
+    # Training split was first 90% (mirror trainer; val is last 10%).
     train_cut = int(0.9 * len(samples))
-    train_samples = []
-    for s in samples[:train_cut]:
-        gt = s.get("ground_truth", {})
-        if isinstance(gt, dict):
-            train_samples.append(gt)
-    recall.build_from_samples(train_samples)
+    recall.build_from_samples(samples[:train_cut])
     print(f"RECALL built: {recall._n} samples indexed")
 
     # Eval split (last 10%, deterministic) -- take first n_samples
