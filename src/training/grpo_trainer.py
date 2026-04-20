@@ -90,6 +90,11 @@ class CS2GRPOConfig:
     use_vllm: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
+    # Path to a PEFT LoRA adapter to merge into the base before adding the GRPO
+    # LoRA on top. Use this to start GRPO from an SFT-trained model when the
+    # SFT was a LoRA: the SFT weights are folded into the frozen base and the
+    # GRPO LoRA learns the reasoning deltas. Leave None for vanilla base start.
+    sft_adapter: str | None = None
 
     # LoRA settings
     use_lora: bool = True
@@ -217,6 +222,18 @@ class CS2GRPOTrainer:
 
         self.processor = AutoProcessor.from_pretrained(self.config.model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
+
+        # Optional: fold an SFT LoRA into the base before adding the GRPO LoRA.
+        # The merged result is just weights — no second active adapter — so the
+        # GRPO LoRA below is the only trainable adapter. Without this, GRPO
+        # starts from raw base weights and won't reliably emit the schema the
+        # reward functions expect (analysis/advice for RECALL, etc.).
+        if self.config.sft_adapter:
+            from peft import PeftModel
+            print(f"  Merging SFT LoRA from {self.config.sft_adapter} into base...")
+            self.model = PeftModel.from_pretrained(self.model, self.config.sft_adapter)
+            self.model = self.model.merge_and_unload()
+            print("  SFT merged.")
 
         # Apply LoRA if enabled
         # GRPO freezes vision layers when using vLLM
