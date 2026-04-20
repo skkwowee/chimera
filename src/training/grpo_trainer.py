@@ -678,6 +678,12 @@ class CS2GRPOTrainer:
         accum_reward_std = 0.0
         accum_format_pass = 0.0
         accum_count = 0
+        skipped_jumps = 0
+        # Per-skip details land here so the experimenter can audit which
+        # samples the trainer is silently dropping (all G rewards identical
+        # = no GRPO gradient = sample tossed). One JSON object per line.
+        skip_log_path = output_dir / "skipped_jumps.jsonl"
+        skip_log_f = open(skip_log_path, "a")
 
         epoch = 0
         while True:
@@ -811,7 +817,31 @@ class CS2GRPOTrainer:
                 # --- Step 3: Compute advantages ---
                 reward_std = rewards_t.std()
                 if reward_std < 1e-8:
-                    # All rewards identical — no learning signal, skip
+                    # All G=4 rewards identical — GRPO advantage normalization
+                    # would divide by ~0 and gradient would be zero, so we skip.
+                    # Without this print the trainer looks hung when the model
+                    # is producing identical-quality outputs (e.g. all failing
+                    # the format gate).
+                    skipped_jumps += 1
+                    rewards_repr = [round(float(r), 4) for r in rewards_t.tolist()]
+                    sample_text = (completions_text[0][:200] if completions_text else "").replace("\n", " ")
+                    print(
+                        f"  [skip] sample_idx={sample_idx} reason=identical_rewards "
+                        f"rewards={rewards_repr} fmt_pass={format_passes}/{config.num_generations} "
+                        f"sample_resp_first200={sample_text!r}",
+                        flush=True,
+                    )
+                    if skip_log_f is not None:
+                        skip_log_f.write(json.dumps({
+                            "step_at_skip": global_step,
+                            "sample_idx": int(sample_idx),
+                            "rewards": rewards_repr,
+                            "format_passes": format_passes,
+                            "num_generations": config.num_generations,
+                            "completions_first200": [c[:200] for c in completions_text],
+                            "ground_truth_keys": list(ground_truth.keys()) if isinstance(ground_truth, dict) else None,
+                        }) + "\n")
+                        skip_log_f.flush()
                     continue
 
                 advantages = (rewards_t - rewards_t.mean()) / (reward_std + 1e-8)
@@ -892,6 +922,7 @@ class CS2GRPOTrainer:
                             "format_pass_rate": round(avg_format, 4),
                             "grad_norm": round(grad_norm.item(), 4),
                             "lr": round(scheduler.get_last_lr()[0], 8),
+                            "skipped_jumps_total": skipped_jumps,
                         }
                         print(
                             f"  step {global_step:4d} | "
@@ -899,7 +930,8 @@ class CS2GRPOTrainer:
                             f"reward {avg_reward:.3f}±{avg_reward_std:.3f} | "
                             f"fmt {avg_format:.0%} | "
                             f"grad {grad_norm.item():.3f} | "
-                            f"lr {scheduler.get_last_lr()[0]:.2e}"
+                            f"lr {scheduler.get_last_lr()[0]:.2e} | "
+                            f"skipped {skipped_jumps}"
                         )
                         log_f.write(json.dumps(log_entry) + "\n")
                         log_f.flush()
@@ -928,6 +960,8 @@ class CS2GRPOTrainer:
 
         print(f"\nManual GRPO training complete — {global_step} steps")
         print(f"Log: {log_f.name}")
+        print(f"Skipped {skipped_jumps} samples for identical-rewards (see {skip_log_path})")
+        skip_log_f.close()
         self._print_memory_usage()
 
     def save_model(
