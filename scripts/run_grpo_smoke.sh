@@ -47,6 +47,8 @@ echo "Logging to: $LOG_FILE"
 echo
 
 # nohup so SSH drops don't kill it. Tail the log to follow.
+# Extra CLI args after the script invocation are forwarded to train_grpo.py
+# (e.g. --sft-adapter /path/to/adapter to bootstrap from an SFT LoRA).
 nohup "$VENV_PY" scripts/train_grpo.py --manual \
     --data data/training/grpo/smoke_test.jsonl \
     --reward-mode recall \
@@ -58,6 +60,7 @@ nohup "$VENV_PY" scripts/train_grpo.py --manual \
     --attn-impl "$ATTN_IMPL" \
     --kl-coef 0.02 \
     --output "$OUTPUT_DIR" \
+    "$@" \
     > "$LOG_FILE" 2>&1 &
 
 PID=$!
