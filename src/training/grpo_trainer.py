@@ -684,6 +684,13 @@ class CS2GRPOTrainer:
         # = no GRPO gradient = sample tossed). One JSON object per line.
         skip_log_path = output_dir / "skipped_jumps.jsonl"
         skip_log_f = open(skip_log_path, "a")
+        # Per-useful-sample audit trail: which samples actually drove a
+        # gradient step, what direction (advantages), and the completions
+        # the gradient was computed against. Same schema as the skip log
+        # plus advantages/timings. Domain expert needs this to validate
+        # the trainer is making reasonable jumps.
+        useful_log_path = output_dir / "useful_jumps.jsonl"
+        useful_log_f = open(useful_log_path, "a")
 
         epoch = 0
         while True:
@@ -904,6 +911,24 @@ class CS2GRPOTrainer:
                     f"new_tokens<={config.max_new_tokens} fmt_pass={format_passes}/{config.num_generations}",
                     flush=True,
                 )
+                # Audit trail for the EXPERT to inspect what gradient direction
+                # the model was actually pushed in. One JSON object per useful
+                # sample. Mirror the [skip] schema so they're easy to compare.
+                if useful_log_f is not None:
+                    useful_log_f.write(json.dumps({
+                        "step_at_use": global_step,
+                        "sample_idx": int(sample_idx),
+                        "rewards": [round(float(r), 4) for r in rewards_t.tolist()],
+                        "advantages": [round(float(a), 4) for a in advantages.tolist()],
+                        "reward_std": round(float(reward_std), 4),
+                        "format_passes": format_passes,
+                        "num_generations": config.num_generations,
+                        "gen_seconds": round(gen_elapsed, 2),
+                        "bwd_seconds": round(bwd_elapsed, 2),
+                        "completions_first200": [c[:200] for c in completions_text],
+                        "ground_truth_keys": list(ground_truth.keys()) if isinstance(ground_truth, dict) else None,
+                    }) + "\n")
+                    useful_log_f.flush()
 
                 # Accumulate metrics
                 accum_loss += sample_loss.item()
@@ -977,7 +1002,9 @@ class CS2GRPOTrainer:
         print(f"\nManual GRPO training complete — {global_step} steps")
         print(f"Log: {log_f.name}")
         print(f"Skipped {skipped_jumps} samples for identical-rewards (see {skip_log_path})")
+        print(f"Useful sample audit: {useful_log_path}")
         skip_log_f.close()
+        useful_log_f.close()
         self._print_memory_usage()
 
     def save_model(
