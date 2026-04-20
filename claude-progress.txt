@@ -835,3 +835,135 @@ back and rethink RECALL signal density before another long run.
 - All eval bugs from earlier this session are fixed in main; pod_setup_grpo
   patches tilelang's TVM at install time, so a fresh pod is one
   scripts/pod_setup_grpo.sh away from working.
+
+## What changed this session (2026-04-20) — F08v4 landed + RECALL signal audit
+
+### Prompt-schema mismatch was the root cause of F08's 100% skip rate
+(continuation of 2026-04-19). F08 was training with the full-schema gate
+(game_state + analysis + advice, all dicts) but the system prompt only
+asked for "a game_state key". The SFT model obediently emitted just
+game_state, every generation failed the gate, all G=4 rewards were 0,
+GRPO advantage was 0, sample skipped -- 223/223 skip rate.
+
+Fix (commit d0d07d5 then 7f637d6):
+  - System prompt branches on config.perception_only:
+      False -> "containing game_state, analysis, and advice keys, where
+               each value is a JSON object (NOT a string)"
+      True  -> "containing a game_state key whose value is a JSON object"
+  - First pass (d0d07d5) got the model to emit all three keys but as
+    strings ("game_state":"2v3 trailing"). Type check failed, still 100%
+    skip. Added "(NOT a string)" wording in 7f637d6.
+
+### --sft-adapter now accepts multiple adapters (commit c4ba7b3)
+For resuming: chain [original SFT, previous GRPO checkpoint] so both get
+merged into the frozen base before the fresh GRPO LoRA wraps on top.
+Fresh GRPO LoRA is the only trainable adapter. Used for F08v4_resumed.
+
+### F08v4: split into two runs because of pod time budget
+F08v4 (last night, 50 steps):
+  model:     Qwen3.5-35B-A3B + SFT(sft-r4-checkpoint-304) merged
+  mode:      --reward-mode recall, NO --perception-only, --max-tokens 256
+  steps:     50 (killed at ckpt-50 so user could sleep; auto-stop fired)
+  outputs:   /workspace/outputs/grpo/f08v4/{checkpoint-25,50,training_log,
+             skipped_jumps.jsonl, useful_jumps.jsonl}
+F08v4_resumed (this morning, 50 more steps):
+  model:     base + SFT + f08v4/checkpoint-50 merged + fresh GRPO LoRA
+  steps:     50 (effective total: 100 steps of GRPO on SFT base)
+  outputs:   /workspace/outputs/grpo/f08v4_resumed/{final_model, both
+             jumps.jsonl audit files, training_log}
+
+### F08v4 end-of-run eval (50 val samples) — the first meaningful metric
+            F06 (base, percep-only)  F08v4_resumed (SFT+GRPO, full-schema)
+format_gate:     0.58                    0.98   <- schema locked in
+percept_acc:     0.082                   0.123  <- +50%, real progress
+strategy:        0.000                   -0.031 <- RECALL firing, but NEGATIVE
+weighted_total:  0.016                   -0.0003
+
+Format pass during training climbed from ~40% early (F08v4 step 1-10) to
+~80-94% late (F08v4_resumed step 35-50). The schema-learning is the most
+visible win; the content-learning (perception) is real but small.
+
+### Audit visibility added (commits 203363b and 8cf748f)
+- skipped_jumps.jsonl: every sample where all G rewards were identical and
+  the trainer skipped. Records sample_idx, rewards, format_passes,
+  first-200 chars of each completion, ground_truth keys. Prior to this
+  the trainer looked hung for 14+ minutes when it was actually silently
+  iterating through skip-every-sample loops (F08 pre-prompt-fix).
+- useful_jumps.jsonl: every non-skipped sample. Same schema as skip log
+  plus advantages, reward_std, gen/bwd timings. Lets the domain expert
+  audit the gradient direction without re-running.
+- [skip] and [sample] prints both flush to stdout so the log is readable
+  live.
+
+### Why `mean_strategy` = -0.031 (the actual experimental finding)
+Audited RECALL end-to-end (src/training/recall.py) against f08v4_resumed
+useful_jumps.jsonl. The negative strategy score is not a sign the model's
+advice is bad -- it's a sign the RECALL signal-to-noise is too low to
+judge. Three structural issues:
+
+1. Action embedding is 5-dim. movement_direction (-1/0/1),
+   objective_direction (-1/0/1), utility_count/4, initiated_engagement
+   (0/1), engagement_delay (0.2 or 0.8 binary). Cardinality ~54 buckets
+   at best. Cosine similarity with threshold 0.5 on 5 dims is very
+   coarse -- tiny keyword-count differences flip which neighbors get
+   "matched".
+
+2. Action extraction from free-form advice uses keyword counts against
+   ~20 English keywords (_extract_action_from_text). Model natural
+   phrasing variation dominates the feature value; two tactically-
+   identical advice blocks produce different action vectors.
+
+3. Asymmetry: state embedding is 19-dim from demo ground truth (dense,
+   deterministic, fine) but action embedding is 5-dim from text regex
+   (sparse, stochastic, weak). kNN matches on rich state, then filters
+   by a noisy action vector. The filter is where the signal dies.
+
+Result: Q_hat ~ V_hat + noise, advantage ~ noise, reward ~ noise. 100
+GRPO steps over noise gave a small negative bias (-0.031) but no
+meaningful content direction.
+
+### Diagnostic added (scripts/recall_diagnostic.py)
+Standalone, runs offline. Loads a saved LoRA + RECALL index, generates
+advice for N val samples, for each generation dumps the full kNN
+internals: extracted_action dict, action_vec + norm, state_vec_norm,
+k_used, v_hat, q_hat, advantage, confident flag, matched_count,
+cos_sim min/max/mean, cos_sim_above_threshold_frac, fallback_mode,
+top5_cos_sim. One row per generation to
+/workspace/outputs/diag/recall_diag.jsonl.
+
+Goal: before investing in a richer state/action/scoring triple, confirm
+with real numbers that the current one is in the noise-dominated regime.
+Expected result (hypothesis): most samples will have cos_sim_mean near
+the threshold, matched_count varying wildly, |q_hat - v_hat| comparable
+to the std over neighbor outcomes (i.e. the signal is within the
+baseline's own noise).
+
+### Research framing (from this session's discussion)
+This is genuinely novel territory. Closest analogues:
+  - Chess/Go: discrete action space, exact outcome. Not our situation.
+  - RLHF: human preference pairs. We don't have pairs of advice blocks.
+  - Code RL: executable unit tests. We have demos, not tests.
+Natural-language strategic advice scored against demo outcomes via kNN
+has no clean precedent we've found. The experimental unit for iteration
+is a (state-representation, action-representation, scoring-function)
+triple, and the metric we actually care about mid-iteration is the
+signal-to-noise of the advantage estimate, not just "did the model
+learn" -- because if the signal is noise, the model will converge to
+whatever local minimum minimises KL drift.
+
+### Concrete next directions (in increasing scope)
+(a) Quick: run recall_diagnostic.py against f08v4_resumed to confirm
+    the noise hypothesis empirically. One short pod session.
+(b) Medium: richer action representation. Instead of 5 coarse floats
+    extracted from keyword counts, parse structured keys directly out
+    of advice (e.g. advice.target_site, advice.weapon_priority,
+    advice.timing, advice.coordination). Each becomes a dim that keeps
+    its meaning. State stays at 19 dims or grows with it.
+(c) Big: replace kNN-over-keyword-action scoring with a Claude-judge
+    that scores advice plausibility against the game_state on an
+    explicit rubric. Expensive per-sample but trustworthy. Plausibly
+    the "correct" answer long-term.
+
+Lean MEDIUM first: cheapest thing that might move the signal floor
+above the noise floor. If diagnostic + medium iteration confirm we can
+get real signal, the big-scope judge is a follow-on, not a prereq.
