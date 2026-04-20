@@ -722,10 +722,19 @@ class CS2GRPOTrainer:
                 # If we asked for game_state only but the gate needs all three,
                 # the model will dutifully emit only game_state and every sample
                 # gets gated to 0 -- the F08 100% skip-rate symptom.
+                # We have to spell out "(each value must be a JSON object)" or
+                # the model abbreviates each section to a string label like
+                # "game_state":"2v3 trailing", which fails the dict-type check
+                # in format_gate_reward (F08v2 100% skip-rate symptom).
                 if config.perception_only:
-                    schema_request = "containing a game_state key"
+                    schema_request = (
+                        "containing a game_state key whose value is a JSON object"
+                    )
                 else:
-                    schema_request = "containing game_state, analysis, and advice keys"
+                    schema_request = (
+                        "containing game_state, analysis, and advice keys, where "
+                        "each value is a JSON object (NOT a string)"
+                    )
                 system_msg = {
                     "role": "system",
                     "content": (
@@ -1078,9 +1087,14 @@ class CS2GRPOTrainer:
             # format gate is going to evaluate against, otherwise the model
             # honours the prompt and fails the gate.
             if self.config.perception_only:
-                schema_request = "containing a game_state key"
+                schema_request = (
+                    "containing a game_state key whose value is a JSON object"
+                )
             else:
-                schema_request = "containing game_state, analysis, and advice keys"
+                schema_request = (
+                    "containing game_state, analysis, and advice keys, where "
+                    "each value is a JSON object (NOT a string)"
+                )
             messages = [{
                 "role": "system",
                 "content": (
