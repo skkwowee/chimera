@@ -751,3 +751,87 @@ Note:      NO --perception-only -- format_gate now requires game_state +
            analysis + advice. Pod will stay up after exit (user is
            iterating; doesn't want to spin a fresh pod).
 ETA:       ~2.5 hr (~90s/step x 100 + ~17 min eval, mirroring smoke rate).
+
+### F08 outcome -- killed at 26 min, 0 useful gradient steps (too sparse)
+
+What happened:
+  - First run hung at max_tokens=384. Killed after 21 min, switched to 256.
+  - Second run with 256 tokens looked identical (no log progress). Investigated:
+    found a SILENT skip path in _train_manual_loop at "if reward_std < 1e-8:
+    continue". When all G=4 rewards are identical, GRPO advantage normalisation
+    gives zero gradient, so the trainer skips. Without --perception-only the
+    full-schema gate gates almost every response to 0 -> all G=4 score 0 ->
+    skip every sample.
+  - Added visibility (commit 203363b): print [skip] per skipped sample with
+    rewards + first 200 chars of completion, and append to outputs/.../
+    skipped_jumps.jsonl for offline audit. Also surface running skipped
+    counter in step log lines and training_log.jsonl.
+  - Re-launched F08 with logging on. Result: 223 skipped / 0 useful samples
+    over 26 minutes. 100% skip rate. Killed.
+
+Audit log shows EVERY sample's response is `{"game_state": ...}` only.
+Sometimes well-structured, sometimes degenerate (e.g. `"game_state":
+"1v3_defend_planted"` -- string, not dict). NEVER includes analysis or
+advice keys. The SFT-trained model wasn't taught to reliably emit all
+three sections under text-only prompts (or it can but the enable_thinking=
+False prefix biases it toward the shortest valid game_state-only object).
+
+So full-schema strict gate + this SFT base = unworkable. Need to step
+back and rethink RECALL signal density before another long run.
+
+### Next-session drawing-board questions (user wants to think through)
+1. Reward signal density. Three concrete options on the table:
+   (a) Soft format gate -- partial credit (has_game_state + has_analysis +
+       has_advice) / 3.0 multiplied into reward. Lets gradient flow on
+       partial schema; pulls toward full schema since complete responses
+       earn ~3x more reward. Simplest code change. Diverges from D013's
+       "hard gate" stance, would need a config flag to keep both.
+   (b) Re-SFT with stricter advice/analysis enforcement so the SFT model
+       does emit the full schema. Most "correct" fix but biggest scope --
+       new SFT data prep, new SFT run, then re-run GRPO from there.
+   (c) Decouple RECALL from format -- score recall_reward off whatever
+       advice-equivalent we can extract (or a fallback action inferred
+       from game_state alone) so the kNN signal isn't gated on schema
+       compliance. Smallest model change, biggest reward-design change.
+2. Better evaluation of "state jumps" between optimizer steps. The skip-log
+   work is a start (see what each skipped sample looked like) but we don't
+   yet have a tool that:
+   - Compares response distributions between two checkpoints (e.g. ckpt-25
+     vs ckpt-50) on a fixed eval set, so we can ask "what behaviorally
+     changed in this jump?"
+   - Buckets responses by schema-completeness (game_state-only vs +analysis
+     vs +advice) and tracks the bucket distribution over training steps.
+   - Surfaces the high-magnitude-advantage examples per step (where the
+     gradient actually pulled hardest) so an expert can sanity-check the
+     direction it's pulling.
+3. Whether RECALL is the right strategic signal for a model that doesn't
+   yet reliably produce the kind of structured advice RECALL was designed
+   to score. Maybe an interim signal (next-token format adherence, schema
+   completeness ratio, or a Claude-judged plausibility score) bridges the
+   SFT->GRPO gap better.
+
+### Useful artifacts added this session
+- scripts/inspect_eval_outputs.py -- dump raw eval responses from a saved
+  LoRA. Used to diagnose enable_thinking and JSON-truncation bugs.
+- scripts/debug_eval.py -- monkey-patch processor.decode to print every
+  eval-time response. Diagnoses "why is the reward zero" cases.
+- src/training/grpo_trainer.py CS2GRPOConfig.sft_adapter + train_grpo.py
+  --sft-adapter. Bootstrap GRPO from an SFT LoRA without merging the full
+  35B model to disk first.
+- src/training/grpo_trainer.py [skip] log + skipped_jumps.jsonl --
+  visibility into the silent-skip path. Don't remove this; it's how F08's
+  "hang" got diagnosed in 30 seconds the second time.
+
+### Pod state at session end
+- Pod pzw9srmkiby7tw on RunPod (157.66.255.42:16857) -- user shutting down.
+- Network volume bp6ccofvnb persists. Contains:
+  - /workspace/venv/  -- python3.12 + tilelang patch + fla git-main + fa2
+  - /workspace/checkpoints/sft-r4-checkpoint-304/  -- SFT LoRA (uploaded
+    this session, do NOT have to upload again)
+  - /workspace/outputs/grpo/{f06,f08,smoke,diag,diag2}/  -- training outputs
+    F06 is the only one with a meaningful trained adapter.
+  - /workspace/.cache/huggingface/  -- model weights cached
+  - /workspace/.env  -- RUNPOD_API_KEY for auto-stop (still gitignored)
+- All eval bugs from earlier this session are fixed in main; pod_setup_grpo
+  patches tilelang's TVM at install time, so a fresh pod is one
+  scripts/pod_setup_grpo.sh away from working.
