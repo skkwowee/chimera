@@ -700,3 +700,54 @@ as a RECALL run.
 - scripts/debug_eval.py -- monkey-patch processor.decode to print every eval
   response. Used to diagnose the perception_only format_gate bug.
   Kept around for next "why is the reward zero" hunt.
+
+## F08 launch (2026-04-19, in progress) -- SFT-merged GRPO with full schema
+
+### Trainer change (commit ac2567f)
+Added --sft-adapter PATH to train_grpo.py and CS2GRPOConfig.sft_adapter.
+At load_model: after loading base, if sft_adapter is set:
+  PeftModel.from_pretrained(base, sft_adapter) -> merge_and_unload()
+to fold SFT into the frozen weights, then get_peft_model() with the GRPO
+LoRA on top. SFT is now part of the base; the GRPO LoRA learns reasoning
+deltas. Tested via smoke -- "SFT merged." prints, training proceeds.
+
+### Smoke validation (5 steps, --perception-only, 256 tokens)
+With --sft-adapter /workspace/checkpoints/sft-r4-checkpoint-304:
+  mean_format_gate:        0.50  (vs 0.46 base + percep-only)
+  mean_perceptual_accuracy: 0.057 (vs 0.082 F06 -- expected dip from 5 vs 100 steps)
+  mean_strategy:           -0.008 (vs 0.000 F06 -- RECALL is firing!)
+  mean_weighted_total:     +0.005
+
+The non-zero mean_strategy is the key signal that the SFT-merged base now
+emits `advice` blocks for recall_reward to extract actions from. With max
+strategy +0.13 across the 50 eval samples, the kNN lookup is producing
+real positive advantages on some samples.
+
+### Failed first attempt at F08 (max_tokens=384)
+Hung on step 1 for 21 minutes with no log output. GPU was active at 25%
+util but log file mtime never advanced past startup. Killed and dropped
+to max_tokens=256.
+
+Hypothesis (untested): KV cache growth at 384 tokens with G=4 generations
+crosses a memory/perf threshold. 256 tokens x G=4 x 4 samples = 4096 tokens
+per step (F06 was ~50s). 384 tokens scales linearly to ~75s but observed
+behavior was >1260s -- superlinear. Possible causes:
+  (a) KV cache spilling/recomputing at the larger size
+  (b) SFT model running to max length on full-schema responses (no early
+      EOS at the `}` boundary), so all 16 generations per step go full 384
+  (c) HF prefix-share via num_return_sequences falling back to non-shared
+      mode when sequences diverge a lot at long lengths.
+Sticking to 256 tokens means some advice blocks will get truncated mid-JSON
+but the gradient still flows on the format_gate-passing subset.
+
+### F08 (running, no auto-stop per user request)
+Output:    /workspace/outputs/grpo/f08/
+Cmd:       train_grpo.py --manual --data ...smoke_test.jsonl
+           --sft-adapter /workspace/checkpoints/sft-r4-checkpoint-304
+           --reward-mode recall --num-generations 4 --max-tokens 256
+           --max-steps 100 --save-steps 25 --max-eval-samples 50
+           --kl-coef 0.02 --attn-impl flash_attention_2
+Note:      NO --perception-only -- format_gate now requires game_state +
+           analysis + advice. Pod will stay up after exit (user is
+           iterating; doesn't want to spin a fresh pod).
+ETA:       ~2.5 hr (~90s/step x 100 + ~17 min eval, mirroring smoke rate).
