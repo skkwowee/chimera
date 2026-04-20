@@ -121,11 +121,12 @@ def parse_args():
     )
     model_group.add_argument(
         "--sft-adapter",
-        type=str,
+        action="append",
         default=None,
-        help="Path to a PEFT LoRA adapter directory to merge into the base "
-             "before adding the GRPO LoRA. Use this when SFT was a LoRA on the "
-             "same base — the SFT weights become part of the frozen base.",
+        help="Path to a PEFT LoRA adapter to merge into the base before adding "
+             "the GRPO LoRA. Repeat the flag to merge multiple adapters IN "
+             "ORDER (useful for resuming: original SFT first, then the GRPO "
+             "checkpoint you want to continue from).",
     )
     model_group.add_argument(
         "--no-vllm",
@@ -347,7 +348,7 @@ def main():
     # Create config from args
     config = CS2GRPOConfig(
         model_name=args.model_name,
-        sft_adapter=args.sft_adapter,
+        sft_adapter=args.sft_adapter or [],
         use_vllm=not args.no_vllm,
         torch_dtype=args.dtype,
         use_lora=not args.no_lora,

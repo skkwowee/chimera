@@ -90,11 +90,12 @@ class CS2GRPOConfig:
     use_vllm: bool = True
     device: str = "cuda"
     torch_dtype: str = "bfloat16"
-    # Path to a PEFT LoRA adapter to merge into the base before adding the GRPO
-    # LoRA on top. Use this to start GRPO from an SFT-trained model when the
-    # SFT was a LoRA: the SFT weights are folded into the frozen base and the
-    # GRPO LoRA learns the reasoning deltas. Leave None for vanilla base start.
-    sft_adapter: str | None = None
+    # Paths to PEFT LoRA adapters to merge into the base IN ORDER before adding
+    # the GRPO LoRA on top. Use the single-element form to start from an SFT
+    # LoRA. Use multiple elements to resume a previous GRPO run: pass the
+    # original SFT adapter first, then the most recent GRPO checkpoint, so both
+    # get folded into the frozen base. Leave empty for a vanilla base start.
+    sft_adapter: list[str] = field(default_factory=list)
 
     # LoRA settings
     use_lora: bool = True
@@ -223,17 +224,19 @@ class CS2GRPOTrainer:
         self.processor = AutoProcessor.from_pretrained(self.config.model_name)
         self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_name)
 
-        # Optional: fold an SFT LoRA into the base before adding the GRPO LoRA.
-        # The merged result is just weights — no second active adapter — so the
-        # GRPO LoRA below is the only trainable adapter. Without this, GRPO
-        # starts from raw base weights and won't reliably emit the schema the
-        # reward functions expect (analysis/advice for RECALL, etc.).
+        # Optional: fold one or more LoRA adapters into the base before adding
+        # the GRPO LoRA. Single-adapter case is the original SFT start. Multi-
+        # adapter case is for resuming a previous GRPO run: pass the original
+        # SFT adapter + the latest GRPO checkpoint, in that order, so both
+        # deltas are baked in and the fresh GRPO LoRA learns from the resumed
+        # state. Each merge is merge_and_unload so no adapter stays active.
         if self.config.sft_adapter:
             from peft import PeftModel
-            print(f"  Merging SFT LoRA from {self.config.sft_adapter} into base...")
-            self.model = PeftModel.from_pretrained(self.model, self.config.sft_adapter)
-            self.model = self.model.merge_and_unload()
-            print("  SFT merged.")
+            for idx, adapter_path in enumerate(self.config.sft_adapter):
+                print(f"  Merging adapter [{idx}] from {adapter_path} into base...")
+                self.model = PeftModel.from_pretrained(self.model, adapter_path)
+                self.model = self.model.merge_and_unload()
+            print(f"  Merged {len(self.config.sft_adapter)} adapter(s).")
 
         # Apply LoRA if enabled
         # GRPO freezes vision layers when using vLLM
