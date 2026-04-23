@@ -51,9 +51,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
+
+# Ensure src/ is importable regardless of cwd / PYTHONPATH so the workflow
+# documented in docs/viewer-grpo-overlay.md just works.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 
 # We import these lazily so the script's --help doesn't pull torch.
 def _load_tactical_embedding():
