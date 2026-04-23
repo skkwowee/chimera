@@ -41,6 +41,17 @@ export PYTHONUNBUFFERED=1
 export PYTHONPATH="$REPO_DIR"
 export HF_HOME="${HF_HOME:-/workspace/.cache/huggingface}"
 
+# Source /workspace/.env if present so secrets (ANTHROPIC_API_KEY for the
+# judge reward, RUNPOD_API_KEY for auto-stop) reach train_grpo.py without
+# having to be in the user's shell. .env is on the network volume and
+# gitignored.
+if [ -f /workspace/.env ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source /workspace/.env
+    set +a
+fi
+
 echo "START: $(date -Iseconds)"
 echo "ATTN_IMPL: $ATTN_IMPL"
 echo "Logging to: $LOG_FILE"
