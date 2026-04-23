@@ -802,6 +802,20 @@ def extract_grpo_samples(
                     sample = {
                         "prompt": prompt_content,
                         "ground_truth": ground_truth,
+                        # Source metadata — lets the demo viewer + neighbor
+                        # analysis tooling jump back to the exact tick this
+                        # sample was extracted from. Added 2026-04-23 for
+                        # the cross-round neighbor visualization work; older
+                        # smoke_test.jsonl files lack this and need
+                        # scripts/recover_source_metadata.py to backfill.
+                        "source": {
+                            "demo_stem": demo_stem,
+                            "round_num": int(rnum),
+                            "tick": int(tick),
+                            "player_name": p_name,
+                            "player_side": p_side,
+                            "map_name": map_name,
+                        },
                     }
                     all_samples.append(sample)
                     demo_sample_count += 1
