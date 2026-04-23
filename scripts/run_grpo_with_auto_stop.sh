@@ -51,6 +51,12 @@ nohup bash -c "
     export PYTHONUTF8=1
     export PYTHONUNBUFFERED=1
     export HF_HOME=\${HF_HOME:-/workspace/.cache/huggingface}
+    # Source /workspace/.env for ANTHROPIC_API_KEY (judge reward) etc.
+    if [ -f /workspace/.env ]; then
+        set -a
+        source /workspace/.env
+        set +a
+    fi
     echo '[START]' \$(date -Iseconds) >> '$LOG'
     $* >> '$LOG' 2>&1
     EXIT=\$?

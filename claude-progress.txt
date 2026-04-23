@@ -1102,3 +1102,32 @@ that passed the format gate and asking "what's the spread *among them*?"
 Answer for the most common case: 0.000. Identical scores for genuinely
 different strategic advices.
 
+
+### Smoke result (5 steps, 20 samples) -- judge mode CONFIRMED working
+Ran scripts/run_grpo_smoke.sh --reward-mode judge on the resumed pod.
+Total: 20 useful_jumps samples across 5 steps. Zero errors, zero judge
+API failures.
+
+Comparison (judge vs RECALL f08v4 baseline):
+                          judge      RECALL       ratio
+  reward_std median       0.033      0.0154       2.2x
+  passer-spread median    0.035      0.0154       2.3x
+  max passer-spread       0.175      ~0.10        --
+  zero-spread (passers)   1/20 (5%)  ~50% (2-pass) huge
+
+Final eval (50 samples, capped from 202):
+  mean_strategy:           0.4800   <-- vs RECALL f08v4 -0.031
+  mean_perceptual_accuracy: 0.0985
+  weighted total:          0.4037
+
+Interpretation: 5 steps is way too few to see learning, but the eval
+numbers confirm the judge is producing non-degenerate scores in the
+middle of [0,1] right out of the gate. RECALL was producing scores
+clustered near 0 with effectively random sign. The headline win is
+the "1/20 zero-spread among passers" stat -- RECALL's signature
+failure was giving identical scores to 2 different format-passing
+advices ~50% of the time, and judge does that 5%.
+
+Next: kick off F08v5 (real run, 100 steps with judge mode + auto-stop).
+Estimated 6-7 hours, ~$1-2 in judge API.
+
