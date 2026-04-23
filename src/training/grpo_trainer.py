@@ -823,6 +823,10 @@ class CS2GRPOTrainer:
                 decode_elapsed = time.time() - t_decode
 
                 # --- Step 2: Score completions ---
+                # `siblings` lets group-aware reward fns (e.g. judge_reward)
+                # see all G completions at once. Per-completion fns ignore it
+                # via **kwargs. judge_reward caches on the sibling tuple so
+                # the API call only fires once per group, not G times.
                 rewards = []
                 format_passes = 0
                 for comp_text in completions_text:
@@ -833,7 +837,8 @@ class CS2GRPOTrainer:
                         format_passes += 1
                         r = sum(
                             w * fn(comp_text, ground_truth=ground_truth,
-                                   recall_index=self.recall_index)
+                                   recall_index=self.recall_index,
+                                   siblings=completions_text)
                             for w, fn in zip(reward_weights, self.reward_fns, strict=False)
                         )
                         rewards.append(gate * r)

@@ -44,6 +44,7 @@ from src.training import (
     CS2GRPOTrainer,
     convert_labeled_to_grpo_format,
     create_grpo_dataset,
+    judge_reward,
     perceptual_accuracy_reward,
     recall_reward,
 )
@@ -62,6 +63,13 @@ REWARD_MODES = {
         "functions": [perceptual_accuracy_reward, recall_reward],
         "weights": [0.20, 0.80],
         "description": "2-signal: R_percept (0.20) + R_RECALL (0.80)",
+    },
+    "judge": {
+        "functions": [perceptual_accuracy_reward, judge_reward],
+        "weights": [0.20, 0.80],
+        "description": "2-signal: R_percept (0.20) + R_judge (0.80) -- "
+                       "Claude judge ranks the G completions per step. "
+                       "Replaces RECALL (see claude-progress.txt 2026-04-23).",
     },
     "legacy": {
         "functions": REWARD_FUNCTIONS,

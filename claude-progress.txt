@@ -967,3 +967,138 @@ whatever local minimum minimises KL drift.
 Lean MEDIUM first: cheapest thing that might move the signal floor
 above the noise floor. If diagnostic + medium iteration confirm we can
 get real signal, the big-scope judge is a follow-on, not a prereq.
+
+------------------------------------------------------------------------
+## 2026-04-23: empirical confirmation that RECALL has no strategic signal,
+## decision to pivot to Claude-judge for GRPO reward
+------------------------------------------------------------------------
+
+### Diagnostic: within-group variance on f08v4 + f08v4_resumed
+Ran a within-group variance analysis on the existing useful_jumps.jsonl
+audit files from both runs (202 + 200 = 402 training steps, G=4 each).
+The question: when 2+ completions pass the format gate at the same step,
+does RECALL actually differentiate strategic content among them?
+
+f08v4 (202 steps):
+  reward_std == 0:      0/202   (good: never literally collapsed)
+  reward_std < 0.01:   68/202   (33.7% effectively no signal)
+  reward_std < 0.05:  178/202   (88.1% weak signal at best)
+  format_passes mean   1.86/4
+  Among-passers spread (RECALL's real job):
+    2/4 passing (77 steps): MEDIAN spread = 0.000  (identical scores!)
+    3/4 passing (38 steps): median 0.0154
+    4/4 passing (7 steps):  median 0.0154
+
+f08v4_resumed (200 steps):
+  reward_std < 0.01:   85/200  (42.5%)
+  format_passes mean   2.75/4   (model learned format better post-resume)
+  Among-passers spread:
+    2/4 passing (52 steps): median = 0.000
+    3/4 passing (85 steps): median 0.0101  (50% < 0.01)
+    4/4 passing (43 steps): median 0.0154
+
+### What this proves
+The reward variance we DID observe at the top level was dominated by the
+format gate: "the one completion that passed got ~0.02, the three that
+failed got 0." When we filter to ONLY the passing completions -- exactly
+where RECALL is supposed to do strategic discrimination -- the median
+spread is 0.000 for the most common case (2/4 passing) and ~0.01 for the
+rest. RECALL was giving identical or near-identical scores to different
+strategic advices in the same state.
+
+So the F08v4 model learned "emit valid JSON" (format_passes 1.86 -> 2.75)
+but did NOT learn strategic content from RECALL, because RECALL was not
+a strategic-content signal in the first place. The 19-dim state vector
+is dominated by surface features (map one-hot, side, HP) so kNN retrieves
+mostly same-round neighbors, V_hat == Q_hat, advantage == 0.
+
+This matches the structural argument from the prior diagnostic but now
+it's empirical on real training, not hypothetical.
+
+### Decision: switch reward signal to Claude judge
+We chose option (c) from the prior session's options instead of (b).
+Reasoning: the state-equivalence problem in CS2 is fundamentally hard
+because state similarity is a decision-function property, not a
+geometric one. No fixed embedding -- hand-engineered or LM-based --
+captures tactical equivalence well enough with our limited data
+(4 demos, 80 rounds).
+
+The judge route bypasses state-equivalence entirely. Per-step:
+  1. Generate G=4 completions
+  2. Single judge call with state + 4 completions + rubric
+  3. Judge returns scores 0-1 per completion (or pairwise rankings)
+  4. Use judge scores in place of recall_reward
+  5. Format gate stays multiplicative as before
+
+Cost: ~$0.50-2 per 100-step run with Opus 4.7. Trivial vs pod cost.
+
+Caveat: the judge's notion of "good CS2 advice" is another model's prior,
+not actual coach labels. Mitigated by including pro_action and round_won
+in the judge context so it can anchor on "did the advice match what the
+pro did, who then won/lost."
+
+### What the new judge_reward needs
+- Inputs: state (game_state JSON, pro_action, round_won) + list of G
+  completion strings.
+- Outputs: list of G floats in [0, 1]. Returns one value per completion.
+- Single Anthropic API call per step (not per completion).
+- Robust JSON parsing -- if the judge's own response is malformed, fall
+  back to all 0.5 (neutral, no gradient that step).
+
+### Concrete implementation plan
+- Add anthropic to requirements.txt (probably already there for baseline_eval).
+- New module src/training/judge_reward.py with single function judge_reward(
+    state_dict, completions: list[str]) -> list[float].
+- Add "judge" mode to REWARD_MODES in train_grpo.py:
+    [perceptual_accuracy_reward, judge_reward], weights [0.20, 0.80]
+  Same shape as "recall" mode -- swap recall_reward for judge_reward.
+- The judge call has to happen at the GROUP level (one call sees all G
+  completions), not per-completion. This is a structural change in the
+  manual GRPO loop -- right now reward_fns are called per-completion in
+  a list comprehension. Either refactor the loop or have judge_reward
+  cache its scores keyed on (state_id, completion_hash) so per-completion
+  calls hit the cache after the first.
+- Caching is the cleanest minimal-diff approach: judge_reward(state, comp)
+  computes scores for ALL G completions on first call, caches keyed on
+  (state_id, set of completion hashes), returns the score for the one
+  completion that was passed.
+
+### Test-against approach (deferred, not blocking)
+Build a small "pseudo-gold" dataset (30 states x 4 advices A/B/C/D where
+A is constructed-correct, B constructed-wrong, C generic, D plausible
+but wrong) to compare any future scoring function head-to-head. Synthetic
+labels by intuition, not real ground truth, so it can only validate
+"is this scorer better than chance" not "is this scorer right." Useful
+for differential comparison between candidate scorers; not blocking the
+judge implementation.
+
+
+### Glossary clarification: what `reward_std` measures
+
+For each GRPO training step, the model generates G=4 different completions
+in response to the SAME game state (sampling diversity from temperature>0
+is what produces the variety -- they're four different pieces of strategic
+advice for one situation, e.g. for a 2v3 post-plant: "hold crossfire" vs
+"push connector" vs "play smart" vs "rotate ramp").
+
+Each of the 4 gets a reward score. `reward_std` is the standard deviation
+across those 4 scores. GRPO's whole game is `advantage_i = (r_i - mean_r)
+/ (std_r + eps)` -- the relative ranking within the group is the gradient
+signal. So:
+
+  - reward_std HIGH (e.g. 0.18 across [0.7, 0.2, 0.1, 0.6]):
+    scoring function differentiated the strategic content. Gradient
+    pushes model toward the high-scoring advice style.
+  - reward_std NEAR ZERO (e.g. 0.0 across [0.04, 0.04, 0.04, 0.04]):
+    scorer gave essentially the same score to all 4 different advices.
+    Advantages collapse to noise; no useful gradient.
+  - reward_std MODERATE BUT FORMAT-DRIVEN (the f08v4 case, e.g. [0.04,
+    0, 0, 0]): variance comes entirely from "one passed the format
+    gate, three didn't." The model learns format discipline, not
+    strategy. The strategic scoring component contributes nothing.
+
+The diagnostic that nailed RECALL was filtering to ONLY the completions
+that passed the format gate and asking "what's the spread *among them*?"
+Answer for the most common case: 0.000. Identical scores for genuinely
+different strategic advices.
+

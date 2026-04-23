@@ -7,6 +7,7 @@ from .data_utils import (
     create_sft_dataset,
 )
 from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
+from .judge_reward import judge_reward
 from .recall import (
     RECALLIndex,
     action_embedding,
@@ -51,6 +52,7 @@ __all__ = [
     "create_sft_dataset",
     "decision_alignment_reward",
     "format_gate_reward",
+    "judge_reward",
     "outcome_reward",
     "perceptual_accuracy_reward",
     "recall_reward",
