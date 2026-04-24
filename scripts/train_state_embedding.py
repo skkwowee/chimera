@@ -96,47 +96,78 @@ def _category_key(pro_action: dict) -> frozenset:
     return frozenset(cats)
 
 
+def _alive_bucket(n: int) -> str:
+    """Coarse bucketing so 4v5 and 1v1 fall into different equivalence classes.
+    3 buckets/axis = 9 combinations total, enough positives per bucket."""
+    if n <= 1:
+        return "clutch"  # 0 or 1 left — literally clutching
+    if n <= 3:
+        return "low"     # 2 or 3 left — mid round attrition
+    return "high"        # 4 or 5 left — full team / early situation
+
+
+def _alive_key(game_state: dict) -> tuple[str, str]:
+    t = int(game_state.get("alive_teammates", 0) or 0)
+    e = int(game_state.get("alive_enemies", 0) or 0)
+    return (_alive_bucket(t), _alive_bucket(e))
+
+
 def build_triplets(
     dataset: list[dict],
     triplets_per_anchor: int,
     rng: random.Random,
     redact: bool = False,
+    alive_bucket: bool = False,
 ) -> list[tuple[str, str, str]]:
     """Emit (anchor_text, positive_text, negative_text) triples.
 
-    Positive = same category-set AND same round_won.
-    Negative = different category-set (any).
+    Positive = same category-set AND same round_won [AND same alive-bucket].
+    Negative = different category-set OR different alive-bucket (if enabled).
     Anchors that have <1 positive available are skipped.
+
+    The alive-bucket flag fixes the 4v5 <-> 1v1 failure mode: without it,
+    'hold'+won covers both full-team post-plant and 1v1 clutches, and the
+    encoder learns those are the same tactical situation.
     """
-    # Index by (category_set, round_won) bucket
-    buckets: dict[tuple[frozenset, bool], list[int]] = defaultdict(list)
+    # Key includes alive-bucket iff enabled
+    buckets: dict[tuple, list[int]] = defaultdict(list)
     states: list[str] = []
     cats_by_idx: list[frozenset] = []
+    alive_by_idx: list[tuple[str, str]] = []
     for i, s in enumerate(dataset):
         gt = s.get("ground_truth", {})
         gs = gt.get("game_state", {})
         pa = gt.get("pro_action", {})
         rw = bool(gt.get("round_won", False))
         ckey = _category_key(pa)
-        buckets[(ckey, rw)].append(i)
+        akey = _alive_key(gs) if alive_bucket else None
+        buckets[(ckey, rw, akey)].append(i)
         states.append(_state_text(gs, redact=redact))
         cats_by_idx.append(ckey)
+        alive_by_idx.append(_alive_key(gs))
 
     all_indices = list(range(len(dataset)))
     triplets: list[tuple[str, str, str]] = []
 
+    def different_enough(i: int, k: int) -> bool:
+        if cats_by_idx[k] != cats_by_idx[i]:
+            return True
+        # Category-sets match, but if alive-bucket differs that's still a
+        # valid hard-negative signal when the flag is on.
+        return alive_bucket and alive_by_idx[k] != alive_by_idx[i]
+
     for i in range(len(dataset)):
-        key = (cats_by_idx[i], bool(dataset[i].get("ground_truth", {}).get("round_won", False)))
+        rw = bool(dataset[i].get("ground_truth", {}).get("round_won", False))
+        akey = alive_by_idx[i] if alive_bucket else None
+        key = (cats_by_idx[i], rw, akey)
         pos_pool = [j for j in buckets[key] if j != i]
         if not pos_pool:
             continue
         for _ in range(triplets_per_anchor):
             j = rng.choice(pos_pool)
-            # Sample negatives until we hit one with different category-set.
-            # Usually one draw suffices.
             for _attempt in range(10):
                 k = rng.choice(all_indices)
-                if k != i and cats_by_idx[k] != cats_by_idx[i]:
+                if k != i and different_enough(i, k):
                     triplets.append((states[i], states[j], states[k]))
                     break
     return triplets
@@ -289,6 +320,10 @@ def main() -> int:
                    help="Strip lexical shortcuts (player_name, round_num, score, "
                         "time, etc.) from game_state before encoding. Force the "
                         "embedding to learn from tactical features, not identity.")
+    p.add_argument("--alive-bucket", action="store_true",
+                   help="Include (alive_teammates, alive_enemies) bucketing in "
+                        "the positive-pair rule. Prevents 4v5 and 1v1 from being "
+                        "pulled together during training.")
     args = p.parse_args()
 
     rng = random.Random(args.seed)
@@ -310,10 +345,15 @@ def main() -> int:
 
     if args.redact:
         print("Redaction ON: stripping lexical shortcuts from game_state")
+    if args.alive_bucket:
+        print("Alive-bucket ON: positive pairs must match (team, enemy) alive buckets")
 
     if not args.eval_only:
         print("\nBuilding triplets...")
-        triplets = build_triplets(dataset, args.triplets_per_anchor, rng, redact=args.redact)
+        triplets = build_triplets(
+            dataset, args.triplets_per_anchor, rng,
+            redact=args.redact, alive_bucket=args.alive_bucket,
+        )
         print(f"  {len(triplets)} triplets generated")
         if len(triplets) < 100:
             print("ERROR: too few triplets. Check category distribution.")
