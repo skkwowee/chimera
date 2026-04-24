@@ -232,11 +232,19 @@ class RECALLIndex:
     state-action advantage estimates.
     """
 
-    def __init__(self):
+    def __init__(self, state_embedder: Any = None):
+        """
+        Args:
+            state_embedder: Optional callable(game_state: dict) -> np.ndarray.
+                Defaults to the hand-engineered 19-dim `tactical_embedding`.
+                Pass a learned encoder (e.g., sentence-transformer adapter) to
+                swap in a different equivalence metric.
+        """
         self._state_index: Any = None  # faiss.IndexFlatL2
         self._action_embeddings: np.ndarray | None = None  # np.ndarray (N, d_a)
         self._outcomes: np.ndarray | None = None  # np.ndarray (N,) float32
         self._n: int = 0
+        self._state_embedder = state_embedder or tactical_embedding
 
     @property
     def size(self) -> int:
@@ -274,7 +282,7 @@ class RECALLIndex:
             if gs is None or beh is None or won is None:
                 continue
 
-            state_vecs.append(tactical_embedding(gs))
+            state_vecs.append(np.asarray(self._state_embedder(gs), dtype=np.float32))
             action_vecs.append(action_embedding(beh))
             outcomes.append(1.0 if won else 0.0)
 
@@ -323,7 +331,7 @@ class RECALLIndex:
         # Clamp k to index size
         k_actual = min(k, self._n)
 
-        state_vec = tactical_embedding(state).reshape(1, -1)
+        state_vec = np.asarray(self._state_embedder(state), dtype=np.float32).reshape(1, -1)
         _distances, indices = self._state_index.search(state_vec, k_actual)
         indices = indices[0]
 

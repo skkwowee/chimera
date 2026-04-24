@@ -17,6 +17,7 @@ Legacy/ablation mode (D013 — 3-signal):
 
 import copy
 import json
+import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -355,11 +356,24 @@ class CS2GRPOTrainer:
         print(f"Reward functions configured: {len(self.reward_fns)} signals")
 
     def build_recall_index(self, train_data: list[dict[str, Any]]):
-        """Build FAISS kNN index from training samples for RECALL reward."""
+        """Build FAISS kNN index from training samples for RECALL reward.
+
+        If env var CHIMERA_RECALL_ENCODER is set to a path, swap in the
+        learned sentence-transformer encoder instead of the 19-dim
+        hand-engineered tactical_embedding. Lets us A/B the two without
+        touching the call sites or the rest of the trainer config.
+        """
         from .recall import RECALLIndex
 
+        encoder_path = os.environ.get("CHIMERA_RECALL_ENCODER")
+        state_embedder = None
+        if encoder_path:
+            from .learned_state_embedder import LearnedStateEmbedder
+            print(f"RECALL using learned encoder: {encoder_path}")
+            state_embedder = LearnedStateEmbedder(encoder_path, redact=True)
+
         print("Building RECALL index...")
-        self.recall_index = RECALLIndex()
+        self.recall_index = RECALLIndex(state_embedder=state_embedder)
         samples = [s for s in train_data if "ground_truth" in s]
         if samples:
             self.recall_index.build_from_samples(samples)
