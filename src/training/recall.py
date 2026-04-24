@@ -448,13 +448,26 @@ def recall_reward(
     if not isinstance(game_state, dict):
         return 0.0
 
-    # Extract action from model's advice
+    # Extract action from model's advice. Original impl pulled fixed keys
+    # (primary_action/fallback/reasoning) that the current GRPO-trained model
+    # doesn't emit — the advice JSON has arbitrary per-player keys
+    # ('ropz', 't_play', 'action', 'immediate_action', ...). Flatten ALL
+    # advice string values into one text blob so the keyword classifier has
+    # something to work with regardless of schema.
     advice = parsed.get("advice", {})
     if not isinstance(advice, dict):
         return 0.0
 
-    # Build action dict from model's text using keyword classification
-    action_text = f"{advice.get('primary_action', '')} {advice.get('fallback', '')} {advice.get('reasoning', '')}"
+    def _flatten_text(obj: Any) -> str:
+        if isinstance(obj, str):
+            return obj
+        if isinstance(obj, dict):
+            return " ".join(_flatten_text(v) for v in obj.values())
+        if isinstance(obj, list):
+            return " ".join(_flatten_text(v) for v in obj)
+        return ""
+
+    action_text = _flatten_text(advice)
     model_action = _extract_action_from_text(action_text)
 
     return recall_index.recall_advantage(game_state, model_action)
