@@ -175,24 +175,6 @@ def embed_tactical(dataset: list[dict]) -> np.ndarray:
     return embs / norms
 
 
-def topk_cosine(query: np.ndarray, all_vecs: np.ndarray, k: int) -> np.ndarray:
-    """Per-row top-k indices (excluding self) by cosine similarity of unit vectors."""
-    n = all_vecs.shape[0]
-    sims = all_vecs @ query.T  # (n, m)
-    # Exclude self when query and all_vecs are the same matrix
-    for i in range(sims.shape[1]):
-        if i < sims.shape[0]:
-            sims[i, i] = -np.inf
-    # Top-k per column (m queries)
-    idx = np.argpartition(-sims, k, axis=0)[:k]
-    # Sort within top-k
-    out = np.zeros_like(idx)
-    for c in range(sims.shape[1]):
-        col_idx = idx[:, c]
-        out[:, c] = col_idx[np.argsort(-sims[col_idx, c])]
-    return out  # (k, m)
-
-
 def neighbor_stats(
     name: str,
     embs: np.ndarray,
@@ -201,46 +183,48 @@ def neighbor_stats(
     cats_by_idx: list[frozenset],
     k: int,
 ) -> dict:
-    """For each sample that has source metadata, compute neighbor mix."""
+    """For each sample that has source metadata, compute neighbor mix.
+
+    Vectorized: one (n,n) similarity matrix, argpartition per row. n=2013 is
+    trivial — 16MB of float32. Self-excluded by setting diagonal to -inf.
+    """
     n = embs.shape[0]
-    # For memory, batch queries
-    batch = 128
+    sims = embs @ embs.T  # (n, n); unit vectors, so dot = cosine sim
+    np.fill_diagonal(sims, -np.inf)
+    # Top-k indices per row
+    topk_unsorted = np.argpartition(-sims, k, axis=1)[:, :k]
+    # Sort within top-k
+    topk = np.zeros_like(topk_unsorted)
+    for i in range(n):
+        row = topk_unsorted[i]
+        topk[i] = row[np.argsort(-sims[i, row])]
+
     total = dict(same_round=0, cross_round=0, cross_demo=0, no_src=0, same_cat=0, total=0)
-    for start in range(0, n, batch):
-        end = min(start + batch, n)
-        Q = embs[start:end]
-        topk = topk_cosine(Q, embs, k + 1)  # +1 in case self leaks
-        # topk: (k+1, batch)
-        for col, q_idx in enumerate(range(start, end)):
-            q_src = src_by_idx.get(q_idx)
-            if q_src is None:
-                continue
-            neighbors = [int(i) for i in topk[:, col] if int(i) != q_idx][:k]
-            q_cat = cats_by_idx[q_idx]
-            for nb in neighbors:
-                nb_src = src_by_idx.get(nb)
-                if nb_src is None:
-                    total["no_src"] += 1
-                    total["total"] += 1
-                    continue
-                if nb_src["demo_stem"] == q_src["demo_stem"]:
-                    if nb_src["round_num"] == q_src["round_num"]:
-                        total["same_round"] += 1
-                    else:
-                        total["cross_round"] += 1
-                else:
-                    total["cross_demo"] += 1
-                if cats_by_idx[nb] == q_cat:
-                    total["same_cat"] += 1
+    for q_idx in range(n):
+        q_src = src_by_idx.get(q_idx)
+        if q_src is None:
+            continue
+        q_cat = cats_by_idx[q_idx]
+        for nb in topk[q_idx]:
+            nb = int(nb)
+            nb_src = src_by_idx.get(nb)
+            if nb_src is None:
+                total["no_src"] += 1
                 total["total"] += 1
+                continue
+            if nb_src["demo_stem"] == q_src["demo_stem"]:
+                if nb_src["round_num"] == q_src["round_num"]:
+                    total["same_round"] += 1
+                else:
+                    total["cross_round"] += 1
+            else:
+                total["cross_demo"] += 1
+            if cats_by_idx[nb] == q_cat:
+                total["same_cat"] += 1
+            total["total"] += 1
     tot = max(total["total"], 1)
-    pct = {k: total[k] / tot for k in ("same_round", "cross_round", "cross_demo", "same_cat", "no_src")}
-    return {
-        "metric": name,
-        "k": k,
-        "counts": total,
-        "pct": pct,
-    }
+    pct = {key: total[key] / tot for key in ("same_round", "cross_round", "cross_demo", "same_cat", "no_src")}
+    return {"metric": name, "k": k, "counts": total, "pct": pct}
 
 
 def main() -> int:
