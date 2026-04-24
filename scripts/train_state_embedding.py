@@ -229,6 +229,10 @@ def neighbor_stats(
         topk[i] = row[np.argsort(-sims[i, row])]
 
     total = dict(same_round=0, cross_round=0, cross_demo=0, no_src=0, same_cat=0, total=0)
+    # Split same-cat counts by region so we can see which region is doing the
+    # tactical lift.
+    cat_by_region = dict(same_round=0, cross_round=0, cross_demo=0)
+    region_counts = dict(same_round=0, cross_round=0, cross_demo=0)
     for q_idx in range(n):
         q_src = src_by_idx.get(q_idx)
         if q_src is None:
@@ -243,17 +247,28 @@ def neighbor_stats(
                 continue
             if nb_src["demo_stem"] == q_src["demo_stem"]:
                 if nb_src["round_num"] == q_src["round_num"]:
-                    total["same_round"] += 1
+                    region = "same_round"
                 else:
-                    total["cross_round"] += 1
+                    region = "cross_round"
             else:
-                total["cross_demo"] += 1
+                region = "cross_demo"
+            total[region] += 1
+            region_counts[region] += 1
             if cats_by_idx[nb] == q_cat:
                 total["same_cat"] += 1
+                cat_by_region[region] += 1
             total["total"] += 1
     tot = max(total["total"], 1)
     pct = {key: total[key] / tot for key in ("same_round", "cross_round", "cross_demo", "same_cat", "no_src")}
-    return {"metric": name, "k": k, "counts": total, "pct": pct}
+    # Per-region same-cat rate: of the neighbors in this region, what fraction
+    # share the pro-action category?
+    cat_rate_by_region = {r: (cat_by_region[r] / region_counts[r]) if region_counts[r] else 0.0
+                          for r in region_counts}
+    return {
+        "metric": name, "k": k, "counts": total, "pct": pct,
+        "cat_rate_by_region": cat_rate_by_region,
+        "region_counts": region_counts,
+    }
 
 
 def main() -> int:
@@ -327,34 +342,42 @@ def main() -> int:
     learned = embed_dataset(str(output_dir), texts)
 
     print(f"\nNeighbor stats (k={args.k}, excluding self):")
-    print(f"{'metric':<18} {'same_round':>10} {'cross_round':>11} {'cross_demo':>10} {'same_cat':>10} {'total':>10}")
-    print("-" * 75)
+    print(f"{'metric':<18} {'same_round':>10} {'cross_round':>11} {'cross_demo':>10} {'same_cat':>10}")
+    print("-" * 65)
+    stats_all = []
     for name, embs in [
         ("tactical_19d", tact),
         ("baseline_sent", base),
         ("learned_sent", learned),
     ]:
         r = neighbor_stats(name, embs, dataset, src_by_idx, cats_by_idx, args.k)
-        c = r["counts"]
+        stats_all.append(r)
         p = r["pct"]
         print(
             f"{name:<18} "
             f"{p['same_round']*100:9.1f}% "
             f"{p['cross_round']*100:10.1f}% "
             f"{p['cross_demo']*100:9.1f}% "
-            f"{p['same_cat']*100:9.1f}% "
-            f"{c['total']:>10d}"
+            f"{p['same_cat']*100:9.1f}%"
+        )
+
+    # Per-region same-cat rate: does the embedding cluster by TACTIC even when
+    # it reaches across rounds/demos? Random baseline for same-cat is ~15-18%
+    # (category-set distribution is top-heavy: 'hold' alone is 28% of data).
+    print(f"\nSame-category rate BY REGION (cross-demo is what we care about):")
+    print(f"{'metric':<18} {'same_round':>10} {'cross_round':>11} {'cross_demo':>10}")
+    print("-" * 55)
+    for r in stats_all:
+        c = r["cat_rate_by_region"]
+        print(
+            f"{r['metric']:<18} "
+            f"{c['same_round']*100:9.1f}% "
+            f"{c['cross_round']*100:10.1f}% "
+            f"{c['cross_demo']*100:9.1f}%"
         )
 
     summary_path = output_dir / "neighbor_eval.json"
-    results = []
-    for name, embs in [
-        ("tactical_19d", tact),
-        ("baseline_sent", base),
-        ("learned_sent", learned),
-    ]:
-        results.append(neighbor_stats(name, embs, dataset, src_by_idx, cats_by_idx, args.k))
-    summary_path.write_text(json.dumps(results, indent=2))
+    summary_path.write_text(json.dumps(stats_all, indent=2))
     print(f"\nSaved summary: {summary_path}")
     return 0
 
