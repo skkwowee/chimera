@@ -57,6 +57,11 @@ def main() -> int:
                    help="Path to SentenceTransformer model (learned encoder)")
     p.add_argument("--n-queries", type=int, default=5)
     p.add_argument("--k", type=int, default=3, help="Neighbors per region")
+    p.add_argument("--min-tick-gap", type=int, default=2000,
+                   help="Within the same (demo, round, player), two ticks must "
+                        "be at least this far apart to both be retained. "
+                        "Default 2000 ≈ 30s of game time at 64 tick/s. "
+                        "Set to 0 to disable spacing.")
     p.add_argument("--seed", type=int, default=7)
     p.add_argument("--output", default="-",
                    help="Write formatted report here ('-' for stdout)")
@@ -103,18 +108,32 @@ def main() -> int:
         row = sims[q]
         order = np.argsort(-row)
 
+        # Tick-spacing dedupe: within the same (demo, round, player) triple,
+        # two ticks can both be kept only if separated by >= min_tick_gap.
+        # A full round at 64 tick/s is ~7000 ticks; min_tick_gap=2000 means
+        # ~30s of game time between retained ticks — enough for HP/alive to
+        # meaningfully shift. Without this, a single (player, round) cluster's
+        # 5-14 near-adjacent ticks monopolize top-K.
         cross_round: list[tuple[int, float]] = []
         cross_demo: list[tuple[int, float]] = []
+        kept_ticks_per_triple: dict[tuple, list[int]] = {}
         for j in order:
             j = int(j)
             if j == q:
                 continue
             j_src = src_by_idx.get(j, {})
+            triple = (j_src.get("demo_stem"), j_src.get("round_num"), j_src.get("player_name"))
+            j_tick = j_src.get("tick", 0)
+            already = kept_ticks_per_triple.get(triple, [])
+            if any(abs(j_tick - t) < args.min_tick_gap for t in already):
+                continue
             if j_src.get("demo_stem") == q_demo:
                 if j_src.get("round_num") != q_round:
                     cross_round.append((j, float(row[j])))
+                    kept_ticks_per_triple.setdefault(triple, []).append(j_tick)
             else:
                 cross_demo.append((j, float(row[j])))
+                kept_ticks_per_triple.setdefault(triple, []).append(j_tick)
             if len(cross_round) >= args.k and len(cross_demo) >= args.k:
                 break
 
