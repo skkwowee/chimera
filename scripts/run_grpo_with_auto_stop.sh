@@ -1,29 +1,32 @@
 #!/usr/bin/env bash
-# Run a GRPO training command, then auto-stop the pod on completion.
-# Use this when kicking off a long training run before walking away.
+# Run a GRPO training command under nohup.
+# Optionally auto-stop/terminate the pod on completion (opt-in).
 #
-# Usage on pod:
+# Usage on pod (keep pod alive, default):
+#   bash scripts/run_grpo_with_auto_stop.sh none \
+#       /workspace/venv/bin/python scripts/train_grpo.py --manual ...
+#
+# Usage on pod (auto-stop when done):
 #   bash scripts/run_grpo_with_auto_stop.sh stop \
-#       /workspace/venv/bin/python scripts/train_grpo.py --manual \
-#         --data data/training/grpo/smoke_test.jsonl \
-#         --reward-mode recall --max-steps 100 ...
+#       /workspace/venv/bin/python scripts/train_grpo.py --manual ...
 #
-# First arg is "stop" or "terminate" (passed to auto_stop_pod.sh).
+# First arg is "none" (default, keep pod), "stop", or "terminate".
 # Rest is the training command + args, run via nohup.
-#
-# Pod stops itself when training exits — success OR failure. No idle billing
-# while you sleep. Logs go to /workspace/grpo_run.log; pod-stop result to
-# /workspace/auto_stop.log.
 
 set -euo pipefail
 
 if [ $# -lt 2 ]; then
-    echo "Usage: $0 {stop|terminate} <training command...>"
+    echo "Usage: $0 {none|stop|terminate} <training command...>"
     exit 1
 fi
 
 STOP_ACTION="$1"
 shift
+
+case "$STOP_ACTION" in
+    none|stop|terminate) ;;
+    *) echo "ERROR: first arg must be {none|stop|terminate}, got '$STOP_ACTION'"; exit 1 ;;
+esac
 
 REPO_DIR="${REPO_DIR:-/workspace/chimera}"
 LOG="${LOG:-/workspace/grpo_run.log}"
@@ -61,7 +64,9 @@ nohup bash -c "
     $* >> '$LOG' 2>&1
     EXIT=\$?
     echo '[END]' \$(date -Iseconds) exit=\$EXIT >> '$LOG'
-    bash $REPO_DIR/scripts/auto_stop_pod.sh '$STOP_ACTION' >> '$STOP_LOG' 2>&1 || true
+    if [ '$STOP_ACTION' != 'none' ]; then
+        bash $REPO_DIR/scripts/auto_stop_pod.sh '$STOP_ACTION' >> '$STOP_LOG' 2>&1 || true
+    fi
 " > /dev/null 2>&1 &
 
 PID=$!
@@ -69,7 +74,11 @@ echo "$PID" > /workspace/grpo_run.pid
 sleep 2
 
 if kill -0 "$PID" 2>/dev/null; then
-    echo "Launched. PID $PID. Pod will $STOP_ACTION when training exits."
+    if [ "$STOP_ACTION" = "none" ]; then
+        echo "Launched. PID $PID. Pod will stay alive when training exits."
+    else
+        echo "Launched. PID $PID. Pod will $STOP_ACTION when training exits."
+    fi
     echo "  Training log: $LOG"
     echo "  Auto-stop log: $STOP_LOG"
     echo "  Tail with:   tail -f $LOG"
