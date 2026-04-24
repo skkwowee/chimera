@@ -36,7 +36,7 @@ Output schema (one line per audit sample):
     "pro_action": {...},
     "round_won": bool,
     "advices": [
-      {"text_first200": "...", "reward": float, "passed_format": bool},
+      {"text_preview": "...", "reward": float, "passed_format": bool},
       ...G entries
     ],
     "neighbors": {
@@ -173,9 +173,12 @@ def main() -> int:
             gs = gt.get("game_state", {})
 
             advices = []
-            for c, r in zip(row.get("completions_first200", []), row.get("rewards", [])):
+            # Back-compat: old audits used `completions_first200`; new runs use
+            # `completions_preview` (first 800 chars).
+            completions = row.get("completions_preview") or row.get("completions_first200", [])
+            for c, r in zip(completions, row.get("rewards", [])):
                 advices.append({
-                    "text_first200": c,
+                    "text_preview": c,
                     "reward": r,
                     "passed_format": abs(r) > 1e-9,
                 })

@@ -67,7 +67,7 @@ One JSON object per line. Each object describes one GRPO training sample:
   "round_won": true,                            // Round outcome (binary)
   "advices": [                                  // G=4 model completions
     {
-      "text_first200": "{\"game_state\":{\"round\":4,...",
+      "text_preview": "{\"game_state\":{\"round\":4,...",
       "reward": 0.415,                          // weighted total reward (incl. format gate)
       "passed_format": true
     },
@@ -103,7 +103,8 @@ When the viewer is on a tick that matches a `viewer_data.jsonl` record (by
 `source.demo_stem + round_num + tick`), show a panel with:
 
 1. **Model advices block** — for each of the G=4 completions, show:
-   - The text (truncated at 200 chars; full text wasn't logged in the audit)
+   - The text (preview: first 800 chars; usually covers the full completion
+     since `max_tokens=256` produces ~800-1000 chars)
    - The reward score, color-coded (green > 0.3, yellow 0.1-0.3, red < 0.1)
    - A "format pass" checkmark
    - Mark the highest-scoring one as "best"
@@ -173,9 +174,6 @@ file via env var.
 
 ## Open follow-ups (not implemented)
 
-- The audit only stores `completions_first200`. To inspect FULL advice
-  text in the viewer, the trainer would need to log the full completion
-  string. Trivial change but increases audit file size ~5-10x.
 - `recover_source_metadata.py` will fail on samples where two demos on
   the same map have a player+round+HP collision. Acceptable today (we
   have 4 demos on 4 different maps); needs revisiting if we add more.

@@ -869,7 +869,7 @@ class CS2GRPOTrainer:
                             "rewards": rewards_repr,
                             "format_passes": format_passes,
                             "num_generations": config.num_generations,
-                            "completions_first200": [c[:200] for c in completions_text],
+                            "completions_preview": [c[:800] for c in completions_text],
                             "ground_truth_keys": list(ground_truth.keys()) if isinstance(ground_truth, dict) else None,
                         }) + "\n")
                         skip_log_f.flush()
@@ -933,7 +933,7 @@ class CS2GRPOTrainer:
                         "num_generations": config.num_generations,
                         "gen_seconds": round(gen_elapsed, 2),
                         "bwd_seconds": round(bwd_elapsed, 2),
-                        "completions_first200": [c[:200] for c in completions_text],
+                        "completions_preview": [c[:800] for c in completions_text],
                         "ground_truth_keys": list(ground_truth.keys()) if isinstance(ground_truth, dict) else None,
                     }) + "\n")
                     useful_log_f.flush()
