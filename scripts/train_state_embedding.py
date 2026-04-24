@@ -58,9 +58,37 @@ def _load_tactical_embedding():
     return tactical_embedding
 
 
-def _state_text(gs: dict) -> str:
+# Lexical shortcuts — fields that leak demo/round/tick identity and let the
+# encoder cluster by surface similarity instead of tactical structure.
+#   player_name/teammates/team -> player identity; same demo same round →
+#     same strings → lexical hit
+#   round_number/round           -> round identity
+#   time_*/round_time/tick       -> monotonic within-round signal
+#   score                        -> within a round, identical across ticks
+# Kept (genuine tactical features): map_name, player_side, player_health,
+# player_armor, weapon_primary, alive_teammates, alive_enemies, bomb_status,
+# round_phase, economy.
+_REDACT_KEYS = frozenset({
+    "player_name", "player", "teammates", "team", "opponent_team",
+    "round_number", "round",
+    "time_remaining", "time", "round_time", "tick",
+    "score", "current_player",
+})
+
+
+def _redact(obj, redact: bool):
+    if not redact:
+        return obj
+    if isinstance(obj, dict):
+        return {k: _redact(v, redact) for k, v in obj.items() if k not in _REDACT_KEYS}
+    if isinstance(obj, list):
+        return [_redact(v, redact) for v in obj]
+    return obj
+
+
+def _state_text(gs: dict, redact: bool = False) -> str:
     """Serialize game_state deterministically for the sentence encoder."""
-    return json.dumps(gs, sort_keys=True, ensure_ascii=False)
+    return json.dumps(_redact(gs, redact), sort_keys=True, ensure_ascii=False)
 
 
 def _category_key(pro_action: dict) -> frozenset:
@@ -72,6 +100,7 @@ def build_triplets(
     dataset: list[dict],
     triplets_per_anchor: int,
     rng: random.Random,
+    redact: bool = False,
 ) -> list[tuple[str, str, str]]:
     """Emit (anchor_text, positive_text, negative_text) triples.
 
@@ -90,7 +119,7 @@ def build_triplets(
         rw = bool(gt.get("round_won", False))
         ckey = _category_key(pa)
         buckets[(ckey, rw)].append(i)
-        states.append(_state_text(gs))
+        states.append(_state_text(gs, redact=redact))
         cats_by_idx.append(ckey)
 
     all_indices = list(range(len(dataset)))
@@ -241,6 +270,10 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--eval-only", action="store_true",
                    help="Skip training, just eval the encoder at --output")
+    p.add_argument("--redact", action="store_true",
+                   help="Strip lexical shortcuts (player_name, round_num, score, "
+                        "time, etc.) from game_state before encoding. Force the "
+                        "embedding to learn from tactical features, not identity.")
     args = p.parse_args()
 
     rng = random.Random(args.seed)
@@ -260,9 +293,12 @@ def main() -> int:
 
     output_dir = Path(args.output)
 
+    if args.redact:
+        print("Redaction ON: stripping lexical shortcuts from game_state")
+
     if not args.eval_only:
         print("\nBuilding triplets...")
-        triplets = build_triplets(dataset, args.triplets_per_anchor, rng)
+        triplets = build_triplets(dataset, args.triplets_per_anchor, rng, redact=args.redact)
         print(f"  {len(triplets)} triplets generated")
         if len(triplets) < 100:
             print("ERROR: too few triplets. Check category distribution.")
@@ -279,7 +315,7 @@ def main() -> int:
         )
 
     print("\n=== Evaluation ===")
-    texts = [_state_text(s.get("ground_truth", {}).get("game_state", {})) for s in dataset]
+    texts = [_state_text(s.get("ground_truth", {}).get("game_state", {}), redact=args.redact) for s in dataset]
 
     print("\nComputing tactical_19d embeddings...")
     tact = embed_tactical(dataset)
