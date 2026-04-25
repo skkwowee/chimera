@@ -48,6 +48,7 @@ from src.training import (
     perceptual_accuracy_reward,
     recall_reward,
 )
+from src.training.bt_reward import bt_reward
 from src.utils.config import DEFAULT_MODEL_NAME
 
 # ---------------------------------------------------------------------------
@@ -70,6 +71,14 @@ REWARD_MODES = {
         "description": "2-signal: R_percept (0.20) + R_judge (0.80) -- "
                        "Claude judge ranks the G completions per step. "
                        "Replaces RECALL (see claude-progress.txt 2026-04-23).",
+    },
+    "bt_head": {
+        "functions": [perceptual_accuracy_reward, bt_reward],
+        "weights": [0.20, 0.80],
+        "description": "2-signal: R_percept (0.20) + R_BT_head (0.80) -- "
+                       "neural reward head trained on expert human preferences. "
+                       "No per-step API call. Set CHIMERA_BT_HEAD_PATH to the "
+                       "trained head dir (e.g., /workspace/outputs/bt_head/v1).",
     },
     "legacy": {
         "functions": REWARD_FUNCTIONS,

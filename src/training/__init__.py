@@ -7,6 +7,7 @@ from .data_utils import (
     create_sft_dataset,
 )
 from .grpo_trainer import CS2GRPOConfig, CS2GRPOTrainer
+from .bt_reward import bt_reward
 from .judge_reward import judge_reward
 from .recall import (
     RECALLIndex,
@@ -44,6 +45,7 @@ __all__ = [
     "GRPODataLoader",
     "RECALLIndex",
     "action_embedding",
+    "bt_reward",
     "compute_outcome_modulation",
     "compute_player_contribution",
     "convert_labeled_to_grpo_format",
