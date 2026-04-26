@@ -99,6 +99,98 @@ def get_radar_png_bytes(map_name: str) -> bytes | None:
 
 
 # --------------------------------------------------------------------------- #
+# Per-round viewer data: positions + timers
+# --------------------------------------------------------------------------- #
+TICK_RATE = 64  # CS2 demo tick rate
+BOMB_DURATION_S = 40.0  # standard C4 fuse
+
+
+@st.cache_data(show_spinner=False)
+def load_round_viewer_data(viewer_dir: str, demo_stem: str, round_num: int) -> dict | None:
+    """Load round_NN.json produced by cs2-tools/export_viewer_data.py.
+
+    Schema: {round_num, start_tick, end_tick, freeze_end, winner, reason,
+             bomb_plant_tick, bomb_site,
+             frames: [{tick, players: [{name, side, x, y, z, yaw, hp, alive}]}]}
+    """
+    p = Path(viewer_dir) / demo_stem / f"round_{round_num:02d}.json"
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def _find_frame_at_tick(round_data: dict, target_tick: int) -> dict | None:
+    frames = round_data.get("frames") or []
+    if not frames:
+        return None
+    return min(frames, key=lambda f: abs(int(f.get("tick", 0)) - int(target_tick)))
+
+
+def _world_to_pixel(world_x: float, world_y: float, map_data: dict) -> tuple[int, int]:
+    """awpy's standard transform — same one cs2-demo-viewer uses."""
+    px = (world_x - float(map_data["pos_x"])) / float(map_data["scale"])
+    py = (float(map_data["pos_y"]) - world_y) / float(map_data["scale"])
+    return int(px), int(py)
+
+
+def render_radar_with_positions(
+    map_name: str, players: list[dict], focus_player_name: str | None
+) -> bytes | None:
+    """Draw player dots on the awpy radar PNG. Returns PNG bytes."""
+    radar = get_radar_png_bytes(map_name)
+    if radar is None:
+        return None
+    try:
+        from awpy.data import MAP_DATA  # type: ignore
+        from PIL import Image, ImageDraw  # type: ignore
+    except Exception:
+        return radar  # fall back to bare radar
+    map_data = MAP_DATA.get(map_name)
+    if not map_data:
+        return radar
+
+    import io
+    img = Image.open(io.BytesIO(radar)).convert("RGBA")
+    draw = ImageDraw.Draw(img)
+    for p in players or []:
+        if not p.get("alive"):
+            continue
+        side = p.get("side", "")
+        color = (220, 60, 60, 255) if side == "T" else (60, 130, 230, 255)
+        x, y = _world_to_pixel(float(p.get("x", 0)), float(p.get("y", 0)), map_data)
+        if focus_player_name and p.get("name") == focus_player_name:
+            # Larger dot with a white ring for the spectated POV.
+            draw.ellipse([x - 14, y - 14, x + 14, y + 14],
+                         fill=color, outline=(255, 255, 255, 255), width=3)
+        else:
+            draw.ellipse([x - 9, y - 9, x + 9, y + 9],
+                         fill=color, outline=(0, 0, 0, 200), width=1)
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()
+
+
+def round_clock(round_data: dict, target_tick: int) -> str:
+    """Wall-clock time elapsed since freeze ended → 'M:SS' format."""
+    freeze_end = int(round_data.get("freeze_end") or round_data.get("start_tick") or 0)
+    seconds = max(0, (int(target_tick) - freeze_end) / TICK_RATE)
+    return f"{int(seconds // 60)}:{int(seconds % 60):02d}"
+
+
+def bomb_clock(round_data: dict, target_tick: int) -> str | None:
+    """Time remaining on the planted bomb (or None if not planted yet)."""
+    plant_tick = round_data.get("bomb_plant_tick")
+    if not plant_tick:
+        return None
+    elapsed = (int(target_tick) - int(plant_tick)) / TICK_RATE
+    remaining = max(0.0, BOMB_DURATION_S - elapsed)
+    return f"0:{int(remaining):02d}"
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def parse_args() -> argparse.Namespace:
@@ -128,6 +220,14 @@ def parse_args() -> argparse.Namespace:
         default=Path("data/training/grpo/smoke_test.jsonl"),
         help="Path to smoke_test.jsonl, used to fetch the original prompt text "
              "(round events, full HUD context) by sample_idx.",
+    )
+    p.add_argument(
+        "--viewer-data",
+        type=Path,
+        default=Path("outputs/viewer-data"),
+        help="Directory of per-round JSON exports from cs2-tools "
+             "(`cs2-export-viewer --output ...`). When present, the labeler "
+             "sees actual player positions on the map plus round/bomb timers.",
     )
     return p.parse_args()
 
@@ -244,10 +344,54 @@ def render_round_context(sample_idx: int, smoke_path: str) -> None:
         st.code("\n\n".join(text_blocks), language="text")
 
 
-def render_map(map_name: str) -> None:
-    """Show the radar image for this map. Player-position dots require demo
-    parquets locally — added when those are pulled down (export_viewer_data.py
-    in cs2-tools handles that pipeline)."""
+def render_map_overlay(
+    pair: dict, viewer_dir: str
+) -> None:
+    """Show the radar with live player dots + round/bomb timers if viewer-data
+    is present locally; fall back to a static radar if not."""
+    s = pair.get("state", {})
+    c = pair.get("context", {})
+    map_name = s.get("map_name") or ""
+    demo_stem = c.get("demo_stem")
+    round_num = c.get("round_num")
+    target_tick = c.get("tick")
+    pov_name = c.get("player_name")
+
+    round_data = None
+    if demo_stem and round_num is not None:
+        round_data = load_round_viewer_data(viewer_dir, demo_stem, int(round_num))
+
+    # Timers strip.
+    if round_data and target_tick is not None:
+        clock = round_clock(round_data, int(target_tick))
+        bomb = bomb_clock(round_data, int(target_tick))
+        bomb_label = f"  |  💣 **{bomb}** to detonation" if bomb else ""
+        bomb_site = round_data.get("bomb_site")
+        site_label = f"  |  site **{bomb_site}**" if bomb_site else ""
+        st.markdown(
+            f"⏱ **{clock}** since freeze-end{bomb_label}{site_label}"
+        )
+
+    # Map image with overlay if possible.
+    if round_data and target_tick is not None:
+        frame = _find_frame_at_tick(round_data, int(target_tick))
+        players = (frame or {}).get("players", [])
+        png = render_radar_with_positions(map_name, players, focus_player_name=pov_name)
+        if png is not None:
+            t_alive = sum(1 for p in players if p.get("side") == "T" and p.get("alive"))
+            ct_alive = sum(1 for p in players if p.get("side") == "CT" and p.get("alive"))
+            st.image(
+                png,
+                caption=(
+                    f"{map_name} -- POV: {pov_name} "
+                    f"-- alive: {t_alive}T / {ct_alive}CT "
+                    f"-- frame@tick {frame.get('tick') if frame else target_tick}"
+                ),
+                width=520,
+            )
+            return
+
+    # Fallback: static radar only.
     png = get_radar_png_bytes(map_name)
     if png is None:
         st.caption(
@@ -255,10 +399,15 @@ def render_map(map_name: str) -> None:
             "install `awpy` or run `awpy get maps`)_"
         )
         return
-    st.image(png, caption=f"{map_name} radar (positions pending demo parquets)", width=420)
+    st.image(png, caption=f"{map_name} (positions pending viewer-data)", width=420)
+    st.caption(
+        f"_(no viewer-data found at `{viewer_dir}/{demo_stem}/round_{round_num:02d}.json` — "
+        "run cs2-tools/export_viewer_data.py and copy here for live positions)_"
+        if demo_stem and round_num is not None else ""
+    )
 
 
-def render_state_card(pair: dict[str, Any], smoke_path: str) -> None:
+def render_state_card(pair: dict[str, Any], smoke_path: str, viewer_dir: str) -> None:
     s = pair.get("state", {})
     c = pair.get("context", {})
     util = s.get("utility") or []
@@ -308,10 +457,10 @@ def render_state_card(pair: dict[str, Any], smoke_path: str) -> None:
     st.markdown(f"**Categories:** `{cat_str}`")
     st.markdown(f"**Pro action description:** {desc}")
 
-    # Map + full prompt context.
-    map_col, ctx_col = st.columns([1, 2])
+    # Map (with live positions if viewer-data is present) + full prompt context.
+    map_col, ctx_col = st.columns([1, 1])
     with map_col:
-        render_map(s.get("map_name", "") or "")
+        render_map_overlay(pair, viewer_dir)
     with ctx_col:
         sidx = pair.get("sample_idx")
         if isinstance(sidx, int):
@@ -319,7 +468,11 @@ def render_state_card(pair: dict[str, Any], smoke_path: str) -> None:
 
 
 def render_pair_panel(
-    pair: dict[str, Any], labeler: str, prefs_path: Path, smoke_path: str
+    pair: dict[str, Any],
+    labeler: str,
+    prefs_path: Path,
+    smoke_path: str,
+    viewer_dir: str,
 ) -> None:
     pid = pair["pair_id"]
 
@@ -334,7 +487,7 @@ def render_pair_panel(
         st.session_state["render_ts"] = time.time()
         st.session_state["notes"] = ""
 
-    render_state_card(pair, smoke_path)
+    render_state_card(pair, smoke_path, viewer_dir)
     st.markdown("---")
     st.markdown("### Compare completions")
 
@@ -434,6 +587,7 @@ def main() -> None:
         labeler=args.labeler,
         prefs_path=args.preferences,
         smoke_path=str(args.smoke_dataset),
+        viewer_dir=str(args.viewer_data),
     )
 
 
