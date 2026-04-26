@@ -81,16 +81,19 @@ def load_smoke_dataset(path: str) -> dict[int, dict]:
 def get_radar_png_bytes(map_name: str) -> bytes | None:
     """Return PNG bytes for the map's radar image from awpy, or None.
 
-    Reuses the same data source as cs2-tools/export_viewer_data.py
-    (awpy ships radar PNGs for all active CS2 maps).
+    cs2-tools/export_viewer_data.py imports `MAPS_DIR` from awpy, but in
+    awpy 1.2.3 the radar PNGs live at `awpy/data/map/*.png` and that
+    constant isn't exported. Locate the directory directly via awpy.data.
     """
     try:
-        from awpy.data import MAPS_DIR  # type: ignore
+        import awpy.data as awpy_data  # type: ignore
     except Exception:
         return None
+    base = Path(awpy_data.__file__).parent / "map"
     candidates = [
-        Path(MAPS_DIR) / f"{map_name}.png",
-        Path(MAPS_DIR) / f"{map_name}_light.png",
+        base / f"{map_name}.png",
+        base / f"{map_name}_light.png",
+        base / f"{map_name}_dark.png",
     ]
     for p in candidates:
         if p.exists():
