@@ -43,6 +43,62 @@ import streamlit as st
 
 
 # --------------------------------------------------------------------------- #
+# Pretty-print + dataset/radar helpers
+# --------------------------------------------------------------------------- #
+def pretty_json(text: str) -> str:
+    """Indent JSON if parseable, else return text unchanged."""
+    if not text:
+        return text
+    try:
+        return json.dumps(json.loads(text), indent=2, ensure_ascii=False)
+    except Exception:
+        return text
+
+
+@st.cache_data(show_spinner=False)
+def load_smoke_dataset(path: str) -> dict[int, dict]:
+    """Load smoke_test.jsonl indexed by sample_idx for round-context lookup.
+
+    Returns {sample_idx: sample_dict}. Empty dict if file not present.
+    """
+    p = Path(path)
+    if not p.exists():
+        return {}
+    out: dict[int, dict] = {}
+    with p.open("r") as f:
+        for i, line in enumerate(f):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                out[i] = json.loads(line)
+            except Exception:
+                continue
+    return out
+
+
+@st.cache_data(show_spinner=False)
+def get_radar_png_bytes(map_name: str) -> bytes | None:
+    """Return PNG bytes for the map's radar image from awpy, or None.
+
+    Reuses the same data source as cs2-tools/export_viewer_data.py
+    (awpy ships radar PNGs for all active CS2 maps).
+    """
+    try:
+        from awpy.data import MAPS_DIR  # type: ignore
+    except Exception:
+        return None
+    candidates = [
+        Path(MAPS_DIR) / f"{map_name}.png",
+        Path(MAPS_DIR) / f"{map_name}_light.png",
+    ]
+    for p in candidates:
+        if p.exists():
+            return p.read_bytes()
+    return None
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def parse_args() -> argparse.Namespace:
@@ -65,6 +121,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=os.environ.get("USER", "anonymous"),
         help="Labeler identity recorded in each output row.",
+    )
+    p.add_argument(
+        "--smoke-dataset",
+        type=Path,
+        default=Path("data/training/grpo/smoke_test.jsonl"),
+        help="Path to smoke_test.jsonl, used to fetch the original prompt text "
+             "(round events, full HUD context) by sample_idx.",
     )
     return p.parse_args()
 
@@ -155,7 +218,47 @@ def canonical_choice(ui_choice: str, ui_a_was: str) -> str:
 # --------------------------------------------------------------------------- #
 # Rendering
 # --------------------------------------------------------------------------- #
-def render_state_card(pair: dict[str, Any]) -> None:
+def render_round_context(sample_idx: int, smoke_path: str) -> None:
+    """Show the full prompt text from smoke_test.jsonl for this sample.
+
+    The prompt has rich context (round events timeline, economy, current state
+    block) that the high-level state card can't fit. Reuses the same input the
+    GRPO trainer feeds the model, no recomputation.
+    """
+    ds = load_smoke_dataset(smoke_path)
+    sample = ds.get(sample_idx)
+    if not sample:
+        return
+    prompt = sample.get("prompt", [])
+    text_blocks: list[str] = []
+    for b in prompt:
+        if isinstance(b, dict) and b.get("type") == "text":
+            t = b.get("text") or ""
+            if t:
+                text_blocks.append(t)
+        elif isinstance(b, str):
+            text_blocks.append(b)
+    if not text_blocks:
+        return
+    with st.expander("Round context (full prompt — round events, economy, HUD)", expanded=True):
+        st.code("\n\n".join(text_blocks), language="text")
+
+
+def render_map(map_name: str) -> None:
+    """Show the radar image for this map. Player-position dots require demo
+    parquets locally — added when those are pulled down (export_viewer_data.py
+    in cs2-tools handles that pipeline)."""
+    png = get_radar_png_bytes(map_name)
+    if png is None:
+        st.caption(
+            f"_(radar for `{map_name}` not available locally — "
+            "install `awpy` or run `awpy get maps`)_"
+        )
+        return
+    st.image(png, caption=f"{map_name} radar (positions pending demo parquets)", width=420)
+
+
+def render_state_card(pair: dict[str, Any], smoke_path: str) -> None:
     s = pair.get("state", {})
     c = pair.get("context", {})
     util = s.get("utility") or []
@@ -205,45 +308,43 @@ def render_state_card(pair: dict[str, Any]) -> None:
     st.markdown(f"**Categories:** `{cat_str}`")
     st.markdown(f"**Pro action description:** {desc}")
 
+    # Map + full prompt context.
+    map_col, ctx_col = st.columns([1, 2])
+    with map_col:
+        render_map(s.get("map_name", "") or "")
+    with ctx_col:
+        sidx = pair.get("sample_idx")
+        if isinstance(sidx, int):
+            render_round_context(sidx, smoke_path)
 
-def render_pair_panel(pair: dict[str, Any], labeler: str, prefs_path: Path) -> None:
+
+def render_pair_panel(
+    pair: dict[str, Any], labeler: str, prefs_path: Path, smoke_path: str
+) -> None:
     pid = pair["pair_id"]
 
-    # Re-shuffle only when the displayed pair_id changes.
+    # Re-shuffle only when the displayed pair_id changes. Pretty-print JSON
+    # bodies once at shuffle time so diffing the two completions is bearable.
     if st.session_state.get("displayed_pair_id") != pid:
         left, right, ui_a_was = shuffle_for_display(pair)
         st.session_state["displayed_pair_id"] = pid
-        st.session_state["left_text"] = left
-        st.session_state["right_text"] = right
+        st.session_state["left_text"] = pretty_json(left)
+        st.session_state["right_text"] = pretty_json(right)
         st.session_state["ui_a_was_originally"] = ui_a_was
         st.session_state["render_ts"] = time.time()
         st.session_state["notes"] = ""
 
-    render_state_card(pair)
+    render_state_card(pair, smoke_path)
     st.markdown("---")
     st.markdown("### Compare completions")
 
     col_a, col_b = st.columns(2)
     with col_a:
         st.markdown("#### Left  (press *A is better* if you prefer this)")
-        st.text_area(
-            "Left completion",
-            value=st.session_state["left_text"],
-            height=320,
-            key=f"left_{pid}",
-            label_visibility="collapsed",
-            disabled=True,
-        )
+        st.code(st.session_state["left_text"], language="json")
     with col_b:
         st.markdown("#### Right  (press *B is better* if you prefer this)")
-        st.text_area(
-            "Right completion",
-            value=st.session_state["right_text"],
-            height=320,
-            key=f"right_{pid}",
-            label_visibility="collapsed",
-            disabled=True,
-        )
+        st.code(st.session_state["right_text"], language="json")
 
     notes = st.text_input(
         "Notes (optional)", value=st.session_state.get("notes", ""), key=f"notes_{pid}"
@@ -328,7 +429,12 @@ def main() -> None:
         f"source_run: `{next_pair.get('source_run', '?')}`"
     )
 
-    render_pair_panel(next_pair, labeler=args.labeler, prefs_path=args.preferences)
+    render_pair_panel(
+        next_pair,
+        labeler=args.labeler,
+        prefs_path=args.preferences,
+        smoke_path=str(args.smoke_dataset),
+    )
 
 
 if __name__ == "__main__":
