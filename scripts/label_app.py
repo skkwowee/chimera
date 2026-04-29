@@ -184,12 +184,15 @@ def round_clock(round_data: dict, target_tick: int) -> str:
 
 
 def bomb_clock(round_data: dict, target_tick: int) -> str | None:
-    """Time remaining on the planted bomb (or None if not planted yet)."""
+    """Time remaining on the planted bomb at `target_tick`, or None if the
+    bomb is not currently in the planted-and-ticking window."""
     plant_tick = round_data.get("bomb_plant_tick")
     if not plant_tick:
         return None
     elapsed = (int(target_tick) - int(plant_tick)) / TICK_RATE
-    remaining = max(0.0, BOMB_DURATION_S - elapsed)
+    if elapsed < 0 or elapsed > BOMB_DURATION_S:
+        return None
+    remaining = BOMB_DURATION_S - elapsed
     return f"0:{int(remaining):02d}"
 
 
@@ -364,16 +367,20 @@ def render_map_overlay(
     if demo_stem and round_num is not None:
         round_data = load_round_viewer_data(viewer_dir, demo_stem, int(round_num))
 
-    # Timers strip.
+    # Timers strip. Only show bomb info when the bomb is actually planted
+    # AT this sample tick (otherwise we'd be leaking round-end info that
+    # could bias the labeler).
     if round_data and target_tick is not None:
         clock = round_clock(round_data, int(target_tick))
         bomb = bomb_clock(round_data, int(target_tick))
-        bomb_label = f"  |  💣 **{bomb}** to detonation" if bomb else ""
-        bomb_site = round_data.get("bomb_site")
-        site_label = f"  |  site **{bomb_site}**" if bomb_site else ""
-        st.markdown(
-            f"⏱ **{clock}** since freeze-end{bomb_label}{site_label}"
-        )
+        if bomb:
+            bomb_site = round_data.get("bomb_site")
+            site_label = f"  |  site **{bomb_site}**" if bomb_site else ""
+            st.markdown(
+                f"⏱ **{clock}** since freeze-end  |  💣 **{bomb}** to detonation{site_label}"
+            )
+        else:
+            st.markdown(f"⏱ **{clock}** since freeze-end  |  💣 not planted yet")
 
     # Map image with overlay if possible.
     if round_data and target_tick is not None:

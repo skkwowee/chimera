@@ -54,6 +54,17 @@ models/
 *.bin
 *.safetensors
 
+# Tokenizer files (too large; download with model)
+tokenizer.json
+
+# LaTeX build artifacts
+paper/main.aux
+paper/main.bbl
+paper/main.blg
+paper/main.log
+paper/main.out
+paper/main.pdf
+
 # Training outputs
 outputs/
 
