@@ -245,6 +245,14 @@ class RECALLIndex:
         self._outcomes: np.ndarray | None = None  # np.ndarray (N,) float32
         self._n: int = 0
         self._state_embedder = state_embedder or tactical_embedding
+        # Optional per-sample source key (demo_stem, round_num) used for
+        # same-round-exclusion at query time. Populated from sample["source"]
+        # by build_from_samples; None means "this sample has no source meta".
+        # When the query also provides a matching source key, those neighbors
+        # are masked out — see variance diagnostic in scripts/recall_variance_diagnostic.py
+        # for why: same-round neighbors leak round_won by construction and
+        # collapse V̂ to a constant.
+        self._source_keys: list[tuple[str, int] | None] | None = None
 
     @property
     def size(self) -> int:
@@ -271,6 +279,7 @@ class RECALLIndex:
         state_vecs = []
         action_vecs = []
         outcomes = []
+        source_keys: list[tuple[str, int] | None] = []
 
         for sample in samples:
             gt = sample.get("ground_truth", {})
@@ -285,6 +294,14 @@ class RECALLIndex:
             state_vecs.append(np.asarray(self._state_embedder(gs), dtype=np.float32))
             action_vecs.append(action_embedding(beh))
             outcomes.append(1.0 if won else 0.0)
+            # Source key: prefer top-level sample["source"], fall back to
+            # ground_truth["source"]. Either path is valid; sources may be
+            # merged in at either level depending on dataset prep flow.
+            src = sample.get("source") or gt.get("source")
+            if isinstance(src, dict) and "demo_stem" in src and "round_num" in src:
+                source_keys.append((str(src["demo_stem"]), int(src["round_num"])))
+            else:
+                source_keys.append(None)
 
         if not state_vecs:
             logger.warning("No valid samples for RECALL index")
@@ -294,6 +311,7 @@ class RECALLIndex:
         state_mat = np.stack(state_vecs).astype(np.float32)
         self._action_embeddings = np.stack(action_vecs).astype(np.float32)
         self._outcomes = np.array(outcomes, dtype=np.float32)
+        self._source_keys = source_keys
         self._n = len(outcomes)
 
         d = state_mat.shape[1]
@@ -308,6 +326,7 @@ class RECALLIndex:
         action: dict[str, Any],
         k: int = 32,
         k_min: int = 5,
+        query_source_key: tuple[str, int] | None = None,
     ) -> tuple[float, float, bool]:
         """
         Query the index for advantage estimation.
@@ -317,6 +336,15 @@ class RECALLIndex:
             action: Behavioral action dict.
             k: Number of nearest neighbors to retrieve.
             k_min: Minimum action-matched neighbors for confidence.
+            query_source_key: Optional (demo_stem, round_num) of the query.
+                If provided AND the index was built with source keys, neighbors
+                from the same (demo, round) are excluded before kNN. This is
+                the same-round leakage fix — without it, the kNN of any
+                state-from-round-R is dominated by sibling ticks of round R,
+                which all share round_won by construction → V̂ collapses.
+                See scripts/recall_variance_diagnostic.py for the empirical
+                evidence (median neighbor outcome std jumps from 0.000 to
+                0.331 once same-round is excluded for tactical_19d).
 
         Returns:
             (Q_hat, V_hat, confident):
@@ -328,17 +356,36 @@ class RECALLIndex:
         if self._n == 0 or self._state_index is None or self._outcomes is None or self._action_embeddings is None:
             return 0.5, 0.5, False
 
-        # Clamp k to index size
-        k_actual = min(k, self._n)
+        # When same-round masking is active we may need to over-fetch from
+        # FAISS so that, after dropping same-round hits, we still have ~k
+        # neighbors. Worst-case overfetch is bounded by index size.
+        do_mask = (
+            query_source_key is not None
+            and self._source_keys is not None
+        )
+        k_fetch = min(k * 4, self._n) if do_mask else min(k, self._n)
 
         state_vec = np.asarray(self._state_embedder(state), dtype=np.float32).reshape(1, -1)
-        _distances, indices = self._state_index.search(state_vec, k_actual)
+        _distances, indices = self._state_index.search(state_vec, k_fetch)
         indices = indices[0]
 
         # Filter out -1 indices (FAISS returns -1 if fewer than k results)
         valid = indices[indices >= 0]
         if len(valid) == 0:
             return 0.5, 0.5, False
+
+        if do_mask:
+            qkey = query_source_key
+            keep_mask = np.array(
+                [self._source_keys[i] != qkey for i in valid],
+                dtype=bool,
+            )
+            valid = valid[keep_mask]
+            if len(valid) == 0:
+                return 0.5, 0.5, False
+            # Trim to k after masking. Order from FAISS is by distance, so
+            # the first len(valid)-many remaining ARE the k-best non-same-round.
+            valid = valid[:k]
 
         # V_hat: baseline win rate of all K neighbors
         neighbor_outcomes = self._outcomes[valid]
@@ -382,6 +429,7 @@ class RECALLIndex:
         action: dict[str, Any],
         k: int = 32,
         k_min: int = 5,
+        query_source_key: tuple[str, int] | None = None,
     ) -> float:
         """
         Compute RECALL advantage: A = Q̂(s,a) − V̂(s).
@@ -394,11 +442,15 @@ class RECALLIndex:
             action: Behavioral action dict.
             k: Number of nearest neighbors.
             k_min: Minimum action-matched neighbors for confidence.
+            query_source_key: Optional (demo_stem, round_num) for same-round
+                exclusion (see RECALLIndex.query).
 
         Returns:
             Advantage ∈ [-1, 1], or 0.0 if uncertain.
         """
-        q_hat, v_hat, confident = self.query(state, action, k=k, k_min=k_min)
+        q_hat, v_hat, confident = self.query(
+            state, action, k=k, k_min=k_min, query_source_key=query_source_key,
+        )
         if not confident:
             return 0.0
         return q_hat - v_hat
@@ -470,7 +522,19 @@ def recall_reward(
     action_text = _flatten_text(advice)
     model_action = _extract_action_from_text(action_text)
 
-    return recall_index.recall_advantage(game_state, model_action)
+    # Pass the query's source key (if known) so RECALL can exclude
+    # same-round neighbors, which otherwise leak round_won and collapse V̂.
+    # ground_truth["source"] is populated upstream from the source-recovery
+    # JSONL; if absent, query_source_key=None and we fall back to current
+    # (no-mask) behavior.
+    src = ground_truth.get("source")
+    query_source_key: tuple[str, int] | None = None
+    if isinstance(src, dict) and "demo_stem" in src and "round_num" in src:
+        query_source_key = (str(src["demo_stem"]), int(src["round_num"]))
+
+    return recall_index.recall_advantage(
+        game_state, model_action, query_source_key=query_source_key,
+    )
 
 
 def _extract_action_from_text(text: str) -> dict[str, Any]:

@@ -22,7 +22,7 @@
 \maketitle
 
 \begin{abstract}
-Vision-language models (VLMs) struggle with domain-specific visual grounding tasks in competitive gaming environments, where rapid and accurate scene understanding is critical for strategic decision-making. We propose a two-phase training paradigm: first, supervised fine-tuning on screenshot--game state pairs teaches the model accurate visual grounding (reading the HUD); then, Group Relative Policy Optimization with demo-derived rewards teaches strategic reasoning scored against professional play and round outcomes. We evaluate our approach on Counter-Strike 2 (CS2) screenshot analysis tasks, demonstrating that separating perception and reasoning into distinct training phases outperforms single-phase approaches.
+Vision-language models (VLMs) struggle with domain-specific visual grounding tasks in competitive gaming environments, where rapid and accurate scene understanding is critical for strategic decision-making. We propose a two-phase training paradigm: first, supervised fine-tuning on screenshot--game state pairs teaches the model accurate visual grounding (reading the HUD); then, Group Relative Policy Optimization (GRPO) with retrieval-based advantage estimation teaches strategic reasoning. As a methodological contribution we characterize a \emph{compositional} failure of retrieval-based advantage estimators on outcome-correlated trajectory data, where the kNN-derived value baseline $\hat{V}(s)$ silently saturates and the advantage signal $\hat{A}(s,a) = \hat{Q}(s,a) - \hat{V}(s)$ collapses to zero. The failure sits at the intersection of two phenomena documented separately: class-collapsed representations under supervised contrastive objectives~\cite{graf2021dissecting} and zero-variance-group failures in GRPO-family estimators~\cite{zerovariance2025,ngrpo2025}. We add a retrieval-RL-specific instance --- sibling time-step leakage, where same-trajectory neighbors share the outcome label by construction --- and propose a per-query neighbor outcome variance diagnostic. On 2{,}013 post-plant Counter-Strike~2 states we measure 52.6\% saturation under the shipped 19-dim hand-engineered embedding (median per-query std $\sigma_s{=}0.000$, ceiling $0.49$); excluding same-trajectory neighbors at retrieval time lifts $\sigma_s$ to $0.331$, and substituting an untrained sentence-transformer encoder reaches $0.390$. A counterfactual contrastive objective designed to address the embedding-side failure does not improve over the untrained encoder on this dataset, which we report and discuss as an open question.
 \end{abstract}
 
 \section{Introduction}
@@ -34,17 +34,22 @@ We find that even frontier VLMs struggle with this seemingly simple perception t
 
 Our key hypothesis is that perception and reasoning benefit from separate training phases. Phase~1 (SFT) grounds the model in accurate HUD reading using screenshot--game state pairs extracted from demo files. Phase~2 (GRPO) teaches strategic reasoning using rewards derived from professional play outcomes. This separation lets each phase use the most appropriate training signal and avoids the conflation of perceptual errors with strategic mistakes during reward computation.
 
-Our contributions are: (1)~a demo-synchronized data pipeline that pairs CS2 screenshots with engine-accurate ground truth across 4 maps (4{,}353 screenshots, 5{,}309 labels); (2)~a parameter-efficient SFT recipe that achieves 67.3\% per-field accuracy, a +17pp improvement over both Opus~4.6 and base Qwen baselines; and (3)~a two-phase training framework with RECALL, a retrieval-based advantage estimator for GRPO rewards.
+Our contributions are: (1)~a demo-synchronized data pipeline that pairs CS2 screenshots with engine-accurate ground truth across 4 maps (4{,}353 screenshots, 5{,}309 labels); (2)~a parameter-efficient SFT recipe that achieves 67.3\% per-field accuracy, a +17pp improvement over both Opus~4.6 and base Qwen baselines; (3)~RECALL, a retrieval-based advantage estimator for GRPO rewards; and (4)~empirical characterization of a compositional failure mode in retrieval-based advantage estimation on outcome-correlated trajectory data, with a per-query neighbor outcome variance diagnostic and a retrieval-side same-trajectory mask that lifts median $\sigma_s$ from $0.000$ to $0.331$ on our dataset (4 demos, $n{=}2{,}013$ post-plant states; results may not generalize beyond this setting).
 
 \section{Related Work}
 \label{sec:related}
 
-% TODO: Cover VLM architectures and training paradigms (Qwen-VL, LLaVA, etc.)
-% TODO: Discuss parameter-efficient fine-tuning methods (LoRA)
-% TODO: Review reinforcement learning from human feedback and GRPO
-% TODO: Survey game AI and esports analytics work
-% TODO: Position our work relative to existing approaches
-% NOTE: Related work section deferred until GRPO results are available
+\paragraph{Retrieval-based RL.} Neural Episodic Control~\cite{pritzel2017neural} introduced kNN value estimation over experience embeddings; subsequent work extended retrieval to large-scale RL agents~\cite{goyal2022retrieval}. We use the same architectural template --- kNN over a learned state encoder, mean of neighbor outcomes as the value baseline --- and identify a regime where the template fails silently. Our diagnostic is a direct measurement of $\sigma_s$, the per-query neighbor outcome std, which prior retrieval-RL evaluation work measures only indirectly through downstream policy quality.
+
+\paragraph{Behavioral / bisimulation embeddings.} Bisimulation-style metrics~\cite{castro2020scalable,zhang2021learning,agarwal2021contrastive} explicitly engineer state embeddings whose distance reflects expected-return similarity. In their setting, near-zero return variance among $k$ neighbors is the desired property, since the embedding is being scored against a downstream control task that benefits from outcome-aligned clusters. We are in the dual regime: retrieval is used to estimate a value \emph{baseline} that subtracts off, and outcome-aligned clusters destroy the very signal $\hat{Q} - \hat{V}$ is meant to carry. The diagnostic-target mismatch between bisimulation embeddings and retrieval-based advantage estimators is, to our knowledge, not previously characterized.
+
+\paragraph{Zero-variance failures in GRPO.} Concurrent work~\cite{zerovariance2025,ngrpo2025} documents that when all $G$ rollouts of a GRPO group receive the same reward, the per-group advantage is zero and the gradient vanishes. We characterize the same pathology one level deeper: even when the rollouts themselves carry differential reward, the kNN baseline they are compared against can be a constant if the retrieval neighborhood lacks outcome variance. F1 (sibling-trajectory leakage) is the retrieval-RL specific instance of this: same-trajectory neighbors share the outcome label by construction.
+
+\paragraph{Supervised contrastive collapse.} Khosla et al.~\cite{khosla2020supervised} introduced supervised contrastive learning; \cite{graf2021dissecting} prove that the SupCon objective drives class-collapsed representations. Our F2 mechanism is a direct application: when the supervisory class is correlated with the downstream evaluation target (in our case, \texttt{round\_won} appears in the positive-pair rule), the resulting class-collapsed representation produces outcome-aligned retrievals.
+
+\paragraph{Counterfactual data augmentation.} CoDA~\cite{pitis2020counterfactual} generates causally-valid synthetic transitions to decorrelate factors. Our Layer-1 attempt is in this spirit at the embedding level rather than the data level; the negative result we report suggests that for the small-data regime we operate in ($n{=}2{,}013$), augmenting with hard negatives or learned counterfactual states may be more effective than re-engineering the contrastive objective alone.
+
+\paragraph{VLM training and game AI.} Phase~1 builds on parameter-efficient fine-tuning~\cite{hu2022lora} for vision-language models~\cite{bai2023qwen,liu2023visual}; the broader space of game AI and esports analytics is surveyed in~\cite{chen2024game,huang2022strategic}. Our contribution there --- a demo-synchronized data pipeline yielding engine-accurate ground truth --- is orthogonal to the methodological RECALL contribution.
 
 \section{Method}
 \label{sec:method}
@@ -106,12 +111,100 @@ A 20-step smoke test validates that the manual loop functions correctly: rewards
 \subsection{RECALL: Retrieval-Based Advantage Estimation}
 \label{sec:recall}
 
-% TODO: Describe RECALL mechanism — kNN retrieval over tactical game state embeddings
-% TODO: Encode states as ~25-dim vectors (side, alive counts, economy, bomb status, etc.)
-% TODO: Index in FAISS, retrieve K neighbors from training set
-% TODO: Compute advantage A(s,a) = Q̂(s,a) - V̂(s) as counterfactual reward
-% TODO: Connects to MemRL literature (retrieval-based RL)
-% TODO: Simplified outcome baseline Ω = a·w + (1-a)·(1-w) for comparison
+GRPO requires a reward function that ranks completions within a group. Rather than learning a parametric value head, we estimate $\hat{A}(s,a) = \hat{Q}(s,a) - \hat{V}(s)$ non-parametrically by retrieving similar (state, action, outcome) tuples from a kNN index of expert play. Concretely: let $\mathcal{D} = \{(s_i, a_i, w_i)\}_{i=1}^N$ be the training corpus with $w_i \in \{0,1\}$ the round outcome. We fit two embedding maps $\tau\colon \mathcal{S} \to \mathbb{R}^{d_s}$ (state) and $\alpha\colon \mathcal{A} \to \mathbb{R}^{d_a}$ (action). At query time:
+\begin{align}
+\mathcal{N}_K(s) &= \mathrm{kNN}_K\bigl(\tau(s);\, \{\tau(s_i)\}_{i=1}^N\bigr), \\
+\hat{V}(s) &= \frac{1}{|\mathcal{N}_K|} \sum_{i \in \mathcal{N}_K(s)} w_i, \\
+\mathcal{N}_A(s, a) &= \{\, i \in \mathcal{N}_K(s) : \cos\bigl(\alpha(a_i),\, \alpha(a)\bigr) > \theta \,\}, \\
+\hat{Q}(s, a) &= \frac{1}{|\mathcal{N}_A|} \sum_{i \in \mathcal{N}_A(s,a)} w_i.
+\end{align}
+The reward is $r_{\text{RECALL}}(y, s) = \hat{Q}(s, a^{\text{model}}(y)) - \hat{V}(s)$, gated to zero when $|\mathcal{N}_A| < k_{\min}$. We use $K{=}32$, $\theta{=}0.5$, $k_{\min}{=}5$ and a hand-engineered 19-dim tactical embedding $\tau$ as the default. The retrieval scaffolding follows neural episodic control~\cite{pritzel2017neural} and earlier kNN-augmented RL approaches; the methodological contribution is in $\S$\ref{sec:diagnostic}--\ref{sec:fix}.
+
+\subsection{Diagnosis: Neighbor Outcome Variance Collapse}
+\label{sec:diagnostic}
+
+The estimators $\hat{V}$ and $\hat{Q}$ above are sample means over neighbor outcomes. Their utility as a learning signal depends on \emph{neighbor outcome variance}: if for a query state $s$ all retrieved neighbors share $w_i = 1$ (or all $w_i = 0$), then $\hat{V}(s)$ is constant in $\{0, 1\}$, $\hat{Q}(s,a) - \hat{V}(s) = 0$ for any action that survives the $|\mathcal{N}_A| \geq k_{\min}$ gate, and RECALL emits a zero gradient. The general phenomenon (zero-variance groups silently zeroing GRPO advantage) is documented in concurrent work on language-model RL~\cite{zerovariance2025,ngrpo2025}; we characterize the corresponding failure inside a retrieval-based estimator, which has two distinct mechanisms not present in the prompt-rollout setting.
+
+We measure per-query neighbor outcome standard deviation directly: $\sigma_s = \mathrm{std}\bigl(\{w_i : i \in \mathcal{N}_K(s)\}\bigr)$. With binary outcomes and base rate $p = \mathbb{E}[w]$, the maximum achievable per-query std is $\sqrt{p(1-p)}$; on our dataset $p = 0.60$, ceiling $0.49$. We define a query as \emph{saturated} if $\sigma_s < 0.10$ and report saturation at this and two other thresholds in Appendix; results are qualitatively unchanged at $\sigma_s < 0.05$ and $\sigma_s < 0.20$.
+
+Table~\ref{tab:variance} reports the saturation rate and median $\sigma_s$ for three candidate embeddings $\tau$ on the 2{,}013-sample CS2 GRPO dataset, at $K{=}32$ (RECALL's default). The hand-engineered 19-dim embedding saturates 52.6\% of queries (cross-round: 36.5\%); the off-the-shelf MiniLM sentence-transformer applied to a JSON serialization of the state saturates 32.6\% all-neighbors and only 18.5\% cross-round; and the F2 baseline encoder (\texttt{learned\_v2\_redact}, fine-tuned with a triplet loss whose positive rule is ``same pro-action category set \emph{and} same \texttt{round\_won}''~--- the canonical SupCon-on-outcome setup) saturates 69.0\% --- \emph{worse than the off-the-shelf baseline at every $K$ and every condition we tested}. The k-sweep (Table~\ref{tab:k_sweep}) shows the relative ordering is robust to $K \in \{8, 16, 32, 64, 128\}$; at $K{=}128$ the neighborhood approaches the base rate, so $\sigma_s$ approaches $\sqrt{p(1-p)}$ trivially for any non-degenerate retrieval.
+
+\begin{table}[t]
+\centering
+\caption{Per-query neighbor outcome std median ($\sigma_s$ p50) and saturation rate (\% of queries with $\sigma_s < 0.10$) at $K{=}32$, on $n{=}2{,}013$ post-plant CS2 states. Base rate $p(\text{round\_won}) = 0.60$, ceiling per-query std $= 0.49$. \textbf{Conditions:} \textit{all} retrieves freely; \textit{cross-round} masks neighbors from the same (demo, round) as the query (the F1 mask); \textit{cross-demo} masks neighbors from the same demo entirely (clean F1+adjacent-round control). \textbf{Embeddings:} tactical\_19d is a 19-dim hand-engineered feature vector; baseline\_sent is off-the-shelf MiniLM-L6 on the redacted JSON state; counterfactual\_v1 is MiniLM fine-tuned with positives $=$ same category $\wedge$ \emph{different} outcome. The supervised \texttt{learned\_v2\_redact} encoder (positives $=$ same category $\wedge$ \emph{same} outcome, the canonical SupCon-on-outcome objective) is included to demonstrate the F2 mechanism. Embeddings are not equal-dim (19 vs.\ 384) — see \S\ref{sec:analysis}.}
+\label{tab:variance}
+\small
+\begin{tabular}{ll rr rr rr}
+\toprule
+& & \multicolumn{2}{c}{tactical\_19d} & \multicolumn{2}{c}{baseline\_sent} & \multicolumn{2}{c}{counterfactual\_v1} \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}
+\textbf{Encoder $\tau$} & \textbf{Condition} & \textbf{p50} & \textbf{sat} & \textbf{p50} & \textbf{sat} & \textbf{p50} & \textbf{sat} \\
+\midrule
+                & all neighbors      & 0.000 & 52.6\% & 0.331 & 32.6\% & 0.291 & 39.7\% \\
+                & cross-round only   & 0.331 & 36.5\% & 0.390 & \textbf{18.5\%} & 0.390 & 30.5\% \\
+                & cross-demo only    & 0.174 & 48.4\% & 0.413 & 21.2\% & 0.390 & 31.5\% \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+\small
+\textit{F2 baseline (learned\_v2\_redact, SupCon with positives = same cat $\wedge$ same outcome):} all-neighbors $\sigma_s$ p50 $= 0.000$ (sat $69.0\%$); cross-round $\sigma_s$ p50 $= 0.000$ (sat $67.5\%$). The supervised encoder is strictly worse than untrained MiniLM under every condition tested.
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Robustness to retrieval $K$. $\sigma_s$ p50 in cross-round-only condition. The hand embedding's collapse is acute at $K{=}32$ (the RECALL default) and small-$K$ regimes; at $K{=}128$ the neighborhood approaches the dataset base rate and std reaches the trivial ceiling. The relative ordering of the three embeddings is consistent across $K$.}
+\label{tab:k_sweep}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+\textbf{$\tau$} & $K{=}8$ & $K{=}16$ & $K{=}32$ & $K{=}64$ & $K{=}128$ \\
+\midrule
+tactical\_19d         & 0.000 & 0.000 & 0.331 & 0.331 & 0.396 \\
+baseline\_sent        & 0.000 & 0.331 & 0.390 & 0.413 & 0.437 \\
+counterfactual\_v1    & 0.000 & 0.242 & 0.390 & 0.424 & 0.446 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Positive-pair rule ablation. Cross-round saturation (\% of queries with $\sigma_s < 0.10$) at $K{=}32$ for five encoders. The supervised encoders are sorted by the outcome-correlation strength of their positive label, leftmost being most negatively correlated. The untrained off-the-shelf encoder (no positive rule, no training) wins outright; saturation grows roughly monotonically with $|$label-outcome correlation$|$, with a slight asymmetry favoring negative correlation. ``Effective $\rho$'' is a heuristic measure of how strongly the positive label predicts $w$ in this dataset (computed as the absolute deviation from the base rate of $w$ given the positive constraint, with sign).}
+\label{tab:positive_rule_ablation}
+\small
+\begin{tabular}{lcrr}
+\toprule
+\textbf{Encoder / positive rule} & \textbf{Effective $\rho$} & \textbf{$\sigma_s$ p50} & \textbf{Saturation} \\
+\midrule
+baseline\_sent (no training)             & $0$    & 0.390 & \textbf{18.5\%} \\
+counterfactual\_v1 (cat $\wedge$ diff $w$) & $\approx -1$ & 0.390 & 30.5\% \\
+ablation\_category\_only (cat $\wedge$ any $w$) & $+0.13^\dagger$ & 0.000 & 53.4\% \\
+learned\_v2\_redact (cat $\wedge$ same $w$)     & $\approx +1$ & 0.000 & 67.5\% \\
+ablation\_outcome\_only (any cat $\wedge$ same $w$) & $+1$         & 0.000 & 72.0\% \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.4em}
+\small
+$^\dagger$ category alone is partially outcome-correlated in this dataset --- weighted mean per-category deviation from the 0.60 base rate is $0.125$, with extreme buckets such as \{fall\_back, rotate\}: $w$-rate $0.93$ and \{hold, utility\}: $0.31$.
+\end{table}
+
+Two failure modes compound to produce the collapse:
+
+\textbf{F1: Same-trajectory leakage.} kNN retrieval over per-tick state embeddings naturally pulls in sibling ticks of the same round as the query. Sibling ticks share \texttt{round\_won} by construction, so any neighbor list dominated by them is outcome-homogeneous regardless of the embedding. On the hand-engineered $\tau$, 82.2\% of top-10 neighbors come from the same round as the query (Appendix). The cross-round mask in Table~\ref{tab:variance} lifts the hand embedding's median $\sigma_s$ from $0.000$ to $0.331$. To rule out the possibility that adjacent rounds within the same demo are themselves carrying outcome signal (shared map, lineup, economy carryover), we additionally report the cross-demo holdout: with the entire query demo masked out, the hand embedding falls to $\sigma_s = 0.174$, while sentence-transformer encoders are largely insensitive ($0.413$ for baseline\_sent vs.\ $0.390$ cross-round). The cross-demo$/$cross-round gap on the hand embedding is itself informative: adjacent rounds carry real tactical similarity that the hand features can latch onto, but most of the F1 damage is in the sibling-tick bucket.
+
+\textbf{F2: Outcome-correlated positive labels.} A naturally tempting contrastive objective for ``find me strategically equivalent states'' is to define a positive pair as two states that call for the same action category. The natural extension --- requiring positives to also share the round outcome --- forces clusters to align with $w$ explicitly. We trained both (\texttt{learned\_v2\_redact} with same-category $\wedge$ same-outcome positives; an ablation \texttt{ablation\_category\_only} with same-category positives only). On the variance diagnostic, both collapse: same-cat $\wedge$ same-outcome reaches 69\% saturation, and the supposedly outcome-free \texttt{category\_only} variant still saturates 53\% of cross-round queries (median $\sigma_s = 0.000$). The reason is that pro-action category itself is outcome-correlated in our dataset --- the weighted mean per-category deviation from the 0.60 base rate is $0.125$, with several common categories at extreme rates (e.g., \{fall\_back, rotate\}: $w$-rate $0.93$; \{hold, utility\}: $w$-rate $0.31$). Any positive-pair rule whose label is correlated with $w$ pulls the embedding into outcome-aligned clusters, and the strength of the collapse tracks the strength of the correlation, not whether $w$ appears in the rule literally. This is the expected consequence of supervised contrastive class collapse~\cite{khosla2020supervised,graf2021dissecting} when the supervisory class label is correlated with the downstream evaluation target. We claim no general novelty for the F2 mechanism --- our role is to demonstrate that the resulting representations are silently \emph{worse} than untrained MiniLM as kNN keys for advantage estimation, despite improving on standard ``same-round vs.\ cross-round'' neighbor-mix metrics that prior encoder-evaluation work has used. The diagnostic-target mismatch is the contribution.
+
+\subsection{Fix: Retrieval-Side Masking and Counterfactual Contrastive Training}
+\label{sec:fix}
+
+Two minimally-invasive fixes target the two failure modes independently.
+
+\textbf{Layer 0 (retrieval-side):} we attach an optional source key $\kappa_i = (\text{demo}_i, \text{round}_i)$ to each indexed sample at build time, and at query time mask out neighbors with $\kappa_i = \kappa_q$ before computing $\hat{V}, \hat{Q}$. This requires no retraining and removes F1. On the hand-engineered embedding, median $\sigma_s$ recovers from $0.000$ to $0.331$; combined with the off-the-shelf MiniLM as $\tau$ (the best zero-training option per Table~\ref{tab:variance}), median $\sigma_s$ reaches $0.390$ --- 80\% of the theoretical ceiling.
+
+\textbf{Layer 1 (counterfactual contrastive embedding, exploratory):} we train a sentence-transformer encoder with the positive-pair rule \emph{flipped}. Positives are pairs $(s_i, s_j)$ with the same pro-action category-set \emph{and the same coarse alive-count bucket}, but \emph{different} \texttt{round\_won}. Negatives are pairs with different category-sets. The intent is to project pairs that look identical at the strategic level but landed on opposite outcomes onto neighboring points, ensuring each neighborhood spans both wins and losses by construction. Training uses MiniLM-L6 base, triplet margin loss with margin 0.3, 7{,}065 triplets generated from 2{,}013 anchors, 3 epochs, batch 32. \textbf{Result.} On the same variance diagnostic, this encoder reaches the same median per-query std as untrained MiniLM ($\sigma_s = 0.390$ cross-round only) but with worse saturation tail (30.5\% saturated vs.\ 18.5\% for untrained MiniLM). We do not claim Layer 1 as a successful fix on this dataset; we report it as a documented attempt and discuss possible reasons in \S\ref{sec:analysis} (insufficient hard negatives, base-rate floor of 0.49 only marginally above untrained baseline, possible overfitting on $n{=}2{,}013$).
+
+We treat ``Layer 0 with off-the-shelf MiniLM as $\tau$'' as the strong zero-training operating point. The two layers are independent: Layer 0 removes structural same-round leakage that no embedding can address on its own and is a pure operational change with no retraining cost.
 
 \begin{figure}[t]
 \centering
@@ -180,6 +273,8 @@ JSON valid           & 10/10 & 10/10 & 0/10$^\ddagger$ & 10/10 \\
 \end{tabular}
 \end{table}
 
+\paragraph{RECALL diagnostic.} Tables~\ref{tab:variance} and~\ref{tab:k_sweep} (in $\S$\ref{sec:diagnostic}) report per-query neighbor outcome statistics for three candidate state embeddings on the 2{,}013-sample post-plant CS2 dataset. The headline result: the hand-engineered tactical embedding shipped with our initial RECALL implementation saturates 52.6\% of queries at $K{=}32$ (median per-query std $\sigma_s = 0.000$), and a naively-supervised contrastive encoder fine-tuned with same-outcome positives (\texttt{learned\_v2\_redact}) \emph{worsens} this to 69.0\% saturation in every condition tested. The Layer~0 retrieval-side mask recovers $\sigma_s$ from $0.000$ to $0.331$ on the hand-engineered embedding without retraining. Substituting an untrained MiniLM sentence encoder as $\tau$ (combined with Layer~0) reaches $\sigma_s = 0.390$ at $K{=}32$, and the relative ordering is stable under $K \in \{8, 16, 32, 64, 128\}$ and saturation thresholds in $\{0.05, 0.10, 0.20\}$ (Appendix). The Layer~1 counterfactual contrastive encoder ties baseline\_sent on median $\sigma_s$ ($0.390$) but has a worse saturation tail (30.5\% vs.\ 18.5\%); we report this null result rather than tuning until the encoder ``wins,'' and discuss possible reasons in $\S$\ref{sec:analysis}.
+
 \paragraph{Training dynamics.} Figure~\ref{fig:sft_curve} shows the SFT training curve. Eval loss tracks training loss monotonically with no overfitting, validating the conservative LoRA configuration ($r{=}4$). Token-level accuracy improves steadily from 62.7\% (step~5) to 84.8\% (step~304).
 
 \begin{figure}[t]
@@ -235,7 +330,14 @@ GRPO only (D) & -- & -- & -- & -- & -- \\
 
 \paragraph{The overfitting boundary.} Our experience with $r{=}32$ (catastrophic overfitting at 257:1 params-to-tokens ratio) versus $r{=}4$ (healthy training at 5:1) establishes a practical scaling law for LoRA on small VLM datasets. With vision layers trainable, the effective parameter count includes vision LoRA adapters, making rank reduction doubly important.
 
-% TODO: Add GRPO analysis after Phase 2 training (smoke test passed; awaiting full run)
+\paragraph{Why Layer 1 did not improve over the untrained encoder.} On this dataset Layer 1 (counterfactual contrastive training) reaches the same median $\sigma_s$ as off-the-shelf MiniLM but has more saturated queries. Three candidate explanations:
+\textbf{(a) Insufficient hard negatives.} Negatives in our triplet objective are sampled randomly from the dataset filtered only by category-set difference; the encoder never sees pairs that are (i) tactically distinct but textually similar in the JSON serialization, (ii) tactically equivalent but textually distinct. Hard-negative mining or a SimCLR-style in-batch negatives setup (versus pre-sampled triplets) might produce a stronger gradient.
+\textbf{(b) Base-rate floor proximity.} The untrained MiniLM cross-round median is $0.390$; the ceiling is $0.490$. The remaining headroom is small ($0.10$ absolute std), so a noisy supervised signal can easily push the median sideways without improving the overall distribution. The problem may not need a learned encoder.
+\textbf{(c) Triplet-loss / encoder capacity mismatch.} MiniLM-L6 with triplet margin loss trained on 7{,}065 triplets for 3 epochs may simply be undertrained or undersized for this signal. An ablation over training duration, base model size, and contrastive objective family is warranted before declaring the embedding-side fix infeasible.
+We treat this as an open question rather than a refutation. The substantive contribution of \S\ref{sec:diagnostic}--\ref{sec:fix} stands without a successful Layer 1: characterizing the failure, providing the diagnostic, and supplying the retrieval-side fix.
+
+\paragraph{Generalization caveats.} Our dataset is 4 demos from one tournament match, all post-plant phase, on 4 maps, $n{=}2{,}013$. The same-trajectory leakage mechanism (F1) generalizes to any retrieval-based RL setting where the corpus is built from per-step states of trajectories with shared outcomes; we expect the diagnostic to apply broadly. The supervised contrastive collapse (F2) is the expected consequence of any positive-pair rule that is itself outcome-correlated, and is independent of our specific encoder choice. The quantitative numbers (52.6\% saturation, $0.000 \to 0.331$ recovery) are dataset-specific and should be interpreted as a case study, not a general bound.
+
 % TODO: Mechanical skill confound analysis (D015)
 % TODO: Explore computational efficiency gains from freezing vision layers during GRPO
 % NOTE: Manual GRPO loop validated (TRL multimodal bug required custom implementation)
@@ -243,10 +345,14 @@ GRPO only (D) & -- & -- & -- & -- & -- \\
 \section{Conclusion}
 \label{sec:conclusion}
 
-% TODO: Summarize the key findings
-% TODO: Reiterate the benefits of two-phase training (perception then reasoning)
-% TODO: Discuss broader implications: the paradigm applies wherever cheap structured data exists alongside expensive visual data (robotics, medical imaging, autonomous driving)
-% TODO: Suggest future directions (other games, multimodal reasoning tasks)
+We made two contributions of differing scope. Phase~1 (SFT on screenshot--game state pairs from CS2 demos) is a domain application: a parameter-efficient recipe that achieves +17pp over zero-shot frontier VLMs on HUD perception, useful as a perception foundation for any downstream reasoning task on this data. Phase~2 (RECALL collapse diagnostic and Layer~0 fix) is a methodological contribution intended to generalize beyond CS2: any retrieval-based advantage estimator built on outcome-correlated trajectory data is at risk of the same silent collapse, and the per-query neighbor outcome std diagnostic detects it cheaply (CPU-only, no model rollouts). The retrieval-side same-trajectory mask is a one-line change to the index that addresses the F1 mechanism in any setting; the F2 caution against outcome-correlated positive-pair rules in supervised contrastive embeddings for kNN-based value estimation transfers verbatim.
+
+We deliberately do not claim that Layer~1 (counterfactual contrastive embedding) is a successful fix on this dataset. The result --- ties on median, loses on tail --- is reported as is and motivates future work on hard-negative mining, larger encoders, or alternative objective families for this regime. We hope the diagnostic itself, by exposing a previously-implicit property of retrieval-based estimators, is a useful tool for practitioners building similar systems.
+
+% Future work pointers — kept short for the workshop format.
+% (a) Re-test the diagnostic on a larger, multi-tournament CS2 corpus and on non-CS2 retrieval-RL settings (e.g., StarCraft II demonstrations, robotics offline RL).
+% (b) Couple the diagnostic to GRPO training-time logging: if $\sigma_s$ is sub-threshold for $\geq X\%$ of queries within a batch, gate the RECALL term to zero and fall back to outcome-only reward.
+% (c) Hard-negative mining for the counterfactual contrastive objective: pairs that are textually similar but tactically distinct (a known weak spot of triplet loss with random negatives).
 
 \bibliographystyle{plain}
 \bibliography{references}

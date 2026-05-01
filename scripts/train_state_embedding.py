@@ -118,22 +118,40 @@ def build_triplets(
     rng: random.Random,
     redact: bool = False,
     alive_bucket: bool = False,
+    counterfactual: bool = False,
+    positive_rule: str | None = None,
 ) -> list[tuple[str, str, str]]:
     """Emit (anchor_text, positive_text, negative_text) triples.
 
-    Positive = same category-set AND same round_won [AND same alive-bucket].
-    Negative = different category-set OR different alive-bucket (if enabled).
-    Anchors that have <1 positive available are skipped.
+    Standard mode (counterfactual=False, the original v1/v2/v3 setup):
+        Positive = same category-set AND same round_won [AND same alive-bucket].
+        Negative = different category-set OR different alive-bucket.
+    Failure mode: encoder learns to cluster (categories, round_won) jointly.
+    The kNN of any state then has near-zero outcome variance — RECALL's V̂
+    saturates and advantage carries no signal. Measured directly in
+    scripts/recall_variance_diagnostic.py: median neighbor std = 0.000 for
+    learned_v2_redact, vs 0.39 for off-the-shelf MiniLM.
+
+    Counterfactual mode (counterfactual=True):
+        Positive = same category-set [AND same alive-bucket] AND
+                   *different* round_won.
+        Negative = different category-set [OR different alive-bucket].
+    Goal: keep tactical clustering, but force each cluster to span both wins
+    AND losses. Then V̂ has natural variance and Q̂ filtered by action picks
+    out which actions actually shifted the outcome away from baseline.
 
     The alive-bucket flag fixes the 4v5 <-> 1v1 failure mode: without it,
     'hold'+won covers both full-team post-plant and 1v1 clutches, and the
     encoder learns those are the same tactical situation.
     """
-    # Key includes alive-bucket iff enabled
+    # Bucket key always splits by round_won so we can mix-and-match modes:
+    # standard mode samples positives from same (cat, rw, akey) bucket;
+    # counterfactual mode samples positives from same (cat, akey) but flips rw.
     buckets: dict[tuple, list[int]] = defaultdict(list)
     states: list[str] = []
     cats_by_idx: list[frozenset] = []
     alive_by_idx: list[tuple[str, str]] = []
+    rw_by_idx: list[bool] = []
     for i, s in enumerate(dataset):
         gt = s.get("ground_truth", {})
         gs = gt.get("game_state", {})
@@ -145,6 +163,7 @@ def build_triplets(
         states.append(_state_text(gs, redact=redact))
         cats_by_idx.append(ckey)
         alive_by_idx.append(_alive_key(gs))
+        rw_by_idx.append(rw)
 
     all_indices = list(range(len(dataset)))
     triplets: list[tuple[str, str, str]] = []
@@ -156,12 +175,40 @@ def build_triplets(
         # valid hard-negative signal when the flag is on.
         return alive_bucket and alive_by_idx[k] != alive_by_idx[i]
 
+    # Resolve effective rule: explicit positive_rule wins, else counterfactual
+    # flag, else default standard.
+    if positive_rule is None:
+        rule = "same_cat_diff_outcome" if counterfactual else "same_cat_same_outcome"
+    else:
+        rule = positive_rule
+
+    skipped_no_pos = 0
     for i in range(len(dataset)):
-        rw = bool(dataset[i].get("ground_truth", {}).get("round_won", False))
         akey = alive_by_idx[i] if alive_bucket else None
-        key = (cats_by_idx[i], rw, akey)
-        pos_pool = [j for j in buckets[key] if j != i]
+        if rule == "same_cat_diff_outcome":
+            key = (cats_by_idx[i], not rw_by_idx[i], akey)
+            pos_pool = [j for j in buckets[key] if j != i]
+        elif rule == "same_cat_same_outcome":
+            key = (cats_by_idx[i], rw_by_idx[i], akey)
+            pos_pool = [j for j in buckets[key] if j != i]
+        elif rule == "category_only":
+            # Same category-set + same alive-bucket; outcome ignored.
+            pos_pool = [
+                j for j in range(len(dataset))
+                if j != i and cats_by_idx[j] == cats_by_idx[i]
+                and (not alive_bucket or alive_by_idx[j] == akey)
+            ]
+        elif rule == "outcome_only":
+            # Same outcome only; category ignored. Should produce maximally
+            # outcome-aligned clusters (extreme F2 baseline).
+            pos_pool = [
+                j for j in range(len(dataset))
+                if j != i and rw_by_idx[j] == rw_by_idx[i]
+            ]
+        else:
+            raise ValueError(f"unknown positive_rule: {rule}")
         if not pos_pool:
+            skipped_no_pos += 1
             continue
         for _ in range(triplets_per_anchor):
             j = rng.choice(pos_pool)
@@ -170,6 +217,10 @@ def build_triplets(
                 if k != i and different_enough(i, k):
                     triplets.append((states[i], states[j], states[k]))
                     break
+    if skipped_no_pos:
+        print(f"  skipped {skipped_no_pos} anchors (no positive available "
+              f"for (cat{', akey' if alive_bucket else ''}, "
+              f"{'flipped' if counterfactual else 'same'} round_won))")
     return triplets
 
 
@@ -324,6 +375,23 @@ def main() -> int:
                    help="Include (alive_teammates, alive_enemies) bucketing in "
                         "the positive-pair rule. Prevents 4v5 and 1v1 from being "
                         "pulled together during training.")
+    p.add_argument("--counterfactual", action="store_true",
+                   help="Flip the positive-pair rule: positives are same "
+                        "category-set [AND same alive-bucket] but with "
+                        "DIFFERENT round_won. Forces each cluster to span "
+                        "wins AND losses so RECALL's V̂ has natural variance. "
+                        "See scripts/recall_variance_diagnostic.py for why "
+                        "the standard rule collapses neighbor outcome std to 0.")
+    p.add_argument("--positive-rule", default=None,
+                   choices=[None, "same_cat_same_outcome", "same_cat_diff_outcome",
+                            "category_only", "outcome_only"],
+                   help="Override positive-pair rule directly (overrides "
+                        "--counterfactual). 'category_only' ignores outcome "
+                        "(positives have same cat, any outcome). 'outcome_only' "
+                        "ignores category (positives have same outcome, any cat). "
+                        "Used to ablate the F2 mechanism: F2 predicts that "
+                        "outcome-correlated positives collapse retrieval variance "
+                        "proportional to the correlation strength.")
     args = p.parse_args()
 
     rng = random.Random(args.seed)
@@ -347,12 +415,16 @@ def main() -> int:
         print("Redaction ON: stripping lexical shortcuts from game_state")
     if args.alive_bucket:
         print("Alive-bucket ON: positive pairs must match (team, enemy) alive buckets")
+    if args.counterfactual:
+        print("Counterfactual ON: positives have FLIPPED round_won "
+              "(same tactic, different outcome)")
 
     if not args.eval_only:
         print("\nBuilding triplets...")
         triplets = build_triplets(
             dataset, args.triplets_per_anchor, rng,
             redact=args.redact, alive_bucket=args.alive_bucket,
+            counterfactual=args.counterfactual,
         )
         print(f"  {len(triplets)} triplets generated")
         if len(triplets) < 100:

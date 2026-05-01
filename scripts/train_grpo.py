@@ -104,6 +104,16 @@ def parse_args():
              "If set, --screenshots and --labels are ignored.",
     )
     data_group.add_argument(
+        "--source",
+        type=str,
+        default=None,
+        help="Optional JSONL with per-sample {idx, demo_stem, round_num, ...} "
+             "source metadata. If provided, RECALL builds with source keys "
+             "and excludes same-round neighbors at query time. Without it, "
+             "RECALL silently includes same-round neighbors which leak "
+             "round_won and collapse V̂ — see scripts/recall_variance_diagnostic.py.",
+    )
+    data_group.add_argument(
         "--screenshots",
         type=str,
         default="data/raw",
@@ -476,6 +486,69 @@ def main():
     print(f"Train: {len(train_data)} samples")
     print(f"Val: {len(val_data)} samples")
     print()
+
+    # Merge source metadata into samples for same-round exclusion in RECALL.
+    # The source JSONL is keyed by `idx` into the ORIGINAL dataset; after
+    # train/val shuffle we no longer know each sample's original idx, so we
+    # match on (prompt, ground_truth.player_health) — the prompt header is
+    # unique per (demo, round, tick, player) and players in different demos
+    # render different prompts even if hp matches. Cheap and reliable enough
+    # given n=2013 samples. If --source is omitted, RECALL falls back to
+    # current behavior (no same-round masking).
+    if args.source:
+        import json as _json
+        src_path = Path(args.source)
+        if not src_path.exists():
+            print(f"Error: --source file not found: {src_path}")
+            sys.exit(1)
+        # Load and key source records by their `idx` (= line number in the
+        # ORIGINAL dataset). We re-link by re-reading the dataset in original
+        # order to get prompt → idx, then sample → prompt → idx → source.
+        # This works whether train_data was loaded from --data (shuffled) or
+        # built from labels (different ordering entirely).
+        if args.data:
+            originals = []
+            with open(args.data) as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        originals.append(_json.loads(line))
+            prompt_to_idx: dict[str, int] = {}
+            for i, s in enumerate(originals):
+                key = _json.dumps(s.get("prompt"), sort_keys=True)
+                prompt_to_idx[key] = i
+        else:
+            prompt_to_idx = {}
+
+        sources_by_idx: dict[int, dict] = {}
+        with open(src_path) as f:
+            for line in f:
+                rec = _json.loads(line)
+                sources_by_idx[int(rec["idx"])] = rec
+
+        n_merged = 0
+        for split in (train_data, val_data):
+            for sample in split:
+                key = _json.dumps(sample.get("prompt"), sort_keys=True)
+                idx = prompt_to_idx.get(key)
+                if idx is None:
+                    continue
+                src = sources_by_idx.get(idx)
+                if src is None:
+                    continue
+                gt = sample.setdefault("ground_truth", {})
+                gt["source"] = {
+                    "demo_stem": src.get("demo_stem"),
+                    "round_num": src.get("round_num"),
+                    "tick": src.get("tick"),
+                    "player_name": src.get("player_name"),
+                    "player_side": src.get("player_side"),
+                    "map_name": src.get("map_name"),
+                }
+                n_merged += 1
+        total = len(train_data) + len(val_data)
+        print(f"Merged source metadata into {n_merged}/{total} samples "
+              f"(missing entries get no same-round masking)")
 
     # Prepare data for trainer
     trainer.prepare_data(train_data, val_data)
