@@ -502,23 +502,28 @@ def main():
             print(f"Error: --source file not found: {src_path}")
             sys.exit(1)
         # Load and key source records by their `idx` (= line number in the
-        # ORIGINAL dataset). We re-link by re-reading the dataset in original
+        # ORIGINAL --data JSONL). We re-link by re-reading --data in original
         # order to get prompt → idx, then sample → prompt → idx → source.
-        # This works whether train_data was loaded from --data (shuffled) or
-        # built from labels (different ordering entirely).
-        if args.data:
-            originals = []
-            with open(args.data) as f:
-                for line in f:
-                    line = line.strip()
-                    if line:
-                        originals.append(_json.loads(line))
-            prompt_to_idx: dict[str, int] = {}
-            for i, s in enumerate(originals):
-                key = _json.dumps(s.get("prompt"), sort_keys=True)
-                prompt_to_idx[key] = i
-        else:
-            prompt_to_idx = {}
+        # Labels-path samples (--labels without --data) can't be linked because
+        # the source idx refers to --data line numbers; we error out above.
+        if not args.data:
+            print(
+                "Error: --source requires --data. The source JSONL is keyed by "
+                "line-index into the original --data file; without --data we "
+                "cannot link source records to labels-path samples and "
+                "same-round masking would silently no-op."
+            )
+            sys.exit(1)
+        originals = []
+        with open(args.data) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    originals.append(_json.loads(line))
+        prompt_to_idx: dict[str, int] = {}
+        for i, s in enumerate(originals):
+            key = _json.dumps(s.get("prompt"), sort_keys=True)
+            prompt_to_idx[key] = i
 
         sources_by_idx: dict[int, dict] = {}
         with open(src_path) as f:
