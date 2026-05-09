@@ -205,7 +205,7 @@ def main() -> None:
 
     print(f"\nWrote stub: {args.output}")
     print(f"Next step: open the file and hand-author the four candidates per record.")
-    print(f"After authoring, evaluate scorers with scripts/eval_scorer.py (not yet built).")
+    print(f"After authoring: python scripts/eval_scorer.py {args.output}")
 
 
 if __name__ == "__main__":
