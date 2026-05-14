@@ -209,7 +209,10 @@ class CS2GRPOTrainer:
         from peft import LoraConfig, get_peft_model
         from transformers import AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
 
+        from ..utils.moe_compat import patch_moe_for_blackwell
+
         _preflight_kernels(allow_fallback=self.config.allow_slow_fallback)
+        patch_moe_for_blackwell()  # torch<2.9 + non-Hopper: force grouped_mm fallback
 
         dtype = getattr(torch, self.config.torch_dtype)
 

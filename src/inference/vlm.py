@@ -107,6 +107,10 @@ class Qwen3VLInference:
         """Load the model and processor from HuggingFace Hub."""
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
+        from ..utils.moe_compat import patch_moe_for_blackwell
+
+        patch_moe_for_blackwell()  # torch<2.9 + non-Hopper: force grouped_mm fallback
+
         print(f"Loading {self.model_name}...")
 
         self.model = AutoModelForImageTextToText.from_pretrained(

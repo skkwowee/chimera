@@ -101,6 +101,10 @@ class CS2SFTTrainer:
         from peft import LoraConfig, get_peft_model
         from transformers import AutoModelForImageTextToText, AutoProcessor
 
+        from ..utils.moe_compat import patch_moe_for_blackwell
+
+        patch_moe_for_blackwell()  # torch<2.9 + non-Hopper: force grouped_mm fallback
+
         dtype = getattr(torch, self.config.torch_dtype)
 
         print(f"Loading {self.config.model_name}...")
