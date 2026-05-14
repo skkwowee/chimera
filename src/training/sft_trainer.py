@@ -66,6 +66,11 @@ class CS2SFTConfig:
     save_steps: int = 100
     logging_steps: int = 10
     report_to: str = "none"
+    # Eval-during-training runs a forward pass over the full val set every
+    # save_steps. On a 96GB card (RTX PRO 6000) with the ~85GB training state
+    # it OOMs — the eval forward spikes on top of training memory. Fine on
+    # H200's 144GB. Opt-in; when off, eval the final model separately.
+    eval_during_training: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
@@ -287,7 +292,11 @@ class CS2SFTTrainer:
 
         # SFT training configuration
         eval_kwargs = {}
-        if self.val_dataset is not None:
+        if self.val_dataset is not None and self.config.eval_during_training:
+            # Eval forward-passes the full val set every save_steps. On a 96GB
+            # card with ~85GB training state this OOMs (verified: SFT died at
+            # step 100 on RTX PRO 6000). Opt-in via --eval-during-training;
+            # otherwise train straight through and eval the final model after.
             eval_kwargs["eval_strategy"] = "steps"
             eval_kwargs["eval_steps"] = self.config.save_steps
             eval_kwargs["load_best_model_at_end"] = True
