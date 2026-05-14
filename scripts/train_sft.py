@@ -193,14 +193,6 @@ def parse_args():
         default=10,
         help="Log metrics every N steps",
     )
-    checkpoint_group.add_argument(
-        "--eval-during-training",
-        action="store_true",
-        help="Eval the val set every save_steps during training. OOMs on a "
-             "96GB card (the eval forward spikes on top of the ~85GB train "
-             "state); safe on H200's 144GB. Off by default — eval the final "
-             "model separately instead.",
-    )
 
     # Output options
     output_group = parser.add_argument_group("Output options")
@@ -296,7 +288,6 @@ def main():
         output_dir=args.output,
         save_steps=args.save_steps,
         logging_steps=args.logging_steps,
-        eval_during_training=args.eval_during_training,
         report_to="wandb" if args.wandb else "none",
     )
 
