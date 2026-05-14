@@ -5,7 +5,7 @@ changes if chimera reframes from "two-phase training (SFT → GRPO)" to a
 three-level hierarchy (See → Situate → Think). Companion docs (drafted in
 parallel and assumed to land in the same commit as this one):
 `docs/three-level-architecture.md` (architecture overview) and
-`docs/event-encoder-design.md` (Level-2 encoder spec).
+`docs/round-encoder-design.md` (Level-2 encoder spec).
 
 ## 1. Summary
 
@@ -59,7 +59,7 @@ Wrong or stale under the new framing:
 - **`Project Structure` (lines 124–151):** add
   `src/training/event_encoder.py`, `scripts/train_event_encoder.py`,
   `scripts/eval_event_encoder.py`, `docs/three-level-architecture.md`,
-  `docs/event-encoder-design.md`.
+  `docs/round-encoder-design.md`.
 
 Proposed new section list (do NOT write prose):
 
@@ -112,7 +112,7 @@ Existing entry changes:
 New entries to ADD:
 
 - **F08 — Level-2 event-encoder design spec** — `level: 2`. The
-  `docs/event-encoder-design.md` document. `passes: true` once committed.
+  `docs/round-encoder-design.md` document. `passes: true` once committed.
 - **F09 — Level-2 event-encoder training** — `level: 2`.
   `src/training/event_encoder.py` + `scripts/train_event_encoder.py`,
   consuming F05 dataset. `passes: false`.
@@ -256,7 +256,7 @@ Inventory with level assignment.
   `scripts/build_sft_dataset.py`, `scripts/generate_sft_labels.py`,
   `src/training/sft_trainer.py` — KEEP all as-is.
 
-**Level 2 (NEW; target paths from `docs/event-encoder-design.md`):**
+**Level 2 (NEW; target paths from `docs/round-encoder-design.md`):**
 - `src/training/event_encoder.py` — NEW. Model class.
 - `scripts/train_event_encoder.py` — NEW. Training entrypoint.
 - `scripts/eval_event_encoder.py` — NEW. Runs L2 gates (σ_s, probes,
@@ -383,7 +383,7 @@ Level-agnostic; no update needed:
 
 a. **Commit the three new docs (THIS commit).** No code changes.
    Files: `docs/three-level-architecture.md` (overview),
-   `docs/event-encoder-design.md` (Level-2 spec),
+   `docs/round-encoder-design.md` (Level-2 spec),
    `docs/alignment-delta.md` (this inventory). After this commit
    the project has a written reference later commits can cite.
 

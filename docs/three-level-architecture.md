@@ -36,7 +36,7 @@ sees into an event-level summary. Call it Situate. The expanded framing is
 The rest of this document specifies the three levels, the contracts between
 them, and the failure modes each level now isolates. Encoder choice,
 window definition, and the actual training objective for the new middle layer
-are deferred to `docs/event-encoder-design.md` (in flight in parallel).
+are deferred to `docs/round-encoder-design.md` (in flight in parallel).
 
 ## 2. The three levels
 
@@ -99,7 +99,7 @@ accuracy regression test.
 contributes a Level-1 `game_state` JSON (so Level 2 consumes Level-1 outputs,
 not raw screenshots; it is a temporal aggregator over a structured stream).
 Window size, anchor offset, and resolution policy are open and deferred to
-`docs/event-encoder-design.md`. For the purposes of this doc the window is
+`docs/round-encoder-design.md`. For the purposes of this doc the window is
 "a contiguous sub-sequence of Level-1 outputs around the event tick."
 
 **Outputs.** An event embedding, target dimensionality ~256. The point of
@@ -124,7 +124,7 @@ event embedding is the output of Situate over a window of those features.
    round-level `round_won` because they are localized to the window. Each
    window receives a small typed event-metadata tuple from awpy.
 
-`docs/event-encoder-design.md` will pick between (1), (2), a combination, or
+`docs/round-encoder-design.md` will pick between (1), (2), a combination, or
 something contrastive over windows. This doc does not prescribe.
 
 **Training objective.** Self-supervised or weakly supervised, never
@@ -137,7 +137,7 @@ objective must therefore not be "predict round_won from event embedding"
 directly. The objective space is one of: forward dynamics on Level-1 stream,
 event-metadata prediction, masked-tick reconstruction, contrastive over
 nearby vs distant windows, or a combination — chosen and motivated in
-`docs/event-encoder-design.md`.
+`docs/round-encoder-design.md`.
 
 **Evaluation metrics.** Three independent probes (`methodology.md` axis 2,
 "Probe accuracy battery"; the existing pass thresholds carry over verbatim
@@ -256,7 +256,7 @@ across a tick window. It does not consume the raw screenshots, the VLM's
 hidden states, or any non-Level-1 derived feature. Plain-English signature:
 `situate(level1_outputs: list[GameStateJSON], event_tick: int) -> EventEmbedding`,
 where `EventEmbedding` is a fixed-dimensional vector (~256-d, exact dim
-deferred to `docs/event-encoder-design.md`). If a Level-2 candidate wants
+deferred to `docs/round-encoder-design.md`). If a Level-2 candidate wants
 visual information not currently in the Level-1 schema, the right fix is to
 extend the Level-1 schema and re-SFT — not to pipe images around Level 1.
 
@@ -363,7 +363,7 @@ each file change — live in a separate doc; this list is just categories):
   (see section 7). The paper update is its own task; this doc just flags
   that the change is needed.
 
-- **`docs/event-encoder-design.md` (new, in parallel).** Specifies what this
+- **`docs/round-encoder-design.md` (new, in parallel).** Specifies what this
   doc deliberately defers: encoder architecture, training objective, window
   definition, target dimensionality, probe battery wiring.
 
