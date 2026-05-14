@@ -1,7 +1,7 @@
 """
 SFT (Supervised Fine-Tuning) trainer for CS2 VLM fine-tuning.
 
-Uses transformers + peft for LoRA training of Qwen3.5-35B-A3B MoE (bf16).
+Uses transformers + peft for LoRA training of Qwen3.6-35B-A3B MoE (bf16).
 Teaches the model output format (valid JSON with game_state/analysis/advice)
 and CS2 domain knowledge through supervised learning on demo ground truth data.
 
@@ -92,9 +92,14 @@ class CS2SFTTrainer:
         self.val_dataset: Any = None
 
     def load_model(self):
-        """Load Qwen3.5-35B-A3B MoE (bf16) with LoRA."""
+        """Load the base VLM (bf16) with LoRA.
+
+        AutoModelForImageTextToText + trust_remote_code so a base-model bump
+        is a one-line config change. See grpo_trainer.load_model for the
+        rationale and the AutoModelForCausalLM fallback.
+        """
         from peft import LoraConfig, get_peft_model
-        from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
+        from transformers import AutoModelForImageTextToText, AutoProcessor
 
         dtype = getattr(torch, self.config.torch_dtype)
 
@@ -102,10 +107,11 @@ class CS2SFTTrainer:
         print(f"  Finetune vision layers: {self.config.finetune_vision_layers}")
         print(f"  LoRA: {self.config.use_lora}")
 
-        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             self.config.model_name,
             device_map="auto",
             torch_dtype=dtype,
+            trust_remote_code=True,
         )
 
         self.model.gradient_checkpointing_enable()

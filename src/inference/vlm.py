@@ -1,5 +1,5 @@
 """
-VLM inference for CS2 screenshot analysis using Qwen3.5-35B-A3B (MoE, bf16).
+VLM inference for CS2 screenshot analysis using Qwen3.6-35B-A3B (MoE, bf16).
 """
 
 import json
@@ -83,14 +83,15 @@ def parse_json_response(response: str) -> dict[str, Any]:
 
 class Qwen3VLInference:
     """
-    Run inference using Qwen3.5-35B-A3B MoE VLM (bf16).
+    Run inference using the base VLM (bf16).
 
-    Loads from HuggingFace Hub using Qwen3_5MoeForConditionalGeneration.
+    Loads from HuggingFace Hub via AutoModelForImageTextToText +
+    trust_remote_code, so a base-model bump is a one-line change.
     """
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3.5-35B-A3B",
+        model_name: str = "Qwen/Qwen3.6-35B-A3B",
         device: str = "cuda",
         torch_dtype: str = "bfloat16",
         lora_adapter: str | None = None,
@@ -104,14 +105,15 @@ class Qwen3VLInference:
 
     def load_model(self):
         """Load the model and processor from HuggingFace Hub."""
-        from transformers import AutoProcessor, Qwen3_5MoeForConditionalGeneration
+        from transformers import AutoModelForImageTextToText, AutoProcessor
 
         print(f"Loading {self.model_name}...")
 
-        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             self.model_name,
             device_map="auto",
             torch_dtype=self.dtype,
+            trust_remote_code=True,
         )
 
         if self.lora_adapter:
@@ -174,7 +176,7 @@ class Qwen3VLInference:
         # Load image
         image = Image.open(image_path).convert("RGB")
 
-        # Qwen3.5 message format — system prompt separate from user message
+        # Qwen3.6 message format — system prompt separate from user message
         messages = [
             {"role": "system", "content": [{"type": "text", "text": system_prompt}]},
             {
@@ -196,7 +198,7 @@ class Qwen3VLInference:
             enable_thinking=enable_thinking,
         ).to(self.model.device)
 
-        # Qwen3.5 recommended sampling params (from official model card)
+        # Qwen3.6 recommended sampling params (from official model card)
         # Thinking + structured: temp=0.6, top_p=0.95
         # Non-thinking general:  temp=0.7, top_p=0.8
         # Never use greedy (do_sample=False) or repetition_penalty > 1.0

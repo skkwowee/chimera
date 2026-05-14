@@ -1,7 +1,7 @@
 """
 GRPO (Group Relative Policy Optimization) trainer for CS2 VLM fine-tuning.
 
-Uses transformers + peft for LoRA training of Qwen3.5-35B-A3B MoE (bf16).
+Uses transformers + peft for LoRA training of Qwen3.6-35B-A3B MoE (bf16).
 
 Reward architecture (D024 — simplified 2-signal, primary):
   - Multiplicative format gate (invalid JSON -> zero total reward)
@@ -35,7 +35,7 @@ from .rewards import (
 
 
 def _preflight_kernels(allow_fallback: bool = False) -> None:
-    """Verify Qwen3.5 MoE fast-path kernels are loadable. Raises unless allow_fallback=True.
+    """Verify Qwen3.6 MoE fast-path kernels are loadable. Raises unless allow_fallback=True.
 
     Without these, the model runs on a Python reference impl that is 5-10x slower
     per step and provokes a ~30 min torch.compile storm. Symptom on the last run:
@@ -146,7 +146,7 @@ class CS2GRPOConfig:
     logging_steps: int = 10
 
     # Performance / kernel settings
-    # Qwen3.5 MoE relies on causal_conv1d + flash_linear_attention for the fast path.
+    # Qwen3.6 MoE relies on causal_conv1d + flash_linear_attention for the fast path.
     # If those imports fail, transformers falls back to a Python ref impl that is 5-10x
     # slower per step *and* triggers a torch.compile storm (~30 min) trying to recover.
     # The preflight in load_model() raises unless allow_slow_fallback=True.
@@ -196,9 +196,18 @@ class CS2GRPOTrainer:
         self.val_dataset: Any = None
 
     def load_model(self):
-        """Load Qwen3.5-35B-A3B MoE (bf16) with LoRA."""
+        """Load the base VLM (bf16) with LoRA.
+
+        Uses AutoModelForImageTextToText + trust_remote_code instead of a
+        pinned model class so a base-model bump (e.g. Qwen3.5 -> 3.6) is a
+        one-line config change. trust_remote_code lets HF fetch the model's
+        own modeling code, which is the most transformers-version-tolerant
+        path (see claude-progress.txt 2026-04-18 Qwen3_5-class blocker).
+        If AutoModelForImageTextToText fails to dispatch on the pod, the
+        fallback is AutoModelForCausalLM.
+        """
         from peft import LoraConfig, get_peft_model
-        from transformers import AutoProcessor, AutoTokenizer, Qwen3_5MoeForConditionalGeneration
+        from transformers import AutoModelForImageTextToText, AutoProcessor, AutoTokenizer
 
         _preflight_kernels(allow_fallback=self.config.allow_slow_fallback)
 
@@ -209,11 +218,12 @@ class CS2GRPOTrainer:
         print(f"  LoRA: {self.config.use_lora}")
         print(f"  attn_implementation: {self.config.attn_implementation}")
 
-        self.model = Qwen3_5MoeForConditionalGeneration.from_pretrained(
+        self.model = AutoModelForImageTextToText.from_pretrained(
             self.config.model_name,
             device_map="auto",
             torch_dtype=dtype,
             attn_implementation=self.config.attn_implementation,
+            trust_remote_code=True,
         )
 
         if self.config.gradient_checkpointing:

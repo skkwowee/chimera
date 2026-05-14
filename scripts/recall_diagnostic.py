@@ -169,7 +169,7 @@ def main():
     parser.add_argument("--lora", type=str, required=True, help="Path to trained LoRA adapter")
     parser.add_argument("--sft", type=str, default=None, help="Optional SFT LoRA to merge first")
     parser.add_argument("--train-data", type=str, required=True, help="JSONL used to build RECALL index")
-    parser.add_argument("--model", type=str, default="Qwen/Qwen3.5-35B-A3B")
+    parser.add_argument("--model", type=str, default="Qwen/Qwen3.6-35B-A3B")
     parser.add_argument("--n-samples", type=int, default=20)
     parser.add_argument("--n-generations", type=int, default=4)
     parser.add_argument("--max-new-tokens", type=int, default=256)

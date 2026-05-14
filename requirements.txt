@@ -1,6 +1,10 @@
 # Core
 torch>=2.0.0
-transformers>=4.45.0
+# transformers must know Qwen3.6 (released Apr 2026). 5.6.0 is the floor;
+# exact working pin gets verified on the pod in pod_setup_grpo.sh. Model
+# loading uses trust_remote_code=True so HF can fetch the modeling code
+# directly if the installed transformers lags the model release.
+transformers>=5.6.0
 accelerate>=0.27.0
 
 # Vision models
