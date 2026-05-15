@@ -1131,3 +1131,165 @@ advices ~50% of the time, and judge does that 5%.
 Next: kick off F08v5 (real run, 100 steps with judge mode + auto-stop).
 Estimated 6-7 hours, ~$1-2 in judge API.
 
+
+------------------------------------------------------------------------
+## 2026-05-14: methodology framework + repo prune + three-level
+## architecture pivot + Qwen 3.5->3.6 upgrade + SFT retrain (complete)
+------------------------------------------------------------------------
+
+Long session, four threads. F08v5 (the judge GRPO run) was NOT done --
+the session instead built the scaffolding that should precede it,
+pivoted the architecture, and re-baselined on Qwen 3.6.
+
+### Thread 1 -- measurement methodology for the GRPO reward search
+Commits: 1422e41, 77b85d6, 5e7c47c, f1f6ac3, 8829348
+
+The F08v4 lesson (100 GRPO steps over a reward signal with median
+within-group passer-spread of 0.000) was preventable: an offline test
+of scorer discriminative power catches a dead signal before pod time.
+
+- 1422e41: train_grpo.py fails loud when --source is passed without
+  --data (was silently no-op'ing the same-round mask).
+- docs/methodology.md (402 lines): five measurement axes -- sigma_s,
+  probe-accuracy battery, pseudo-gold AUC, in-training passer-spread,
+  encoder disagreement -- with pass thresholds and a decision protocol
+  that gates any GRPO run.
+- docs/reward-candidates.md (366 lines): RECALL+mask vs judge vs
+  BT-head side-by-side. Does not pick a winner.
+- scripts/passer_spread_audit.py: reusable form of the diagnostic that
+  caught RECALL (offline within-group passer-spread on useful_jumps.jsonl).
+- scripts/build_pseudo_gold.py + draft_pseudo_gold_abc.py +
+  label_d_advices.py + label_d_app.py: the 30x4 pseudo-gold pipeline.
+- scripts/eval_scorer.py: runs each candidate scorer against the
+  authored pseudo-gold set, reports pairwise AUC.
+
+NOTE: pseudo-gold was later questioned -- you can't author pro-level
+advice from text alone (need the screenshot). Not dead, but downstream
+of the architecture pivot now. data/eval/pseudo_gold_stub.jsonl has
+A/B/C auto-drafted, D=TODO.
+
+### Thread 2 -- aggressive repo prune
+Commit: b9a2987 (-8401 lines, 23 files)
+
+Council-driven triage: deleted SFT-era one-offs, pre-GRPO eval scripts,
+stale orchestrators, superseded diagnostics, one-shot debug helpers,
+tests of dead reward fns, decisions.md. Preserved BT-head infra +
+learned_state_embedder.py (hibernating, not dead). Code-only prune --
+data/ cleanup was offered and declined.
+
+### Thread 3 -- three-level perception/reasoning architecture pivot
+Commits: 0497d42, 3531811
+
+The big conceptual shift. Chimera was "two-phase SFT -> GRPO." It is
+now a three-level hierarchy:
+  Level 1 -- See:     visual perception (SFT, shipped)
+  Level 2 -- Situate: event/temporal perception (NEW, to build)
+  Level 3 -- Think:   strategic reasoning via GRPO (existing target)
+
+Every reward-signal failure from F08v4 on (F1 sibling-tick leakage,
+F2 outcome-correlated supervision collapse, F3 action-vec noise) was a
+symptom of asking GRPO to do perception AND reasoning jointly.
+
+- docs/three-level-architecture.md (400 lines): formal spec.
+- docs/round-encoder-design.md (429 lines): Level-2 encoder, three
+  in-session revisions:
+    v1 fixed-tick-windows -> rejected (arbitrary quantization)
+    v2 event-token transformer -> rejected (awpy event times are
+       outcome-timed, not cause-timed)
+    v3 (current): whole CS2 round at 8 Hz (~960 tokens), bidirectional
+       transformer, d_model=1024, ~50M params, 5 self-supervised
+       objectives (none consume round_won), awpy events used only as
+       query positions. Validated vs OpenAI Five (LSTM, 7.5Hz, no
+       event detection) and the latent-reasoning literature (Coconut,
+       Quiet-STaR). Prerequisite: scale demos 4 -> 40 before training.
+- docs/alignment-delta.md (424 lines): what existing docs/code need
+  updating under the new framing.
+- paper/references.bib: added gelada2019deepmdp.
+
+The encoder is NOT built yet -- scripts/build_tick_sequences.py and
+train_round_encoder.py are "to build." Plan: a cheap de-risk smoke
+test (tiny encoder, the 4 demos already on the volume, check sigma_s +
+clustering) before the full build.
+
+### Thread 4 -- Qwen 3.5 -> 3.6 upgrade
+Commits: 13e1a5e, c7ebc31, 20cecd8, 5abac24
+
+Qwen3.6-35B-A3B (released Apr 2026) -- verified multimodal, and it
+reports model_type=qwen3_5_moe / Qwen3_5MoeForConditionalGeneration:
+SAME architecture as 3.5, just new weights.
+
+- 13e1a5e (Phase 1): replaced the pinned model class with
+  AutoModelForImageTextToText + trust_remote_code in all three load
+  paths -- future base-model bumps are now a one-line DEFAULT_MODEL_NAME
+  change. transformers >= 5.6.0.
+- c7ebc31 (Blackwell MoE fix): tried an RTX PRO 6000 Blackwell pod
+  first. torch 2.8's torch._grouped_mm is Hopper-only (cc EXACTLY 9.0)
+  but transformers gates it on cc >= (9,0), so Blackwell (cc 12.0)
+  crashes in grouped_mm_experts_forward. Fix: src/utils/moe_compat.py
+  forces transformers' pure-torch grouped_mm_fallback when torch<2.9 +
+  non-Hopper. Conditional -- no-op on Hopper and on torch>=2.9.
+- 20cecd8 then 5abac24: SFT on the 96GB Blackwell card OOM'd at step
+  100 -- eval-during-training (eval_steps = save_steps) spikes the full
+  val-set forward on top of the ~85GB training state. First made eval
+  opt-in (20cecd8), then removed it entirely (5abac24) -- SFT trains
+  straight through; eval the final model separately. Training itself
+  was healthy on Blackwell (loss 0.17->0.05 over the first 100 steps);
+  only the eval pass couldn't fit.
+
+### SFT retrain on Qwen 3.6 -- COMPLETE
+Pod: damaged_gray_narwhal, H200 (143GB, cc 9.0), on the ORIGINAL
+Qwen-3.5 network volume (the Blackwell box couldn't mount that volume).
+
+Volume prep:
+- Found 134GB of DUPLICATE Qwen 3.5 weight caches -- the same model
+  cached twice (.cache/huggingface/hub/models--... AND
+  .cache/huggingface/models--...). Deleted both -> freed 134GB.
+- git pull on the volume's repo (was ancient) -> 5abac24.
+- Downloaded Qwen 3.6 (67GB).
+- The volume's venv (torch 2.6.0+cu124, transformers 5.6.2) was
+  GRPO-era: had causal-conv1d/fla/flash_attn but was MISSING trl (GRPO
+  used a manual loop) and qwen-vl-utils (GRPO was text-only). Installed
+  both, plus uv. tilelang absent but NOT needed (Triton 3.2.0 < 3.4 --
+  the Hopper tilelang fallback never triggers).
+
+SFT run:
+- train_sft.py, Qwen 3.6 base, LoRA r=4 alpha=8, vision trainable,
+  1 epoch, batch 1, grad-accum 4, lr 1e-5, max_seq_length 2048.
+- 980 optimizer steps, ~2h44m on the H200, ~9s/step, ~91GB/144GB VRAM.
+- Final train_loss 0.02335 (per-step loss ran ~0.007-0.012 late).
+- Outputs on the volume at /workspace/outputs/sft/:
+    final_model/merged_16bit/  -- 66GB merged Qwen 3.6 + SFT (2 shards)
+    checkpoint-{800,900,980}/  -- LoRA adapters (save_total_limit=3)
+- New GRPO base: --model-name /workspace/outputs/sft/final_model/merged_16bit
+- NOT yet evaluated -- the 67.3% field-accuracy numbers elsewhere in
+  this file are the OLD Qwen 3.5 SFT. Eval of the 3.6 SFT is a next step.
+
+### Pod / environment state at session end
+- Pod damaged_gray_narwhal -- H200, on the original network volume.
+  SSH: ssh -p 16228 -i ~/.ssh/id_ed25519 root@157.66.255.80
+- /workspace/venv: torch 2.6.0+cu124, transformers 5.6.2, + trl,
+  qwen-vl-utils, uv. causal-conv1d/fla/flash_attn present. NO tilelang.
+- /workspace/.cache/huggingface: Qwen 3.6 weights (67GB). The two
+  duplicate Qwen 3.5 caches were deleted.
+- /workspace/outputs/sft: the completed SFT artifacts (see above).
+- /workspace/chimera: repo at 5abac24.
+- Old GRPO outputs (f06, f08v4, ...) still under /workspace/outputs/grpo
+  -- superseded by the architecture pivot.
+
+### Open follow-ups / next steps
+1. Build the Level-2 encoder -- scripts/build_tick_sequences.py +
+   train_round_encoder.py -- then the cheap de-risk smoke test before
+   the full build. See docs/round-encoder-design.md. This is the actual
+   research bottleneck.
+2. Scale demos 4 -> 40 (prerequisite for real encoder training).
+3. Repo-alignment migration per docs/alignment-delta.md (feature-list.json
+   level fields, README rewrite, methodology/reward-candidates level
+   annotations, paper Phase->Level rename).
+4. Evaluate the Qwen 3.6 SFT-merged model (per-field accuracy vs the
+   3.5 baseline).
+5. pseudo-gold authoring (the D column) -- if the pseudo-gold path
+   survives the architecture reframe.
+6. F08v5 (judge GRPO run) -- deferred this whole session. Now runs on
+   the Qwen 3.6 SFT-merged base, ideally after the Level-2 encoder
+   exists so RECALL-family scorers have a real encoder to consume.
+
