@@ -1,484 +1,620 @@
 #!/usr/bin/env python3
-"""Build per-tick feature tensors for the Level-2 round encoder.
+"""Build tick-sequence tensors for the Level-2 round encoder.
 
-Reads parsed demos (ticks.parquet + bomb/kills/rounds/header JSONs) and emits
-one record per round with:
+Reads data/processed/demos/*_ticks.parquet (per-tick player state, long format)
+plus the matching *_rounds.json (round boundaries) and *_header.json (map name),
+then emits per-round tensors that the round encoder consumes.
 
-  features      : Tensor [L, F]   downsampled per-tick feature vectors
-  tick_indices  : Tensor [L]      original tick numbers (for joining w/ events)
-  tick_seconds  : Tensor [L]      round-relative seconds (for time pos-enc)
-  events        : list of {tick, type}  for time-to-next-event + next-event-type targets
-  round_won     : bool            T-side won? (DIAGNOSTIC PROBE ONLY — never an objective)
-  metadata      : {demo_stem, round_num, map_name}
+Per docs/round-encoder-design.md §2:
+  - Downsample 64 Hz -> 8 Hz (every 8th tick)
+  - Per-tick feature vector ~= per-player block × 10 players + global state
+  - Player slots ordered T1..T5, CT1..CT5 (positional, not identity-based)
+  - Output one (T, F) tensor per round; T variable per round, F fixed
 
-Splits demos at the demo level (never within a demo — F1 sibling-tick leakage).
+Output:
+  data/processed/tick_sequences/train.pt          dict[str, list[tensor]]
+  data/processed/tick_sequences/val.pt
+  data/processed/tick_sequences/feature_schema_v1.json
+  data/processed/tick_sequences/manifest.json     per-round metadata for joins
 
-Per-tick feature schema (~320 dim total, see feature_schema_v1.json output):
-  - 10 player slots, each ~29 dim (pos, view, velocity, HP/armor, money, eq value,
-    weapon class one-hot, util counts, helmet/defuser bits, alive mask)
-  - global block: bomb status, bomb pos, bomb timer, round timer, score, round#,
-    map one-hot, phase one-hot, sinusoidal time encoding
-  - player slot assignment is positional (sorted by side then steamid within round) —
-    no player identity embedding; the encoder learns role patterns
+Train/val split is DEMO-LEVEL (per the design, avoids round-leakage). Default:
+20 demos train, 4 val (use --val-demos to override).
 
 Usage:
     python scripts/build_tick_sequences.py
-    python scripts/build_tick_sequences.py --target-hz 8 --val-demos 1
+    python scripts/build_tick_sequences.py --downsample 8 --val-demos 4
+    python scripts/build_tick_sequences.py --limit 2     # smoke test on 2 demos
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import math
+import sys
+import time
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import polars as pl
 import torch
 
-# ---------------------------------------------------------------------------
-# Feature schema (kept in code so build + train + downstream can all import)
-# ---------------------------------------------------------------------------
+REPO = Path(__file__).resolve().parent.parent
+DEMOS_DIR = REPO / "data" / "processed" / "demos"
+OUT_DIR = REPO / "data" / "processed" / "tick_sequences"
 
-# Weapon class buckets — `inventory` from the parquet is a list of weapon
-# strings. We map each one to a class. "primary" wins if a primary-class
-# weapon is present; otherwise "pistol_only"; otherwise "no_primary".
-RIFLES = {"ak47", "m4a4", "m4a1_silencer", "aug", "sg556", "galilar", "famas"}
-SNIPERS = {"awp", "ssg08", "scar20", "g3sg1"}
-SMGS = {"mac10", "mp9", "mp7", "mp5sd", "ump45", "p90", "bizon"}
-SHOTGUNS = {"nova", "xm1014", "mag7", "sawedoff"}
-LMGS = {"m249", "negev"}
-PISTOLS = {
-    "deagle", "revolver", "hkp2000", "usp_silencer", "glock", "p250",
-    "fiveseven", "tec9", "cz75a", "elite",
+# Vocabularies — derived once on first run, then frozen in feature_schema_v1.json
+# so encoder + every downstream consumer reads the same indexing.
+MAP_VOCAB = ["de_ancient", "de_dust2", "de_inferno", "de_mirage",
+             "de_nuke", "de_overpass", "de_train"]
+
+# Item categories so we don't need a 100-dim weapon one-hot. Buckets cover the
+# tactical roles the encoder cares about. Anything unknown -> "other".
+WEAPON_CATEGORIES = {
+    "knife": {"Butterfly Knife", "Karambit", "M9 Bayonet", "Bayonet",
+              "Bowie Knife", "Falchion Knife", "Flip Knife", "Gut Knife",
+              "Huntsman Knife", "Shadow Daggers", "Stiletto Knife",
+              "Talon Knife", "Ursus Knife", "Navaja Knife", "Skeleton Knife",
+              "Classic Knife", "Nomad Knife", "Paracord Knife", "Survival Knife",
+              "Knife"},
+    "pistol_low": {"Glock-18", "USP-S", "P2000", "P250"},
+    "pistol_high": {"Five-SeveN", "Tec-9", "CZ75 Auto", "Desert Eagle",
+                    "R8 Revolver", "Dual Berettas"},
+    "smg": {"MP9", "MAC-10", "MP7", "MP5-SD", "UMP-45", "P90", "PP-Bizon"},
+    "shotgun": {"MAG-7", "Nova", "Sawed-Off", "XM1014"},
+    "rifle_t": {"AK-47", "Galil AR", "SG 553"},
+    "rifle_ct": {"M4A4", "M4A1-S", "AUG", "FAMAS"},
+    "awp": {"AWP"},
+    "scout": {"SSG 08"},
+    "auto_sniper": {"G3SG1", "SCAR-20"},
+    "lmg": {"M249", "Negev"},
+    "smoke": {"Smoke Grenade"},
+    "flash": {"Flashbang"},
+    "molly": {"Molotov", "Incendiary Grenade"},
+    "he": {"High Explosive Grenade"},
+    "decoy": {"Decoy Grenade"},
+    "c4": {"C4 Explosive"},
 }
-UTIL = {
-    "smokegrenade": "smoke",
-    "hegrenade": "he",
-    "flashbang": "flash",
-    "decoy": "decoy",
-    "molotov": "molotov",
-    "incgrenade": "molotov",  # incendiary = molotov
-}
-WEAPON_CLASSES = ["no_primary", "rifle", "sniper", "smg", "shotgun", "lmg", "pistol_only", "unknown"]
-WEAPON_CLASS_IDX = {c: i for i, c in enumerate(WEAPON_CLASSES)}
+WEAPON_CAT_LIST = list(WEAPON_CATEGORIES.keys()) + ["other"]
+WEAPON_CAT_IDX = {c: i for i, c in enumerate(WEAPON_CAT_LIST)}
 
-MAPS = ["de_mirage", "de_inferno", "de_nuke", "de_overpass"]
-MAP_IDX = {m: i for i, m in enumerate(MAPS)}
+# Round phases — derived from rounds.json fields
+PHASE_VOCAB = ["freeze", "live", "post_plant", "end"]
 
-EVENT_TYPES = ["kill_T", "kill_CT", "plant", "defuse", "freeze_end", "round_end"]
-EVENT_TYPE_IDX = {e: i for i, e in enumerate(EVENT_TYPES)}
-
-# CS2 map coordinates roughly span ±4096 game units; normalize positions to
-# [-1, 1]. Bomb timer post-plant = 40s; round time live phase ≤ 115s.
-COORD_NORM = 4096.0
-BOMB_TIMER_MAX = 40.0
-ROUND_TIMER_MAX = 115.0
-EQUIP_MAX = 16000.0
-MONEY_MAX_LOG = math.log(16001.0)
-PHASES = ["freeze", "live", "post-plant"]
-N_PLAYER_SLOTS = 10  # 5 T + 5 CT
+DOWNSAMPLE_DEFAULT = 8  # 64Hz -> 8Hz
+PLAYERS_PER_SIDE = 5
+N_PLAYERS = 2 * PLAYERS_PER_SIDE
 
 
-def _classify_weapon(inv: list[str]) -> tuple[int, dict[str, int]]:
-    """Return (weapon_class_idx, util_counts).
+def categorize_weapon(name: str) -> int:
+    """Map a weapon/util name to its category index. Unknown -> 'other'."""
+    for cat, items in WEAPON_CATEGORIES.items():
+        if name in items:
+            return WEAPON_CAT_IDX[cat]
+    return WEAPON_CAT_IDX["other"]
 
-    Picks the highest-priority class present (primary > pistol > none).
-    util_counts has keys smoke/he/flash/decoy/molotov.
+
+def inventory_to_categorical(inv: list[str] | None) -> dict:
+    """Reduce a player's inventory list into:
+      - primary_cat (int): the most-impactful weapon present
+      - secondary_cat (int): second weapon (typically pistol)
+      - util_bits (np.ndarray of shape (5,)): smoke/flash/molly/he/decoy held (multi-hot)
+      - has_c4 (int): 1 if carrying C4
     """
-    util_counts = {"smoke": 0, "he": 0, "flash": 0, "decoy": 0, "molotov": 0}
-    has_primary_class = None
-    has_pistol = False
-    for w in inv:
-        w_lower = w.lower() if isinstance(w, str) else ""
-        if w_lower in RIFLES:
-            has_primary_class = "rifle"
-        elif w_lower in SNIPERS:
-            has_primary_class = has_primary_class or "sniper"
-        elif w_lower in SMGS:
-            has_primary_class = has_primary_class or "smg"
-        elif w_lower in SHOTGUNS:
-            has_primary_class = has_primary_class or "shotgun"
-        elif w_lower in LMGS:
-            has_primary_class = has_primary_class or "lmg"
-        elif w_lower in PISTOLS:
-            has_pistol = True
-        elif w_lower in UTIL:
-            util_counts[UTIL[w_lower]] += 1
-    if has_primary_class is not None:
-        return WEAPON_CLASS_IDX[has_primary_class], util_counts
-    if has_pistol:
-        return WEAPON_CLASS_IDX["pistol_only"], util_counts
-    return WEAPON_CLASS_IDX["no_primary"], util_counts
+    if not inv:
+        return {"primary": WEAPON_CAT_IDX["other"],
+                "secondary": WEAPON_CAT_IDX["other"],
+                "util_bits": np.zeros(5, dtype=np.float32),
+                "has_c4": 0.0}
+
+    # Order of "primaryness" — first hit wins
+    primary_order = ["awp", "scout", "auto_sniper", "rifle_t", "rifle_ct",
+                     "lmg", "shotgun", "smg"]
+    secondary_order = ["pistol_high", "pistol_low"]
+
+    cats = [categorize_weapon(item) for item in inv]
+    cat_names = [WEAPON_CAT_LIST[c] for c in cats]
+
+    primary = WEAPON_CAT_IDX["other"]
+    for cat in primary_order:
+        if cat in cat_names:
+            primary = WEAPON_CAT_IDX[cat]
+            break
+
+    secondary = WEAPON_CAT_IDX["other"]
+    for cat in secondary_order:
+        if cat in cat_names:
+            secondary = WEAPON_CAT_IDX[cat]
+            break
+
+    util_bits = np.zeros(5, dtype=np.float32)
+    for ui, ucat in enumerate(["smoke", "flash", "molly", "he", "decoy"]):
+        if ucat in cat_names:
+            util_bits[ui] = 1.0
+
+    has_c4 = 1.0 if "c4" in cat_names else 0.0
+
+    return {"primary": primary, "secondary": secondary,
+            "util_bits": util_bits, "has_c4": has_c4}
 
 
-def _player_slot_features(row: dict, prev_pos: np.ndarray | None) -> tuple[np.ndarray, np.ndarray]:
-    """Per-player feature vector + new position for velocity tracking.
+# Per-player feature dim:
+#   pos (3) + sin/cos(yaw,pitch) (4) + hp (1) + armor (1) + helmet (1) + defuser (1)
+#   + balance (1) + equip_value (1) + alive (1) + has_c4 (1)
+#   + primary_onehot (len(WEAPON_CAT_LIST)) + secondary_onehot (len(WEAPON_CAT_LIST))
+#   + util_bits (5)
+PER_PLAYER_DIM = 3 + 4 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + len(WEAPON_CAT_LIST) * 2 + 5
+# Global feature dim:
+#   map_onehot (7) + phase_onehot (4) + score (2) + round_num (1) + round_time (1)
+#   + bomb_state_onehot (4) + bomb_pos (2) + bomb_age (1)
+GLOBAL_DIM = len(MAP_VOCAB) + len(PHASE_VOCAB) + 2 + 1 + 1 + 4 + 2 + 1
+TOTAL_DIM = N_PLAYERS * PER_PLAYER_DIM + GLOBAL_DIM
 
-    Returns (features [29], current_position [3]).
+
+def encode_player_row(row: dict) -> np.ndarray:
+    """Encode one player at one tick into a per-player feature vector."""
+    out = np.zeros(PER_PLAYER_DIM, dtype=np.float32)
+    if row is None:
+        return out  # all zeros — slot empty
+
+    i = 0
+    # Position (normalized roughly to [-1, 1] — map coords are typically in [-3000, 3000])
+    out[i] = (row.get("X") or 0.0) / 3000.0; i += 1
+    out[i] = (row.get("Y") or 0.0) / 3000.0; i += 1
+    out[i] = (row.get("Z") or 0.0) / 500.0; i += 1
+    # View angles -> sin/cos
+    yaw = (row.get("yaw") or 0.0) * np.pi / 180.0
+    pitch = (row.get("pitch") or 0.0) * np.pi / 180.0
+    out[i] = np.sin(yaw); i += 1
+    out[i] = np.cos(yaw); i += 1
+    out[i] = np.sin(pitch); i += 1
+    out[i] = np.cos(pitch); i += 1
+    # HP / armor / helmet / defuser
+    hp = max(0, row.get("health") or 0)
+    out[i] = hp / 100.0; i += 1
+    out[i] = (row.get("armor") or 0) / 100.0; i += 1
+    out[i] = 1.0 if row.get("has_helmet") else 0.0; i += 1
+    out[i] = 1.0 if row.get("has_defuser") else 0.0; i += 1
+    # Money (log-normalized)
+    bal = max(0, row.get("balance") or 0)
+    out[i] = np.log1p(bal) / 10.0; i += 1
+    # Equip value (log-normalized)
+    eq = max(0, row.get("current_equip_value") or 0)
+    out[i] = np.log1p(eq) / 10.0; i += 1
+    # Alive
+    out[i] = 1.0 if hp > 0 else 0.0; i += 1
+    # Inventory features
+    inv = inventory_to_categorical(row.get("inventory"))
+    out[i] = inv["has_c4"]; i += 1
+    # primary one-hot
+    out[i + inv["primary"]] = 1.0; i += len(WEAPON_CAT_LIST)
+    # secondary one-hot
+    out[i + inv["secondary"]] = 1.0; i += len(WEAPON_CAT_LIST)
+    # util bits
+    out[i:i + 5] = inv["util_bits"]; i += 5
+
+    assert i == PER_PLAYER_DIM, f"player encoding mismatch: {i} vs {PER_PLAYER_DIM}"
+    return out
+
+
+def assign_player_slots(round_df: pl.DataFrame) -> dict[int, tuple[str, int]]:
+    """Map steamid -> (slot_role, slot_idx) where role in {'t', 'ct'}, idx in 0..4.
+
+    Slots are assigned by order of appearance per side at the round's first tick,
+    keeping the encoder positional (not identity-based — same slot can be filled
+    by different players in different rounds).
     """
-    x, y, z = row["X"], row["Y"], row["Z"]
-    pos = np.array([x, y, z], dtype=np.float32) / COORD_NORM
-    if prev_pos is None:
-        vel = np.zeros(3, dtype=np.float32)
-    else:
-        vel = pos - prev_pos  # tick-to-tick delta in normalized units
-
-    yaw = float(row["yaw"])
-    pitch = float(row["pitch"])
-    yaw_rad = math.radians(yaw)
-    pitch_rad = math.radians(pitch)
-    view = np.array(
-        [math.sin(yaw_rad), math.cos(yaw_rad), math.sin(pitch_rad), math.cos(pitch_rad)],
-        dtype=np.float32,
-    )
-
-    hp = float(row["health"]) / 100.0
-    armor = float(row["armor"]) / 100.0
-    helmet = 1.0 if row["has_helmet"] else 0.0
-    defuser = 1.0 if row["has_defuser"] else 0.0
-    money = math.log(1.0 + float(row["balance"])) / MONEY_MAX_LOG
-    equip = float(row["current_equip_value"]) / EQUIP_MAX
-
-    inv = row["inventory"] if isinstance(row["inventory"], list) else []
-    weapon_class, util = _classify_weapon(inv)
-    weapon_oh = np.zeros(len(WEAPON_CLASSES), dtype=np.float32)
-    weapon_oh[weapon_class] = 1.0
-    util_vec = np.array(
-        [util["smoke"], util["molotov"], util["flash"], util["he"], util["decoy"]],
-        dtype=np.float32,
-    ) / 4.0  # normalize counts (max ~4 of any single util)
-
-    alive = 1.0 if hp > 0 else 0.0
-
-    feats = np.concatenate([
-        pos,                                   # 3
-        view,                                  # 4
-        vel,                                   # 3
-        np.array([hp, armor, helmet, defuser, money, equip], dtype=np.float32),  # 6
-        weapon_oh,                             # 8
-        util_vec,                              # 5
-        np.array([alive], dtype=np.float32),   # 1
-    ])
-    assert feats.shape == (30,), feats.shape
-    return feats, pos
+    first_tick = round_df["tick"].min()
+    first = round_df.filter(pl.col("tick") == first_tick).sort("steamid")
+    t_ids = first.filter(pl.col("side") == "t")["steamid"].to_list()[:5]
+    ct_ids = first.filter(pl.col("side") == "ct")["steamid"].to_list()[:5]
+    assignment: dict[int, tuple[str, int]] = {}
+    for i, sid in enumerate(t_ids):
+        assignment[sid] = ("t", i)
+    for i, sid in enumerate(ct_ids):
+        assignment[sid] = ("ct", i)
+    return assignment
 
 
-def _global_features(
-    tick: int,
-    round_info: dict,
-    bomb_state: dict,
-    map_name: str,
-    score_t: int,
-    score_ct: int,
-    round_num: int,
+def encode_global(map_name: str, phase: str, score_t: int, score_ct: int,
+                  round_num: int, round_time_s: float,
+                  bomb_state: str, bomb_x: float, bomb_y: float,
+                  bomb_age_s: float) -> np.ndarray:
+    out = np.zeros(GLOBAL_DIM, dtype=np.float32)
+    i = 0
+    # map one-hot
+    if map_name in MAP_VOCAB:
+        out[i + MAP_VOCAB.index(map_name)] = 1.0
+    i += len(MAP_VOCAB)
+    # phase one-hot
+    if phase in PHASE_VOCAB:
+        out[i + PHASE_VOCAB.index(phase)] = 1.0
+    i += len(PHASE_VOCAB)
+    # score (normalized roughly)
+    out[i] = score_t / 16.0; i += 1
+    out[i] = score_ct / 16.0; i += 1
+    # round_num (normalized)
+    out[i] = round_num / 30.0; i += 1
+    # round_time (seconds since round start, normalized to ~115s max)
+    out[i] = round_time_s / 115.0; i += 1
+    # bomb state one-hot: {none, carried, planted_a, planted_b}
+    bomb_states = ["none", "carried", "planted_a", "planted_b"]
+    if bomb_state in bomb_states:
+        out[i + bomb_states.index(bomb_state)] = 1.0
+    i += 4
+    # bomb position
+    out[i] = bomb_x / 3000.0; i += 1
+    out[i] = bomb_y / 3000.0; i += 1
+    # bomb age (seconds since plant; 0 if not planted; ~40s max)
+    out[i] = bomb_age_s / 40.0; i += 1
+    assert i == GLOBAL_DIM
+    return out
+
+
+def _encode_player_block_vectorized(
+    df: pl.DataFrame, kept_ticks: np.ndarray
 ) -> np.ndarray:
-    """Global per-tick features (~30 dim)."""
-    # Bomb status
-    bomb_status = np.zeros(4, dtype=np.float32)  # [not_planted, planted_A, planted_B, defused_or_exploded]
-    bomb_pos = np.zeros(2, dtype=np.float32)
-    bomb_timer = 0.0
-    if bomb_state.get("plant_tick") is not None and tick >= bomb_state["plant_tick"]:
-        if bomb_state.get("end_tick") is not None and tick >= bomb_state["end_tick"]:
-            bomb_status[3] = 1.0  # defused/exploded
-        else:
-            site = bomb_state.get("site", "a")
-            bomb_status[1 if site == "a" else 2] = 1.0
-            if bomb_state.get("plant_pos") is not None:
-                bomb_pos[0] = bomb_state["plant_pos"][0] / COORD_NORM
-                bomb_pos[1] = bomb_state["plant_pos"][1] / COORD_NORM
-            elapsed_ticks = tick - bomb_state["plant_tick"]
-            bomb_timer = (elapsed_ticks / 64.0) / BOMB_TIMER_MAX
-    else:
-        bomb_status[0] = 1.0
+    """Encode one player slot's per-tick state into shape (T, PER_PLAYER_DIM).
 
-    # Round timer (seconds since freeze_end, clamped)
-    freeze_end = round_info.get("freeze_end") or round_info["start"]
-    if tick < freeze_end:
-        round_timer = 0.0
-    else:
-        round_timer = ((tick - freeze_end) / 64.0) / ROUND_TIMER_MAX
-        round_timer = min(round_timer, 1.0)
-
-    # Phase
-    phase = np.zeros(3, dtype=np.float32)  # [freeze, live, post-plant]
-    if tick < freeze_end:
-        phase[0] = 1.0
-    elif bomb_state.get("plant_tick") is not None and tick >= bomb_state["plant_tick"]:
-        phase[2] = 1.0
-    else:
-        phase[1] = 1.0
-
-    # Map identity is now handled via a learned per-map nn.Embedding in the
-    # encoder (see train_round_encoder.py); the per-tick global block no
-    # longer carries a map one-hot. Each round-record carries `map_id` (int).
-
-    # Sinusoidal time encoding (6 sin/cos pairs at different frequencies)
-    secs = (tick - round_info["start"]) / 64.0
-    time_enc = []
-    for k in range(6):
-        period = 2.0 * (2 ** k)  # 2, 4, 8, 16, 32, 64 second periods
-        time_enc.append(math.sin(2 * math.pi * secs / period))
-        time_enc.append(math.cos(2 * math.pi * secs / period))
-    time_enc = np.array(time_enc, dtype=np.float32)  # 12
-
-    score = np.array([score_t / 16.0, score_ct / 16.0, round_num / 30.0], dtype=np.float32)
-
-    feats = np.concatenate([
-        bomb_status,    # 4
-        bomb_pos,       # 2
-        np.array([bomb_timer, round_timer], dtype=np.float32),  # 2
-        score,          # 3
-        phase,          # 3
-        time_enc,       # 12
-    ])
-    assert feats.shape == (26,), feats.shape
-    return feats
-
-
-def _build_round_features(
-    round_ticks: pl.DataFrame,
-    round_info: dict,
-    bomb_events: list[dict],
-    map_name: str,
-    score_t: int,
-    score_ct: int,
-    target_hz: int,
-    tickrate: int = 64,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
-    """Build per-tick feature tensor for one round.
-
-    Returns (features [L, F], tick_indices [L], tick_seconds [L]).
-    Returns None if the round is malformed (no players, etc.).
+    df is the player's rows for this round (already filtered to this slot's
+    steamid). kept_ticks is the downsampled tick list. Missing ticks (player
+    didn't have a row at that tick) become all-zero rows.
     """
-    # Downsample ticks
-    stride = tickrate // target_hz  # 64/8 = 8
-    all_ticks = round_ticks["tick"].unique().sort().to_list()
-    sampled_ticks = all_ticks[::stride]
-    if not sampled_ticks:
-        return None
+    T = len(kept_ticks)
+    out = np.zeros((T, PER_PLAYER_DIM), dtype=np.float32)
+    if df.height == 0:
+        return out
 
-    # Build bomb_state: when does the bomb get planted, where, and end?
-    bomb_state: dict = {"plant_tick": None, "site": None, "plant_pos": None, "end_tick": None}
-    if round_info.get("bomb_plant") is not None:
-        bomb_state["plant_tick"] = int(round_info["bomb_plant"])
-        bomb_state["site"] = round_info.get("bomb_site", "a") or "a"
-        for ev in bomb_events:
-            if ev.get("event") == "plant" and ev.get("round_num") == round_info["round_num"]:
-                bomb_state["plant_pos"] = (float(ev["X"]), float(ev["Y"]))
-            if ev.get("event") in ("defuse", "exploded") and ev.get("round_num") == round_info["round_num"]:
-                bomb_state["end_tick"] = int(ev["tick"])
+    # Reindex onto kept_ticks via a left-join on tick
+    tick_lookup = pl.DataFrame({"tick": kept_ticks.astype(np.int32)})
+    aligned = tick_lookup.join(df, on="tick", how="left")
 
-    # Group ticks rows by tick number
-    by_tick = round_ticks.partition_by("tick", as_dict=True)
-    # Player slot assignment: stable per round, sorted by (side, steamid)
-    # Use the FIRST tick to establish slot order
-    first_tick_rows = by_tick[(sampled_ticks[0],)].sort(["side", "steamid"]).to_dicts()
-    slot_steamids: list[int] = []
-    for row in first_tick_rows:
-        slot_steamids.append(row["steamid"])
-    if len(slot_steamids) == 0:
-        return None
-    # If <10 players (disconnect), pad with sentinel that we'll mask
-    while len(slot_steamids) < N_PLAYER_SLOTS:
-        slot_steamids.append(-1)
+    # Vectorized normalizations on the aligned columns
+    x = (aligned["X"].fill_null(0.0).to_numpy() / 3000.0).astype(np.float32)
+    y = (aligned["Y"].fill_null(0.0).to_numpy() / 3000.0).astype(np.float32)
+    z = (aligned["Z"].fill_null(0.0).to_numpy() / 500.0).astype(np.float32)
+    yaw = (aligned["yaw"].fill_null(0.0).to_numpy() * np.pi / 180.0).astype(np.float32)
+    pitch = (aligned["pitch"].fill_null(0.0).to_numpy() * np.pi / 180.0).astype(np.float32)
+    hp = np.clip(aligned["health"].fill_null(0).to_numpy(), 0, None).astype(np.float32)
+    armor = np.clip(aligned["armor"].fill_null(0).to_numpy(), 0, None).astype(np.float32)
+    helmet = aligned["has_helmet"].fill_null(False).to_numpy().astype(np.float32)
+    defuser = aligned["has_defuser"].fill_null(False).to_numpy().astype(np.float32)
+    bal = np.clip(aligned["balance"].fill_null(0).to_numpy(), 0, None).astype(np.float32)
+    eq = np.clip(aligned["current_equip_value"].fill_null(0).to_numpy(),
+                 0, None).astype(np.float32)
+    inv_lists = aligned["inventory"].to_list()  # list of lists or None per tick
 
-    # Per-slot previous position (for velocity)
-    prev_pos: list[np.ndarray | None] = [None] * N_PLAYER_SLOTS
+    i = 0
+    out[:, i] = x; i += 1
+    out[:, i] = y; i += 1
+    out[:, i] = z; i += 1
+    out[:, i] = np.sin(yaw); i += 1
+    out[:, i] = np.cos(yaw); i += 1
+    out[:, i] = np.sin(pitch); i += 1
+    out[:, i] = np.cos(pitch); i += 1
+    out[:, i] = hp / 100.0; i += 1
+    out[:, i] = armor / 100.0; i += 1
+    out[:, i] = helmet; i += 1
+    out[:, i] = defuser; i += 1
+    out[:, i] = np.log1p(bal) / 10.0; i += 1
+    out[:, i] = np.log1p(eq) / 10.0; i += 1
+    out[:, i] = (hp > 0).astype(np.float32); i += 1
 
-    feature_rows: list[np.ndarray] = []
-    for t in sampled_ticks:
-        if (t,) not in by_tick:
+    # Inventory features (still per-tick Python — there's no vectorized way to
+    # categorize variable-length string lists). But polars already returned a
+    # plain Python list, so this is just the list iteration cost, not the heavy
+    # row-by-row dict access.
+    has_c4 = np.zeros(T, dtype=np.float32)
+    primary_idx = np.full(T, WEAPON_CAT_IDX["other"], dtype=np.int32)
+    secondary_idx = np.full(T, WEAPON_CAT_IDX["other"], dtype=np.int32)
+    util_bits = np.zeros((T, 5), dtype=np.float32)
+    for t_idx, inv in enumerate(inv_lists):
+        if not inv:
             continue
-        rows_by_steamid = {r["steamid"]: r for r in by_tick[(t,)].to_dicts()}
-        slot_feats: list[np.ndarray] = []
-        for slot_idx, sid in enumerate(slot_steamids):
-            if sid in rows_by_steamid:
-                pf, new_pos = _player_slot_features(rows_by_steamid[sid], prev_pos[slot_idx])
-                slot_feats.append(pf)
-                prev_pos[slot_idx] = new_pos
-            else:
-                # Player missing this tick (disconnect or pre-spawn) — zeros
-                slot_feats.append(np.zeros(30, dtype=np.float32))
-        per_player = np.concatenate(slot_feats)  # 30 * 10 = 300
-        glob = _global_features(t, round_info, bomb_state, map_name, score_t, score_ct, round_info["round_num"])
-        feature_rows.append(np.concatenate([per_player, glob]))
+        info = inventory_to_categorical(inv)
+        has_c4[t_idx] = info["has_c4"]
+        primary_idx[t_idx] = info["primary"]
+        secondary_idx[t_idx] = info["secondary"]
+        util_bits[t_idx] = info["util_bits"]
 
-    if not feature_rows:
-        return None
+    out[:, i] = has_c4; i += 1
+    # primary one-hot
+    primary_block = np.zeros((T, len(WEAPON_CAT_LIST)), dtype=np.float32)
+    primary_block[np.arange(T), primary_idx] = 1.0
+    out[:, i:i + len(WEAPON_CAT_LIST)] = primary_block; i += len(WEAPON_CAT_LIST)
+    # secondary one-hot
+    secondary_block = np.zeros((T, len(WEAPON_CAT_LIST)), dtype=np.float32)
+    secondary_block[np.arange(T), secondary_idx] = 1.0
+    out[:, i:i + len(WEAPON_CAT_LIST)] = secondary_block; i += len(WEAPON_CAT_LIST)
+    # util bits
+    out[:, i:i + 5] = util_bits; i += 5
 
-    features = np.stack(feature_rows).astype(np.float32)
-    tick_indices = np.array(sampled_ticks[: len(feature_rows)], dtype=np.int64)
-    tick_seconds = (tick_indices - round_info["start"]) / float(tickrate)
-    return features, tick_indices, tick_seconds.astype(np.float32)
+    assert i == PER_PLAYER_DIM, f"player encoding mismatch: {i} vs {PER_PLAYER_DIM}"
+    return out
 
 
-def _round_events(
-    round_num: int,
-    round_info: dict,
-    kills: list[dict],
+def build_round_tensor(
+    round_df: pl.DataFrame,
+    round_meta: dict,
+    map_name: str,
+    score_so_far: tuple[int, int],
     bomb_events: list[dict],
-) -> list[dict]:
-    """Collect typed events for a round, sorted by tick."""
-    evs: list[dict] = []
-    if round_info.get("freeze_end") is not None:
-        evs.append({"tick": int(round_info["freeze_end"]), "type": "freeze_end"})
-    for k in kills:
-        if k.get("round_num") != round_num:
-            continue
-        side = k.get("attacker_side", "")
-        if side == "t":
-            evs.append({"tick": int(k["tick"]), "type": "kill_T"})
-        elif side == "ct":
-            evs.append({"tick": int(k["tick"]), "type": "kill_CT"})
-    for b in bomb_events:
-        if b.get("round_num") != round_num:
-            continue
-        if b.get("event") == "plant":
-            evs.append({"tick": int(b["tick"]), "type": "plant"})
-        elif b.get("event") == "defuse":
-            evs.append({"tick": int(b["tick"]), "type": "defuse"})
-    if round_info.get("end") is not None:
-        evs.append({"tick": int(round_info["end"]), "type": "round_end"})
-    evs.sort(key=lambda e: e["tick"])
-    return evs
+    downsample: int,
+) -> tuple[torch.Tensor, dict]:
+    """Build the (T, F) tensor for one round at the given downsample rate."""
+    ticks_all = round_df["tick"].unique().sort().to_numpy()
+    if len(ticks_all) == 0:
+        return torch.empty(0, TOTAL_DIM), {}
+
+    start_tick = round_meta["start"]
+    freeze_end = round_meta["freeze_end"]
+    end_tick = round_meta["end"] or round_meta["official_end"] or int(ticks_all[-1])
+    plant_tick = round_meta.get("bomb_plant")
+    bomb_site = round_meta.get("bomb_site")
+
+    plant_pos = None
+    for be in bomb_events:
+        if be.get("event") == "plant" and be.get("round_num") == round_meta["round_num"]:
+            plant_pos = (be.get("X") or 0.0, be.get("Y") or 0.0)
+            break
+
+    slot_map = assign_player_slots(round_df)
+    kept_ticks = ticks_all[::downsample]
+    T = len(kept_ticks)
+    out = np.zeros((T, TOTAL_DIM), dtype=np.float32)
+
+    # Per-player blocks — one vectorized pass per slot
+    offset = 0
+    # Build sid -> rows lookup once
+    by_sid = {sid: round_df.filter(pl.col("steamid") == sid)
+              for sid, _ in slot_map.items()}
+    # T0..T4 then CT0..CT4
+    for side in ("t", "ct"):
+        for slot_i in range(5):
+            sid = next((s for s, r in slot_map.items() if r == (side, slot_i)), None)
+            df = by_sid.get(sid) if sid is not None else pl.DataFrame()
+            out[:, offset:offset + PER_PLAYER_DIM] = _encode_player_block_vectorized(
+                df if df is not None else pl.DataFrame(), kept_ticks,
+            )
+            offset += PER_PLAYER_DIM
+
+    # Global features — vectorized over kept_ticks
+    # Phase
+    phases = np.empty(T, dtype=object)
+    phases[:] = "live"
+    phases[kept_ticks < freeze_end] = "freeze"
+    if plant_tick:
+        phases[kept_ticks >= plant_tick] = "post_plant"
+    phases[kept_ticks >= end_tick] = "end"
+
+    # Bomb state
+    bomb_states = np.empty(T, dtype=object)
+    bomb_states[:] = "none"
+    bomb_x = np.zeros(T, dtype=np.float32)
+    bomb_y = np.zeros(T, dtype=np.float32)
+    bomb_age_s = np.zeros(T, dtype=np.float32)
+    if plant_tick and plant_pos is not None:
+        planted = kept_ticks >= plant_tick
+        site_str = f"planted_{bomb_site.lower()}" if bomb_site else "planted_a"
+        bomb_states[planted] = site_str
+        bomb_x[planted] = plant_pos[0]
+        bomb_y[planted] = plant_pos[1]
+        bomb_age_s[planted] = (kept_ticks[planted] - plant_tick) / 64.0
+
+    round_time_s = np.maximum(0, (kept_ticks - start_tick) / 64.0).astype(np.float32)
+
+    # Build the global block per-tick (still Python loop but only T iterations)
+    bomb_state_names = ["none", "carried", "planted_a", "planted_b"]
+    map_idx = MAP_VOCAB.index(map_name) if map_name in MAP_VOCAB else -1
+    for t_idx in range(T):
+        g = np.zeros(GLOBAL_DIM, dtype=np.float32)
+        gi = 0
+        if map_idx >= 0:
+            g[gi + map_idx] = 1.0
+        gi += len(MAP_VOCAB)
+        ph = phases[t_idx]
+        if ph in PHASE_VOCAB:
+            g[gi + PHASE_VOCAB.index(ph)] = 1.0
+        gi += len(PHASE_VOCAB)
+        g[gi] = score_so_far[0] / 16.0; gi += 1
+        g[gi] = score_so_far[1] / 16.0; gi += 1
+        g[gi] = round_meta["round_num"] / 30.0; gi += 1
+        g[gi] = round_time_s[t_idx] / 115.0; gi += 1
+        bs = bomb_states[t_idx]
+        if bs in bomb_state_names:
+            g[gi + bomb_state_names.index(bs)] = 1.0
+        gi += 4
+        g[gi] = bomb_x[t_idx] / 3000.0; gi += 1
+        g[gi] = bomb_y[t_idx] / 3000.0; gi += 1
+        g[gi] = bomb_age_s[t_idx] / 40.0; gi += 1
+        out[t_idx, offset:offset + GLOBAL_DIM] = g
+
+    meta = {
+        "round_num": round_meta["round_num"],
+        "n_ticks": T,
+        "first_tick": int(kept_ticks[0]),
+        "last_tick": int(kept_ticks[-1]),
+        "downsample": downsample,
+        "winner": round_meta.get("winner"),
+        "reason": round_meta.get("reason"),
+    }
+    return torch.from_numpy(out), meta
 
 
-def process_demo(demo_stem: str, demos_dir: Path, target_hz: int) -> list[dict]:
-    """Build all round records for one demo. Returns list of round-dicts."""
-    ticks_path = demos_dir / f"{demo_stem}_ticks.parquet"
-    rounds_path = demos_dir / f"{demo_stem}_rounds.json"
-    bomb_path = demos_dir / f"{demo_stem}_bomb.json"
-    kills_path = demos_dir / f"{demo_stem}_kills.json"
-    header_path = demos_dir / f"{demo_stem}_header.json"
+def process_demo(parq: Path, downsample: int) -> tuple[list[torch.Tensor], list[dict], dict]:
+    """Process one demo into per-round tensors + meta + a demo-level summary."""
+    stem = parq.stem.replace("_ticks", "")
+    base = parq.parent
 
-    for p in (ticks_path, rounds_path, bomb_path, kills_path, header_path):
-        if not p.exists():
-            print(f"  skip {demo_stem}: missing {p.name}")
-            return []
-
-    ticks_df = pl.read_parquet(ticks_path)
-    rounds = json.loads(rounds_path.read_text())
-    bomb_events = json.loads(bomb_path.read_text())
-    kills = json.loads(kills_path.read_text())
-    header = json.loads(header_path.read_text())
+    rounds = json.loads((base / f"{stem}_rounds.json").read_text())
+    bomb = json.loads((base / f"{stem}_bomb.json").read_text())
+    header = json.loads((base / f"{stem}_header.json").read_text())
     map_name = header.get("map_name", "unknown")
 
-    out: list[dict] = []
-    score_t = 0
-    score_ct = 0
-    for round_info in rounds:
-        rn = int(round_info["round_num"])
-        round_ticks = ticks_df.filter(pl.col("round_num") == rn)
-        if round_ticks.height == 0:
+    df = pl.read_parquet(parq)
+
+    # Running score — winner of each round so far
+    score_t = score_ct = 0
+    tensors = []
+    metas = []
+    for r in rounds:
+        round_df = df.filter(pl.col("round_num") == r["round_num"])
+        if round_df.height == 0:
             continue
-        built = _build_round_features(
-            round_ticks=round_ticks,
-            round_info=round_info,
-            bomb_events=bomb_events,
-            map_name=map_name,
-            score_t=score_t,
-            score_ct=score_ct,
-            target_hz=target_hz,
+        ten, m = build_round_tensor(
+            round_df, r, map_name,
+            (score_t, score_ct), bomb, downsample,
         )
-        if built is None:
+        if ten.numel() == 0:
             continue
-        features, tick_indices, tick_seconds = built
-        events = _round_events(rn, round_info, kills, bomb_events)
-        winner = round_info.get("winner", "")
-        round_won_t = (winner == "t")
-        out.append({
-            "demo_stem": demo_stem,
-            "round_num": rn,
-            "map_name": map_name,
-            "map_id": int(MAP_IDX.get(map_name, 0)),  # for the learned map embedding
-            "features": torch.from_numpy(features),
-            "tick_indices": torch.from_numpy(tick_indices),
-            "tick_seconds": torch.from_numpy(tick_seconds),
-            "events": events,
-            "round_won_t": round_won_t,
-        })
-        # Update score for next round
-        if winner == "t":
+        m["map_name"] = map_name
+        m["demo_stem"] = stem
+        tensors.append(ten)
+        metas.append(m)
+        # update score for NEXT round
+        if r.get("winner") == "t":
             score_t += 1
-        elif winner == "ct":
+        elif r.get("winner") == "ct":
             score_ct += 1
 
-    print(f"  {demo_stem}: {len(out)} rounds, ~{out[0]['features'].shape[1] if out else 0}-dim per tick")
-    return out
+    summary = {
+        "demo_stem": stem,
+        "map_name": map_name,
+        "n_rounds": len(tensors),
+        "total_ticks": sum(t.shape[0] for t in tensors),
+        "feature_dim": TOTAL_DIM,
+    }
+    return tensors, metas, summary
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--demos-dir", type=Path, default=Path("data/processed/demos"))
-    ap.add_argument("--output-dir", type=Path, default=Path("data/processed/tick_sequences"))
-    ap.add_argument("--target-hz", type=int, default=8, help="downsample to N Hz (from 64 Hz tickrate)")
-    ap.add_argument("--val-demos", type=int, default=1, help="number of demos to hold out for val (demo-level split)")
+    ap.add_argument("--downsample", type=int, default=DOWNSAMPLE_DEFAULT,
+                    help=f"keep every Nth tick (64Hz / N) — default {DOWNSAMPLE_DEFAULT} (8Hz)")
+    ap.add_argument("--val-demos", type=int, default=4,
+                    help="how many demos to hold out for validation (default 4)")
+    ap.add_argument("--limit", type=int, default=None,
+                    help="cap total demos processed (for smoke testing)")
+    ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    parqs = sorted(DEMOS_DIR.glob("*_ticks.parquet"))
+    if args.limit:
+        parqs = parqs[:args.limit]
+    if not parqs:
+        print(f"No parquets in {DEMOS_DIR}. Run scripts/parse_demos.py first.")
+        sys.exit(1)
 
-    # Discover demo stems from *_ticks.parquet
-    stems = sorted({p.stem.removesuffix("_ticks") for p in args.demos_dir.glob("*_ticks.parquet")})
-    if not stems:
-        print(f"No *_ticks.parquet found in {args.demos_dir}")
-        return
-    print(f"Found {len(stems)} demos: {stems}")
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    train_stems = stems[: -args.val_demos] if args.val_demos > 0 else stems
-    val_stems = stems[-args.val_demos:] if args.val_demos > 0 else []
-    print(f"Split (demo-level): train={len(train_stems)}, val={len(val_stems)}")
+    # Demo-level shuffle then split — deterministic via seed
+    rng = np.random.default_rng(args.seed)
+    order = list(range(len(parqs)))
+    rng.shuffle(order)
+    parqs = [parqs[i] for i in order]
+    val_n = min(args.val_demos, len(parqs) - 1)
+    train_parqs = parqs[val_n:]
+    val_parqs = parqs[:val_n]
+
+    print(f"Total demos: {len(parqs)} (train: {len(train_parqs)}, val: {len(val_parqs)})")
+    print(f"Downsample: {args.downsample}x (8Hz from 64Hz)")
+    print(f"Feature dim: {TOTAL_DIM} ({N_PLAYERS}×{PER_PLAYER_DIM} player + {GLOBAL_DIM} global)")
+    print(f"Output dir: {OUT_DIR}")
     print()
 
-    print("Building train rounds...")
-    train_rounds: list[dict] = []
-    for s in train_stems:
-        train_rounds.extend(process_demo(s, args.demos_dir, args.target_hz))
+    def process_split(parqs_sub: list[Path], split_name: str) -> dict:
+        all_tensors = []
+        all_metas = []
+        summaries = []
+        t0 = time.time()
+        for i, p in enumerate(parqs_sub):
+            t1 = time.time()
+            try:
+                tensors, metas, summary = process_demo(p, args.downsample)
+            except Exception as e:
+                print(f"  [{split_name} {i+1}/{len(parqs_sub)}] FAIL {p.stem}: "
+                      f"{type(e).__name__}: {e}")
+                continue
+            all_tensors.extend(tensors)
+            all_metas.extend(metas)
+            summaries.append(summary)
+            elapsed = time.time() - t1
+            print(f"  [{split_name} {i+1}/{len(parqs_sub)}] {summary['demo_stem']}: "
+                  f"{summary['n_rounds']} rounds, "
+                  f"{summary['total_ticks']:,} encoded ticks, "
+                  f"{elapsed:.1f}s")
 
+        out_path = OUT_DIR / f"{split_name}.pt"
+        torch.save({
+            "tensors": all_tensors,
+            "metas": all_metas,
+            "summaries": summaries,
+            "feature_dim": TOTAL_DIM,
+            "downsample": args.downsample,
+        }, out_path)
+        total_ticks = sum(t.shape[0] for t in all_tensors)
+        size_mb = out_path.stat().st_size / 1e6
+        print(f"  -> {out_path.name}: {len(all_tensors)} rounds, "
+              f"{total_ticks:,} ticks, {size_mb:.1f} MB, "
+              f"{time.time()-t0:.0f}s total")
+        return {
+            "split": split_name,
+            "n_demos": len(summaries),
+            "n_rounds": len(all_tensors),
+            "total_ticks": total_ticks,
+            "size_mb": size_mb,
+        }
+
+    print("=== train split ===")
+    train_summary = process_split(train_parqs, "train")
     print()
-    print("Building val rounds...")
-    val_rounds: list[dict] = []
-    for s in val_stems:
-        val_rounds.extend(process_demo(s, args.demos_dir, args.target_hz))
+    print("=== val split ===")
+    val_summary = process_split(val_parqs, "val")
+    print()
 
-    train_path = args.output_dir / "train.pt"
-    val_path = args.output_dir / "val.pt"
-    torch.save(train_rounds, train_path)
-    torch.save(val_rounds, val_path)
-
-    feature_dim = train_rounds[0]["features"].shape[1] if train_rounds else 0
+    # Schema doc — every downstream consumer reads this
     schema = {
-        "version": 2,
-        "feature_dim": feature_dim,
-        "target_hz": args.target_hz,
-        "n_player_slots": N_PLAYER_SLOTS,
-        "per_player_dim": 30,
-        "global_dim": 26,
-        "n_maps": len(MAPS),
-        "map_embed_dim_default": 8,
-        "weapon_classes": WEAPON_CLASSES,
-        "maps": MAPS,
-        "event_types": EVENT_TYPES,
-        "phases": PHASES,
-        "notes": (
-            "Per tick: [10 players × 30 dim concatenated] + [26 global dim]. "
-            "Player slots are positional (sorted by side then steamid within round); "
-            "missing-player slots are zero-padded. Velocity is tick-to-tick position "
-            "delta in normalized units. round_won_t is per-round, NEVER an objective — "
-            "diagnostic probe only. v2: replaced 4-dim map one-hot with a per-round "
-            "map_id (int) consumed by the encoder's learned nn.Embedding (default 8 dim) — "
-            "lets the model learn map similarity, not just identity."
-        ),
+        "version": "feature_schema_v1",
+        "downsample": args.downsample,
+        "tickrate_hz": 8,
+        "feature_dim": TOTAL_DIM,
+        "n_players": N_PLAYERS,
+        "per_player_dim": PER_PLAYER_DIM,
+        "global_dim": GLOBAL_DIM,
+        "weapon_categories": WEAPON_CAT_LIST,
+        "map_vocab": MAP_VOCAB,
+        "phase_vocab": PHASE_VOCAB,
+        "player_slot_layout": "T1, T2, T3, T4, T5, CT1, CT2, CT3, CT4, CT5",
+        "per_player_layout": [
+            "x", "y", "z",
+            "sin_yaw", "cos_yaw", "sin_pitch", "cos_pitch",
+            "hp", "armor", "has_helmet", "has_defuser",
+            "log_balance", "log_equip_value", "alive", "has_c4",
+            f"primary_weapon_onehot({len(WEAPON_CAT_LIST)})",
+            f"secondary_weapon_onehot({len(WEAPON_CAT_LIST)})",
+            "util_smoke", "util_flash", "util_molly", "util_he", "util_decoy",
+        ],
+        "global_layout": [
+            f"map_onehot({len(MAP_VOCAB)})",
+            f"phase_onehot({len(PHASE_VOCAB)})",
+            "score_t_norm", "score_ct_norm",
+            "round_num_norm", "round_time_s_norm",
+            "bomb_state_onehot(4)", "bomb_x", "bomb_y", "bomb_age_s_norm",
+        ],
     }
-    schema_path = args.output_dir / "feature_schema_v1.json"
-    schema_path.write_text(json.dumps(schema, indent=2))
+    (OUT_DIR / "feature_schema_v1.json").write_text(json.dumps(schema, indent=2))
 
+    manifest = {
+        "train": train_summary,
+        "val": val_summary,
+        "feature_schema": "feature_schema_v1.json",
+    }
+    (OUT_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2))
+
+    print("=== summary ===")
+    print(json.dumps(manifest, indent=2))
     print()
-    print(f"Wrote {len(train_rounds)} train rounds → {train_path}")
-    print(f"Wrote {len(val_rounds)} val rounds   → {val_path}")
-    print(f"Feature dim per tick: {feature_dim}")
-    print(f"Schema: {schema_path}")
+    print(f"Schema: {OUT_DIR / 'feature_schema_v1.json'}")
+    print(f"Done.")
 
 
 if __name__ == "__main__":
