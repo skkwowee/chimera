@@ -7,20 +7,29 @@ axes 1, 2, 5.
 
 ## Design history (read this once, then skip)
 
-This is the third revision of the Level 2 design and supersedes the prior
-two. The filename change `event-encoder-design.md` → `round-encoder-design.md`
-reflects the architectural reframe.
+This is the fourth revision of the Level 2 design and supersedes the prior
+three. The filename change `event-encoder-design.md` → `round-encoder-design.md`
+reflects the v3 architectural reframe; v4 keeps the round-as-sequence
+framing but switches from a bidirectional encoder to a **causal decoder**.
 
-| Rev | Design | Why rejected |
+| Rev | Design | Why rejected / superseded |
 |---|---|---|
 | v1 | Fixed-tick windows around each event (e.g., ±128 ticks) | Smuggled arbitrary quantization back at coarser scale |
 | v2 | Event-token transformer (awpy events as discrete tokens) | awpy event times are *outcome*-timed, not *cause*-timed — the kill tick is the answer key, not the question |
-| **v3 (current)** | **Round-as-sequence-of-downsampled-ticks, bidirectional transformer, awpy events as query positions only** | Validated against OpenAI Five precedent and the user's repeated "don't quantize time" pushback |
+| v3 | Round-as-sequence-of-downsampled-ticks, **bidirectional** transformer, awpy events as query positions | Bidirectional attention lets future-state (esp. round outcome) leak backward into every per-tick embedding — exactly the F2 collapse path |
+| **v4 (current)** | **Round-as-sequence-of-downsampled-ticks, *causal decoder*, four predict-forward objectives** | Causal attention structurally prevents future-leakage; matches the OpenAI Five precedent (causal LSTM); aligns with decision-support use case where embedding-at-T should know the past, not the future |
 
-The v3 design treats a whole CS2 round as a sequence (~1000 tokens at 8 Hz)
-and lets attention learn temporal relational structure across the round.
-Events are not pre-segmented; they emerge from attention patterns and are
-queried by *position*, not by *boundary*.
+The v4 design — implemented in `scripts/train_round_encoder.py` and
+`scripts/build_tick_sequences.py` — uses causal self-attention so that
+`h_T` is a function of ticks `0..T` only. F2-safe by construction. The
+four objectives are all predict-forward (next-tick MSE, multi-horizon
+MSE, time-to-next-event, next-event-type CE) — none consume `round_won`.
+
+§3 (Architecture) and §4 (Training objectives) below were written for v3
+and contain references to bidirectional attention + masked-reconstruction
+objectives. **The shipped code follows v4** (see the script docstrings for
+the canonical current spec). A full doc rewrite to v4 is pending; for now,
+treat v3 sections as historical and the scripts as ground truth.
 
 ## 1. Purpose and constraints
 
