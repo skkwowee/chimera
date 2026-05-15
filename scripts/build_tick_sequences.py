@@ -210,10 +210,9 @@ def _global_features(
     else:
         phase[1] = 1.0
 
-    # Map one-hot
-    map_oh = np.zeros(len(MAPS), dtype=np.float32)
-    if map_name in MAP_IDX:
-        map_oh[MAP_IDX[map_name]] = 1.0
+    # Map identity is now handled via a learned per-map nn.Embedding in the
+    # encoder (see train_round_encoder.py); the per-tick global block no
+    # longer carries a map one-hot. Each round-record carries `map_id` (int).
 
     # Sinusoidal time encoding (6 sin/cos pairs at different frequencies)
     secs = (tick - round_info["start"]) / 64.0
@@ -231,11 +230,10 @@ def _global_features(
         bomb_pos,       # 2
         np.array([bomb_timer, round_timer], dtype=np.float32),  # 2
         score,          # 3
-        map_oh,         # 4
         phase,          # 3
         time_enc,       # 12
     ])
-    assert feats.shape == (30,), feats.shape
+    assert feats.shape == (26,), feats.shape
     return feats
 
 
@@ -394,6 +392,7 @@ def process_demo(demo_stem: str, demos_dir: Path, target_hz: int) -> list[dict]:
             "demo_stem": demo_stem,
             "round_num": rn,
             "map_name": map_name,
+            "map_id": int(MAP_IDX.get(map_name, 0)),  # for the learned map embedding
             "features": torch.from_numpy(features),
             "tick_indices": torch.from_numpy(tick_indices),
             "tick_seconds": torch.from_numpy(tick_seconds),
@@ -450,22 +449,26 @@ def main() -> None:
 
     feature_dim = train_rounds[0]["features"].shape[1] if train_rounds else 0
     schema = {
-        "version": 1,
+        "version": 2,
         "feature_dim": feature_dim,
         "target_hz": args.target_hz,
         "n_player_slots": N_PLAYER_SLOTS,
         "per_player_dim": 30,
-        "global_dim": 30,
+        "global_dim": 26,
+        "n_maps": len(MAPS),
+        "map_embed_dim_default": 8,
         "weapon_classes": WEAPON_CLASSES,
         "maps": MAPS,
         "event_types": EVENT_TYPES,
         "phases": PHASES,
         "notes": (
-            "Per tick: [10 players × 30 dim concatenated] + [30 global dim]. "
+            "Per tick: [10 players × 30 dim concatenated] + [26 global dim]. "
             "Player slots are positional (sorted by side then steamid within round); "
             "missing-player slots are zero-padded. Velocity is tick-to-tick position "
             "delta in normalized units. round_won_t is per-round, NEVER an objective — "
-            "diagnostic probe only."
+            "diagnostic probe only. v2: replaced 4-dim map one-hot with a per-round "
+            "map_id (int) consumed by the encoder's learned nn.Embedding (default 8 dim) — "
+            "lets the model learn map similarity, not just identity."
         ),
     }
     schema_path = args.output_dir / "feature_schema_v1.json"

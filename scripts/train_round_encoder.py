@@ -64,6 +64,13 @@ class EncoderConfig:
     dropout: float = 0.15
     max_seq_len: int = 1024
 
+    # Map embedding: tiny lookup table, one 8-dim vector per map. Concat'd to
+    # every per-tick feature vector before input projection. Lets the model
+    # learn map *similarity* (Mirage-Inferno close, Nuke far), not just
+    # identity (which a one-hot encodes). 4 × 8 = 32 learnable params.
+    n_maps: int = 4
+    map_embed_dim: int = 8
+
     # Training
     batch_size: int = 8
     grad_accum: int = 4
@@ -198,7 +205,10 @@ class RoundDecoder(nn.Module):
     def __init__(self, input_dim: int, cfg: EncoderConfig):
         super().__init__()
         self.cfg = cfg
-        self.input_proj = nn.Linear(input_dim, cfg.d_model)
+        # Map embedding: per-round map_id -> map_embed_dim vector, broadcast
+        # across all positions and concatenated to the per-tick features.
+        self.map_embedding = nn.Embedding(cfg.n_maps, cfg.map_embed_dim)
+        self.input_proj = nn.Linear(input_dim + cfg.map_embed_dim, cfg.d_model)
         self.input_dropout = nn.Dropout(cfg.dropout)
         self.blocks = nn.ModuleList(
             [CausalBlock(cfg.d_model, cfg.n_heads, cfg.d_ff, cfg.dropout) for _ in range(cfg.n_blocks)]
@@ -223,11 +233,17 @@ class RoundDecoder(nn.Module):
         self,
         features: torch.Tensor,
         tick_seconds: torch.Tensor,
+        map_ids: torch.Tensor,
         key_padding_mask: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
-        # features: (B, L, F); tick_seconds: (B, L); key_padding_mask: (B, L) bool
+        # features: (B, L, F); tick_seconds: (B, L); map_ids: (B,) int;
+        # key_padding_mask: (B, L) bool
         b, l, _ = features.shape
-        x = self.input_proj(features)
+        # Look up the per-round map vector and broadcast across all positions
+        map_vec = self.map_embedding(map_ids)  # (B, map_embed_dim)
+        map_vec_b = map_vec.unsqueeze(1).expand(b, l, -1)  # (B, L, map_embed_dim)
+        features_with_map = torch.cat([features, map_vec_b], dim=-1)  # (B, L, F + map_embed_dim)
+        x = self.input_proj(features_with_map)
         x = x + _sinusoidal_position_encoding(l, self.cfg.d_model, features.device)[None, :, :]
         x = x + _time_encoding(tick_seconds, self.cfg.d_model)
         x = self.input_dropout(x)
@@ -318,6 +334,7 @@ def collate(batch: list[dict]) -> dict[str, torch.Tensor]:
     time_to_event = torch.full((B, L_max), float("nan"))
     next_event_type = torch.full((B, L_max), -1, dtype=torch.long)
     key_padding_mask = torch.ones(B, L_max, dtype=torch.bool)  # True = pad
+    map_ids = torch.zeros(B, dtype=torch.long)
 
     for i, r in enumerate(batch):
         L = r["features"].shape[0]
@@ -326,6 +343,7 @@ def collate(batch: list[dict]) -> dict[str, torch.Tensor]:
         time_to_event[i, :L] = r["time_to_event"]
         next_event_type[i, :L] = r["next_event_type"]
         key_padding_mask[i, :L] = False
+        map_ids[i] = int(r.get("map_id", 0))
 
     return {
         "features": features,
@@ -333,6 +351,7 @@ def collate(batch: list[dict]) -> dict[str, torch.Tensor]:
         "time_to_event": time_to_event,
         "next_event_type": next_event_type,
         "key_padding_mask": key_padding_mask,
+        "map_ids": map_ids,
     }
 
 
@@ -549,7 +568,7 @@ def train(args: argparse.Namespace, cfg: EncoderConfig) -> None:
             )
 
             with torch.amp.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_amp):
-                out = model(batch["features"], batch["tick_seconds"], batch["key_padding_mask"])
+                out = model(batch["features"], batch["tick_seconds"], batch["map_ids"], batch["key_padding_mask"])
                 loss, components = compute_losses(out, batch, cfg)
 
             (loss / cfg.grad_accum).backward()
@@ -613,6 +632,12 @@ def train(args: argparse.Namespace, cfg: EncoderConfig) -> None:
     save_checkpoint(model, cfg, output_dir / "final.pt", step, None)
     log_f.close()
     print(f"\nDone. Best val loss: {best_val:.4f}. Outputs in {output_dir}")
+    if device.type == "cuda":
+        peak_alloc = torch.cuda.max_memory_allocated() / 1e9
+        peak_reserved = torch.cuda.max_memory_reserved() / 1e9
+        total = torch.cuda.get_device_properties(0).total_memory / 1e9
+        print(f"Peak VRAM: {peak_alloc:.2f} GB allocated / {peak_reserved:.2f} GB reserved "
+              f"of {total:.1f} GB total ({100*peak_reserved/total:.1f}% utilization)")
 
 
 @torch.no_grad()
@@ -623,7 +648,7 @@ def evaluate(model, loader, cfg, device, autocast_dtype, use_amp) -> float:
     for batch in loader:
         batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
         with torch.amp.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_amp):
-            out = model(batch["features"], batch["tick_seconds"], batch["key_padding_mask"])
+            out = model(batch["features"], batch["tick_seconds"], batch["map_ids"], batch["key_padding_mask"])
             loss, _ = compute_losses(out, batch, cfg)
         total += loss.item()
         n += 1
