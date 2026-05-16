@@ -1864,3 +1864,84 @@ ARTIFACTS
   outputs/round_encoder/v8_aggregates_window/best.pt + cache chunks
   outputs/round_encoder/v8_aggregates_window/{sigma_s_diag,probe_features,
     probe_pro_action}_best.json
+
+================================================================================
+2026-05-16 (cont. 4) — v9 change-point: mechanism works, objective misaligned
+================================================================================
+
+User asked for "tick aggregation TRAINED" — model learns its own event
+windows, not fixed 2s. Approach C (change-point segmentation) chosen
+over A (mixture-of-horizons) for being closer to the "learn what an
+event IS" goal.
+
+DESIGN
+- ChangePointHead (~0.4M params on top of v6 encoder):
+  - per-tick boundary head → b_logits → sigmoid → b_prob
+  - training: Bernoulli sample b_hard ~ p; STE for gradient through hard
+  - eval: top-K positions where K = target_density × T (reproducible)
+  - cumsum(b_hard) → segment ID per tick
+  - per-segment scatter_mean of h → forecast head → 6 aggregates
+    (kill_t count, kill_ct count, plant/defuse/explode/round_end flags)
+- Loss:
+  - L_segment = smooth-L1 on log1p(counts) + BCE on flags
+  - L_density = (mean(b_prob) - target_density)^2  (around-target, not minimization)
+  - target_density = 0.02 (= 1 boundary per 50 ticks ≈ 6.25s, ~20 segments/round)
+- Init: boundary head bias = logit(target_density) ≈ -3.9, so model
+  STARTS at target density, doesn't collapse to 0 boundaries while
+  hunting for the right rate
+- (Earlier attempt with min(b_prob) penalty + threshold>0.5 collapsed
+  immediately to b_prob≈0 / 1 segment per round. Fixed with the around-
+  target MSE + Bernoulli sampling + bias init.)
+
+RESULTS (v9 50ep on feature_schema_v2 81-demo split)
+- val_acc_event_only best 0.5370 (similar to v6 0.5269, v7 0.5391)
+- L2-G2 probe 0.7694 (slight best across versions)
+- L_cp_count 0.04, L_cp_bin 0.025 — forecast head training fine
+- cp_density stays locked at 0.020 throughout
+- cp_n_segments_avg = 20-23 per round on val
+
+THE NEGATIVE FINDING (visualize_changepoints.py)
+Plotted per-round b_prob with picked boundaries (green) and actual events
+(colored dotted lines from kills/plants/defuses). Boundaries cluster in
+1-2 tight groups per round rather than spreading across events.
+
+Quantitative: fraction of actual events within ±W ticks of a learned
+boundary (val, 6 rounds, 46 total events):
+  ±2 ticks: 4/46 = 8.7%   (random baseline ~12.5%)
+  ±4 ticks: 5/46 = 10.9%  (random baseline ~22.5%)
+  ±8 ticks: 6/46 = 13.0%  (random baseline ~42.5%)
+
+Boundaries are ANTI-CORRELATED with events. The model found a
+degenerate equilibrium: cluster boundaries in quiet periods (where
+predicting "0 events per segment" is trivially correct), then absorb
+all action into one big segment. The per-segment forecast loss does
+NOT push toward event-aligned boundaries.
+
+IMPLICATIONS
+1. "Learn event segmentation via per-segment count forecasting" is a
+   misaligned objective. Even though density + forecast loss converge,
+   the boundary positions are useless for the original goal (learning
+   what's tactically interesting).
+2. To actually learn event boundaries, the loss must reward
+   homogeneity WITHIN segments, not just predictability across
+   segments. Candidates:
+   - Contrastive: ticks in same segment should be similar in embedding,
+     across-segment ticks should differ
+   - Per-segment outcome prediction (round_won) — outcomes change at
+     events
+   - Intra-segment variance penalty on raw state features (segments
+     should be "stable" stretches)
+3. For paper: useful methodology-level negative — shows that "learning
+   events from forecasting" needs a sharper objective than count-
+   matching.
+
+ARTIFACTS
+  scripts/train_round_encoder.py — ChangePointHead, --change-point flag
+  scripts/visualize_changepoints.py — boundary vs event plotter
+  outputs/round_encoder/v9_changepoint/{best.pt, sigma_s_diag, probe_*,
+    changepoints.png}
+
+v6 remains production. v9 demonstrates the change-point mechanism works
+mechanically but doesn't learn semantically meaningful boundaries
+under this loss. Documented as a research direction (intra-segment
+homogeneity loss) for a future iteration.

@@ -104,14 +104,21 @@ class TrainConfig:
 
     # v9: change-point segmentation. Per-tick boundary head predicts where
     # an "event" ends; cumsum of boundaries → segment ID per tick. Aggregate
-    # head forecasts per-segment event counts. Density penalty prevents
-    # trivial "boundary every tick" collapse. The forecast loss prevents
-    # trivial "no boundaries" collapse. Equilibrium = boundaries at real
-    # state transitions, i.e., emergent event segmentation.
+    # head forecasts per-segment event counts. Density penalty around a
+    # TARGET density (not just minimization — that collapses to 0 boundaries
+    # with 1 giant segment per round). Forecast loss prevents over-merging.
+    # Equilibrium: boundaries at real state transitions, ~target_density.
+    #
+    # Initialization: boundary head bias starts at logit(target_density) so
+    # the model begins around the desired regime instead of having to climb
+    # there against the density-around-target gradient.
     use_change_point: bool = False
-    change_point_max_segments: int = 64   # max segments per round (cap for batching)
-    change_point_weight: float = 0.3      # weight on segment-forecast loss
-    change_point_density_weight: float = 0.05  # λ_d penalty on boundary density
+    change_point_max_segments: int = 64
+    change_point_weight: float = 1.0
+    change_point_target_density: float = 0.02
+    # MSE around the target — penalty = weight * (mean(b_prob) - target)^2.
+    # Pulls density toward target from either side; stable equilibrium.
+    change_point_density_weight: float = 5.0
 
     # Optim
     lr: float = 3e-4
@@ -490,7 +497,8 @@ class ChangePointHead(nn.Module):
     KILLS_CT = WindowForecastHead.KILLS_CT
     BIN_FIRST = WindowForecastHead.BIN_FIRST
 
-    def __init__(self, d_model: int, max_segments: int = 64):
+    def __init__(self, d_model: int, max_segments: int = 64,
+                 init_target_density: float = 0.02):
         super().__init__()
         self.max_segments = max_segments
         self.boundary_head = nn.Sequential(
@@ -498,6 +506,16 @@ class ChangePointHead(nn.Module):
             nn.GELU(),
             nn.Linear(d_model // 2, 1),
         )
+        # Initialize boundary bias so the model STARTS around the target
+        # density (logit(p) = log(p/(1-p))). Without this, with zero-init
+        # sigmoid(0)=0.5 we'd start with half the ticks being boundaries —
+        # the model collapses straight to "1 giant segment per round" as
+        # the first move because the per-batch density penalty dominates
+        # the per-segment forecast signal at start.
+        p = max(min(init_target_density, 0.99), 1e-4)
+        init_bias = float(math.log(p / (1.0 - p)))
+        with torch.no_grad():
+            self.boundary_head[-1].bias.fill_(init_bias)
         self.forecast_head = nn.Sequential(
             nn.Linear(d_model, d_model),
             nn.GELU(),
@@ -519,7 +537,20 @@ class ChangePointHead(nn.Module):
         B, T, D = h.shape
         b_logits = self.boundary_head(h).squeeze(-1)  # (B, T)
         b_prob = torch.sigmoid(b_logits)
-        b_hard = (b_prob > 0.5).float()
+        # Discrete sample. Training: Bernoulli (stochastic, matches density);
+        # eval: top-K positions where K ≈ E[b_prob] × T (reproducible, same
+        # expected segment count). Threshold>0.5 would under-sample whenever
+        # the target density is below 0.5 (always, in our setup).
+        if self.training:
+            b_hard = torch.bernoulli(b_prob)
+        else:
+            # Pick the round-mean-density top-K positions per batch row
+            k = int(torch.clamp(b_prob.mean(dim=1).mean() * T, min=1.0,
+                                  max=float(T - 1)).item())
+            # topk indices, then scatter 1.0
+            _, idx = torch.topk(b_prob, k, dim=1)
+            b_hard = torch.zeros_like(b_prob)
+            b_hard.scatter_(1, idx, 1.0)
         # Straight-through estimator: forward uses hard, backward uses soft.
         b_ste = b_hard.detach() + b_prob - b_prob.detach()  # (B, T)
 
@@ -799,15 +830,19 @@ def compute_loss(
                 bin_pred[valid_seg], bin_tgt[valid_seg],
             )
             seg_loss = cnt_loss + bin_loss
-            # Density penalty: encourage low mean boundary probability
+            # Density target penalty: MSE between mean(b_prob) and target.
+            # Pulls density from either side toward target (≈ one boundary per
+            # 50 ticks at target=0.02). Without this the model converges to
+            # either zero boundaries (1 segment) or every-tick boundaries.
             density = b_prob[mask].mean()
-            density_pen = cfg.change_point_density_weight * density
+            density_pen = cfg.change_point_density_weight * (density - cfg.change_point_target_density) ** 2
             cp_loss = cfg.change_point_weight * seg_loss + density_pen
             if torch.isfinite(cp_loss):
                 total = total + cp_loss
                 metrics["L_cp_count"] = float(cnt_loss.item())
                 metrics["L_cp_bin"] = float(bin_loss.item())
                 metrics["cp_density"] = float(density.item())
+                metrics["cp_density_target"] = float(cfg.change_point_target_density)
                 metrics["cp_n_segments_avg"] = float(seg_mask.float().sum(dim=1).mean().item())
 
     # --- v8: window-forecast objective ---
@@ -944,11 +979,13 @@ def train(cfg: TrainConfig) -> None:
         if cfg.use_change_point:
             change_point_head = ChangePointHead(
                 cfg.d_model, max_segments=cfg.change_point_max_segments,
+                init_target_density=cfg.change_point_target_density,
             ).to(device)
             print(f"Change-point segmentation ON (max_segments="
                   f"{cfg.change_point_max_segments}, seg_weight="
-                  f"{cfg.change_point_weight}, density_weight="
-                  f"{cfg.change_point_density_weight})")
+                  f"{cfg.change_point_weight}, "
+                  f"target_density={cfg.change_point_target_density}, "
+                  f"density_weight={cfg.change_point_density_weight})")
     else:
         print("Event objectives OFF — dataset has no event_labels")
 
@@ -1116,10 +1153,12 @@ def main() -> None:
                          "event boundaries via straight-through estimator)")
     ap.add_argument("--change-point-max-segments", type=int, default=64,
                     help="max segments per round for change-point head")
-    ap.add_argument("--change-point-weight", type=float, default=0.3)
-    ap.add_argument("--change-point-density-weight", type=float, default=0.05,
-                    help="penalty on mean boundary probability (prevents "
-                         "boundary-everywhere collapse)")
+    ap.add_argument("--change-point-weight", type=float, default=1.0)
+    ap.add_argument("--change-point-target-density", type=float, default=0.02,
+                    help="target boundary density (mean b_prob across ticks); "
+                         "0.02 ≈ 1 boundary per 50 ticks ≈ 6.25s")
+    ap.add_argument("--change-point-density-weight", type=float, default=5.0,
+                    help="MSE penalty weight around target density")
     ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--run-id", type=str, default=None,
@@ -1154,6 +1193,7 @@ def main() -> None:
         use_change_point=args.change_point,
         change_point_max_segments=args.change_point_max_segments,
         change_point_weight=args.change_point_weight,
+        change_point_target_density=args.change_point_target_density,
         change_point_density_weight=args.change_point_density_weight,
         log_every=args.log_every,
         seed=args.seed,
