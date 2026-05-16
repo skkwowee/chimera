@@ -1,701 +1,455 @@
 #!/usr/bin/env python3
-"""Train the Level-2 round encoder (causal decoder over per-tick features).
+"""Train the Level-2 round encoder (v4: causal decoder).
 
-The encoder consumes one CS2 round at a time as a sequence of downsampled
-(8 Hz) per-tick feature vectors, and is trained with four causal-honest
-self-supervised objectives:
+Per docs/round-encoder-design.md v4:
+  - Round-as-sequence-of-downsampled-ticks (8 Hz, ~960 tokens per round)
+  - Causal self-attention so h_T is a function of ticks 0..T only (F2-safe)
+  - Predict-forward SSL objectives — none consume round_won
 
-  1. Forward tick prediction         — h_T -> features at T+1   (MSE)
-  2. Multi-horizon forward state     — h_T -> features at T+8, T+32  (MSE)
-  3. Time-to-next-event regression   — h_T -> seconds-to-next-event  (Smooth L1)
-  4. Next-event-type prediction      — h_T -> argmax over 6 types    (CE + smoothing)
+This v1 of the script ships TWO of the four planned SSL objectives:
+  - L_next:  MSE on per-tick feature vector at T+1
+  - L_multi: MSE on per-tick feature vector at T+H for H ∈ {8, 32}
+             (1s and 4s ahead — multi-horizon prevents short-horizon shortcut)
 
-ALL objectives are predict-forward (no future-leakage) and NONE consume
-round_won (F2 collapse safety, hard constraint).
-
-Two sizes: --smoke (~2-3M params, 256-dim/2-block, for the de-risk on 4 demos)
-and --full (~50M params, 1024-dim/4-block, for the real run on 40+ demos).
+The other two objectives (time-to-next-event regression, next-event-type CE)
+need per-tick event labels that build_tick_sequences.py doesn't currently
+emit. Adding them is incremental — extend the data prep with kills.json /
+bomb.json walkthroughs, plug new heads into the loss sum here.
 
 Usage:
-    python scripts/train_round_encoder.py --smoke
-    python scripts/train_round_encoder.py --full --epochs 80
+    # Smoke test (small model, few epochs) — verify training works
+    python scripts/train_round_encoder.py --d-model 256 --n-layers 2 --epochs 3
+
+    # The intended config (~13M params, ~50 epochs)
+    python scripts/train_round_encoder.py --d-model 512 --n-layers 4 --epochs 50
+
+Output:
+    outputs/round_encoder/<run-id>/
+      config.json       — full hyperparameters used
+      train_log.jsonl   — per-step + per-epoch metrics
+      best.pt           — checkpoint with lowest val total loss
+      last.pt           — most-recent checkpoint
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
-# Event types — must match build_tick_sequences.py EVENT_TYPES order
-EVENT_TYPES = ["kill_T", "kill_CT", "plant", "defuse", "freeze_end", "round_end"]
-N_EVENT_TYPES = len(EVENT_TYPES) + 1  # +1 for "no future event" sentinel
-NO_EVENT_IDX = len(EVENT_TYPES)
-
-# Forward-prediction horizons (in downsampled-tick units). 1 = next tick,
-# 8 = ~1s ahead, 32 = ~4s ahead at 8 Hz downsample.
-FORWARD_HORIZONS = (1, 8, 32)
-
-# Time-to-next-event regression: predict seconds, clipped to this max
-TIME_TO_EVENT_MAX = 30.0
+REPO = Path(__file__).resolve().parent.parent
+DATA_DIR = REPO / "data" / "processed" / "tick_sequences"
+OUTPUT_ROOT = REPO / "outputs" / "round_encoder"
 
 
 @dataclass
-class EncoderConfig:
-    """Architecture + training hyperparameters."""
-
-    # Architecture
-    d_model: int = 1024
-    n_blocks: int = 4
+class TrainConfig:
+    # Model
+    feature_dim: int = 582  # set from feature_schema_v1.json
+    d_model: int = 512
+    n_layers: int = 4
     n_heads: int = 8
-    d_ff: int = 4096
+    d_ff: int = 2048
     dropout: float = 0.15
-    max_seq_len: int = 1024
+    max_seq_len: int = 2048  # > any round at 8Hz (max observed: 1547)
 
-    # Map embedding: tiny lookup table, one 8-dim vector per map. Concat'd to
-    # every per-tick feature vector before input projection. Lets the model
-    # learn map *similarity* (Mirage-Inferno close, Nuke far), not just
-    # identity (which a one-hot encodes). 4 × 8 = 32 learnable params.
-    n_maps: int = 4
-    map_embed_dim: int = 8
+    # SSL horizons (in 8Hz ticks): 1 = 0.125s, 8 = 1s, 32 = 4s
+    horizons: list[int] = field(default_factory=lambda: [1, 8, 32])
+    horizon_weights: list[float] = field(default_factory=lambda: [1.0, 0.7, 0.4])
 
-    # Training
-    batch_size: int = 8
-    grad_accum: int = 4
-    epochs: int = 80
+    # Optim
     lr: float = 3e-4
     weight_decay: float = 0.01
-    warmup_frac: float = 0.05
-    min_lr_frac: float = 0.10
+    warmup_steps: int = 200
     grad_clip: float = 1.0
+    batch_size: int = 8
+    epochs: int = 30
+    num_workers: int = 2
 
-    # Loss weights (forward_tick, multi_horizon, time_to_event, next_event_type)
-    loss_weights: tuple[float, float, float, float] = (1.0, 0.5, 0.5, 0.5)
-
-    # Regularization
-    player_slot_dropout: float = 0.10  # randomly zero entire player slots
-    label_smoothing: float = 0.1
-
-    # Logging / checkpointing
-    log_every: int = 20
-    val_every: int = 200
-    save_every: int = 500
-
-
-def smoke_config() -> EncoderConfig:
-    """De-risk smoke-test config (~2-3M params)."""
-    return EncoderConfig(
-        d_model=256,
-        n_blocks=2,
-        n_heads=4,
-        d_ff=1024,
-        batch_size=16,
-        epochs=200,
-        log_every=10,
-        val_every=50,
-        save_every=200,
-    )
-
-
-def full_config() -> EncoderConfig:
-    """Full-encoder config (~50M params)."""
-    return EncoderConfig()  # defaults are the full spec
-
-
-# ---------------------------------------------------------------------------
-# Model
-# ---------------------------------------------------------------------------
-
-
-class CausalBlock(nn.Module):
-    """Pre-norm transformer block with causal self-attention via SDPA."""
-
-    def __init__(self, d_model: int, n_heads: int, d_ff: int, dropout: float):
-        super().__init__()
-        self.ln1 = nn.LayerNorm(d_model)
-        self.qkv = nn.Linear(d_model, 3 * d_model, bias=True)
-        self.attn_out = nn.Linear(d_model, d_model, bias=True)
-        self.ln2 = nn.LayerNorm(d_model)
-        self.ff = nn.Sequential(
-            nn.Linear(d_model, d_ff),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(d_ff, d_model),
-        )
-        self.dropout = nn.Dropout(dropout)
-        self.n_heads = n_heads
-        self.head_dim = d_model // n_heads
-        assert d_model % n_heads == 0
-
-    def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor | None = None) -> torch.Tensor:
-        # x: (B, L, d_model); key_padding_mask: (B, L) bool, True = padding (ignore)
-        b, l, _ = x.shape
-        h = self.ln1(x)
-        qkv = self.qkv(h).reshape(b, l, 3, self.n_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # each (B, H, L, head_dim)
-
-        # Build attention mask: causal + padding
-        # SDPA expects an additive mask of shape (B, H, L, L) or (L, L)
-        # is_causal=True handles the causal part; padding mask must be added
-        if key_padding_mask is not None:
-            # (B, L) -> (B, 1, 1, L), float with -inf at padded keys
-            attn_mask = torch.zeros(b, 1, 1, l, device=x.device, dtype=x.dtype)
-            attn_mask = attn_mask.masked_fill(key_padding_mask[:, None, None, :], float("-inf"))
-            # SDPA: when both is_causal and attn_mask given, only attn_mask is used,
-            # so we have to build the causal mask manually.
-            causal = torch.triu(
-                torch.full((l, l), float("-inf"), device=x.device, dtype=x.dtype), diagonal=1
-            )
-            attn_mask = attn_mask + causal[None, None, :, :]
-            attn_out = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, is_causal=False)
-        else:
-            attn_out = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-
-        attn_out = attn_out.transpose(1, 2).reshape(b, l, -1)
-        x = x + self.dropout(self.attn_out(attn_out))
-        x = x + self.dropout(self.ff(self.ln2(x)))
-        return x
-
-
-def _sinusoidal_position_encoding(seq_len: int, d_model: int, device: torch.device) -> torch.Tensor:
-    """Standard sinusoidal positional encoding [seq_len, d_model]."""
-    pos = torch.arange(seq_len, device=device, dtype=torch.float32).unsqueeze(1)
-    div_term = torch.exp(
-        torch.arange(0, d_model, 2, device=device, dtype=torch.float32) * (-math.log(10000.0) / d_model)
-    )
-    pe = torch.zeros(seq_len, d_model, device=device)
-    pe[:, 0::2] = torch.sin(pos * div_term)
-    pe[:, 1::2] = torch.cos(pos * div_term)
-    return pe
-
-
-def _time_encoding(tick_seconds: torch.Tensor, d_model: int) -> torch.Tensor:
-    """Sinusoidal encoding over round-relative seconds [B, L, d_model]."""
-    device = tick_seconds.device
-    div_term = torch.exp(
-        torch.arange(0, d_model, 2, device=device, dtype=torch.float32) * (-math.log(10000.0) / d_model)
-    )
-    # tick_seconds: (B, L) -> (B, L, 1)
-    pos = tick_seconds.unsqueeze(-1)  # (B, L, 1)
-    enc = torch.zeros(*tick_seconds.shape, d_model, device=device)
-    enc[..., 0::2] = torch.sin(pos * div_term)
-    enc[..., 1::2] = torch.cos(pos * div_term)
-    return enc
-
-
-class RoundDecoder(nn.Module):
-    """Causal decoder over per-tick features.
-
-    Input:  (B, L, input_dim) per-tick features + (B, L) round-relative seconds
-    Output: (B, L, d_model) per-tick contextualized hidden states + 4 prediction heads
-    """
-
-    def __init__(self, input_dim: int, cfg: EncoderConfig):
-        super().__init__()
-        self.cfg = cfg
-        # Map embedding: per-round map_id -> map_embed_dim vector, broadcast
-        # across all positions and concatenated to the per-tick features.
-        self.map_embedding = nn.Embedding(cfg.n_maps, cfg.map_embed_dim)
-        self.input_proj = nn.Linear(input_dim + cfg.map_embed_dim, cfg.d_model)
-        self.input_dropout = nn.Dropout(cfg.dropout)
-        self.blocks = nn.ModuleList(
-            [CausalBlock(cfg.d_model, cfg.n_heads, cfg.d_ff, cfg.dropout) for _ in range(cfg.n_blocks)]
-        )
-        self.ln_out = nn.LayerNorm(cfg.d_model)
-
-        # Prediction heads (each a small MLP)
-        def _head(out_dim: int) -> nn.Sequential:
-            return nn.Sequential(
-                nn.Linear(cfg.d_model, cfg.d_model),
-                nn.GELU(),
-                nn.Linear(cfg.d_model, out_dim),
-            )
-
-        self.head_forward_tick = _head(input_dim)        # predict raw features at T+1
-        self.head_forward_h8 = _head(input_dim)          # predict features at T+8
-        self.head_forward_h32 = _head(input_dim)         # predict features at T+32
-        self.head_time_to_event = _head(1)               # scalar: seconds to next event
-        self.head_next_event_type = _head(N_EVENT_TYPES)  # logits over event types
-
-    def forward(
-        self,
-        features: torch.Tensor,
-        tick_seconds: torch.Tensor,
-        map_ids: torch.Tensor,
-        key_padding_mask: torch.Tensor | None = None,
-    ) -> dict[str, torch.Tensor]:
-        # features: (B, L, F); tick_seconds: (B, L); map_ids: (B,) int;
-        # key_padding_mask: (B, L) bool
-        b, l, _ = features.shape
-        # Look up the per-round map vector and broadcast across all positions
-        map_vec = self.map_embedding(map_ids)  # (B, map_embed_dim)
-        map_vec_b = map_vec.unsqueeze(1).expand(b, l, -1)  # (B, L, map_embed_dim)
-        features_with_map = torch.cat([features, map_vec_b], dim=-1)  # (B, L, F + map_embed_dim)
-        x = self.input_proj(features_with_map)
-        x = x + _sinusoidal_position_encoding(l, self.cfg.d_model, features.device)[None, :, :]
-        x = x + _time_encoding(tick_seconds, self.cfg.d_model)
-        x = self.input_dropout(x)
-
-        for blk in self.blocks:
-            x = blk(x, key_padding_mask=key_padding_mask)
-        h = self.ln_out(x)  # (B, L, d_model)
-
-        return {
-            "hidden": h,
-            "pred_t1": self.head_forward_tick(h),       # (B, L, F)
-            "pred_h8": self.head_forward_h8(h),         # (B, L, F)
-            "pred_h32": self.head_forward_h32(h),       # (B, L, F)
-            "pred_time": self.head_time_to_event(h).squeeze(-1),  # (B, L)
-            "pred_event_type": self.head_next_event_type(h),  # (B, L, N_EVENT_TYPES)
-        }
+    # Bookkeeping
+    log_every: int = 10
+    val_every_epochs: int = 1
+    seed: int = 42
+    output_dir: str = ""
 
 
 # ---------------------------------------------------------------------------
 # Dataset
 # ---------------------------------------------------------------------------
+class RoundDataset(Dataset):
+    """Wraps the list of per-round (T, F) tensors from train.pt / val.pt."""
 
-
-class TickSequenceDataset(Dataset):
-    """Wraps the list-of-round-dicts produced by build_tick_sequences.py.
-
-    Pre-computes per-position labels: time-to-next-event and next-event-type.
-    """
-
-    def __init__(self, rounds_path: Path, target_hz: int = 8):
-        self.rounds: list[dict] = torch.load(rounds_path, weights_only=False)
-        self.target_hz = target_hz
-        # Pre-compute event labels per round
-        for r in self.rounds:
-            tick_indices = r["tick_indices"]  # (L,)
-            events = r["events"]
-            r["time_to_event"], r["next_event_type"] = self._compute_event_labels(
-                tick_indices, events
-            )
-
-    @staticmethod
-    def _compute_event_labels(
-        tick_indices: torch.Tensor, events: list[dict]
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """For each position, find seconds-to-next-event and next-event-type."""
-        L = tick_indices.shape[0]
-        time_to = torch.full((L,), float("nan"))  # nan = no future event (mask out)
-        type_idx = torch.full((L,), -1, dtype=torch.long)  # -1 = ignore in CE loss
-
-        if not events:
-            return time_to, type_idx
-
-        # Walk positions and find next event > current tick
-        ev_ticks = [e["tick"] for e in events]
-        ev_types = [EVENT_TYPES.index(e["type"]) for e in events]
-        ev_idx = 0
-        for i in range(L):
-            t = int(tick_indices[i].item())
-            # Advance ev_idx to the first event strictly after t
-            while ev_idx < len(events) and ev_ticks[ev_idx] <= t:
-                ev_idx += 1
-            if ev_idx < len(events):
-                dt_seconds = (ev_ticks[ev_idx] - t) / 64.0
-                time_to[i] = min(dt_seconds, TIME_TO_EVENT_MAX)
-                type_idx[i] = ev_types[ev_idx]
-            else:
-                # No future event: label as "no event" sentinel for the type CE,
-                # leave time-to NaN (mask out in regression loss)
-                type_idx[i] = NO_EVENT_IDX
-
-        return time_to, type_idx
+    def __init__(self, pt_path: Path):
+        blob = torch.load(pt_path, weights_only=False)
+        self.tensors: list[torch.Tensor] = blob["tensors"]
+        self.metas: list[dict] = blob["metas"]
+        self.feature_dim: int = int(blob["feature_dim"])
 
     def __len__(self) -> int:
-        return len(self.rounds)
+        return len(self.tensors)
 
-    def __getitem__(self, idx: int) -> dict:
-        return self.rounds[idx]
+    def __getitem__(self, i: int) -> tuple[torch.Tensor, dict]:
+        return self.tensors[i], self.metas[i]
 
 
-def collate(batch: list[dict]) -> dict[str, torch.Tensor]:
-    """Pad variable-length rounds to the longest in the batch."""
-    L_max = max(r["features"].shape[0] for r in batch)
-    F = batch[0]["features"].shape[1]
-    B = len(batch)
+def collate(batch: list[tuple[torch.Tensor, dict]]) -> dict:
+    """Pad rounds to max-T-in-batch; build attention mask (1=real, 0=pad)."""
+    tensors, metas = zip(*batch)
+    lengths = torch.tensor([t.shape[0] for t in tensors], dtype=torch.long)
+    T_max = int(lengths.max().item())
+    F_dim = tensors[0].shape[1]
+    B = len(tensors)
+    out = torch.zeros(B, T_max, F_dim, dtype=torch.float32)
+    mask = torch.zeros(B, T_max, dtype=torch.bool)
+    for i, t in enumerate(tensors):
+        out[i, : t.shape[0]] = t
+        mask[i, : t.shape[0]] = True
+    return {"x": out, "mask": mask, "lengths": lengths, "metas": list(metas)}
 
-    features = torch.zeros(B, L_max, F)
-    tick_seconds = torch.zeros(B, L_max)
-    time_to_event = torch.full((B, L_max), float("nan"))
-    next_event_type = torch.full((B, L_max), -1, dtype=torch.long)
-    key_padding_mask = torch.ones(B, L_max, dtype=torch.bool)  # True = pad
-    map_ids = torch.zeros(B, dtype=torch.long)
 
-    for i, r in enumerate(batch):
-        L = r["features"].shape[0]
-        features[i, :L] = r["features"]
-        tick_seconds[i, :L] = r["tick_seconds"]
-        time_to_event[i, :L] = r["time_to_event"]
-        next_event_type[i, :L] = r["next_event_type"]
-        key_padding_mask[i, :L] = False
-        map_ids[i] = int(r.get("map_id", 0))
+# ---------------------------------------------------------------------------
+# Sinusoidal positional encoding
+# ---------------------------------------------------------------------------
+class SinusoidalPositionalEncoding(nn.Module):
+    def __init__(self, d_model: int, max_len: int):
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        pos = torch.arange(max_len, dtype=torch.float32).unsqueeze(1)
+        div = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float32)
+                        * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(pos * div)
+        pe[:, 1::2] = torch.cos(pos * div)
+        self.register_buffer("pe", pe)
 
-    return {
-        "features": features,
-        "tick_seconds": tick_seconds,
-        "time_to_event": time_to_event,
-        "next_event_type": next_event_type,
-        "key_padding_mask": key_padding_mask,
-        "map_ids": map_ids,
-    }
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return x + self.pe[: x.shape[1]].unsqueeze(0)
+
+
+# ---------------------------------------------------------------------------
+# Causal-decoder transformer + prediction head
+# ---------------------------------------------------------------------------
+class RoundEncoder(nn.Module):
+    """Causal self-attention transformer over per-tick feature vectors.
+
+    h_T at output position T is a function of input ticks 0..T only — no
+    future leakage. F2-safe by construction (per docs/round-encoder-design.md
+    v4 design history).
+    """
+
+    def __init__(self, cfg: TrainConfig):
+        super().__init__()
+        self.cfg = cfg
+        self.input_proj = nn.Linear(cfg.feature_dim, cfg.d_model)
+        self.norm_in = nn.LayerNorm(cfg.d_model)
+        self.pos_emb = SinusoidalPositionalEncoding(cfg.d_model, cfg.max_seq_len)
+        self.layers = nn.ModuleList([
+            nn.TransformerEncoderLayer(
+                d_model=cfg.d_model,
+                nhead=cfg.n_heads,
+                dim_feedforward=cfg.d_ff,
+                dropout=cfg.dropout,
+                activation="gelu",
+                batch_first=True,
+                norm_first=True,
+            )
+            for _ in range(cfg.n_layers)
+        ])
+        self.norm_out = nn.LayerNorm(cfg.d_model)
+
+    def forward(self, x: torch.Tensor,
+                key_padding_mask: torch.Tensor | None = None) -> torch.Tensor:
+        """x: (B, T, feature_dim). key_padding_mask: (B, T) where True = PAD.
+        Returns h: (B, T, d_model).
+        """
+        h = self.norm_in(self.input_proj(x))
+        h = self.pos_emb(h)
+        T = h.shape[1]
+        causal_mask = nn.Transformer.generate_square_subsequent_mask(
+            T, device=h.device, dtype=h.dtype,
+        )
+        for layer in self.layers:
+            h = layer(
+                h,
+                src_mask=causal_mask,
+                src_key_padding_mask=key_padding_mask,
+                is_causal=True,
+            )
+        return self.norm_out(h)
+
+
+class ForwardPredHead(nn.Module):
+    """Two-layer MLP head that predicts a feature vector from h_T."""
+
+    def __init__(self, d_model: int, feature_dim: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, feature_dim),
+        )
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        return self.net(h)
 
 
 # ---------------------------------------------------------------------------
 # Loss
 # ---------------------------------------------------------------------------
-
-
-def compute_losses(
-    out: dict[str, torch.Tensor],
-    batch: dict[str, torch.Tensor],
-    cfg: EncoderConfig,
+def compute_loss(
+    encoder: RoundEncoder,
+    heads: nn.ModuleList,
+    batch: dict,
+    cfg: TrainConfig,
+    device: torch.device,
 ) -> tuple[torch.Tensor, dict[str, float]]:
-    """Compute the four objectives. Returns (total_loss, per-loss-dict for logging)."""
-    features = batch["features"]               # (B, L, F)
-    valid = ~batch["key_padding_mask"]         # (B, L) True where real
-    B, L, F_dim = features.shape
+    """Multi-horizon forward-prediction loss.
 
-    losses: dict[str, torch.Tensor] = {}
+    For each horizon H, the target at position t is the input feature vector
+    at position t+H. Padded positions and out-of-bounds positions are excluded.
 
-    # --- 1. Forward tick prediction (T -> T+1) ---
-    # Target: features shifted left by 1. Last position has no target.
-    target_t1 = torch.zeros_like(features)
-    target_t1[:, :-1] = features[:, 1:]
-    valid_t1 = valid.clone()
-    valid_t1[:, -1:] = False
-    valid_t1 = valid_t1 & valid.roll(-1, dims=1)  # also need T+1 to be real
-    diff = (out["pred_t1"] - target_t1) ** 2
-    diff = diff.mean(dim=-1)  # (B, L)
-    if valid_t1.any():
-        losses["forward_tick"] = diff[valid_t1].mean()
-    else:
-        losses["forward_tick"] = torch.zeros((), device=features.device)
-
-    # --- 2. Multi-horizon forward state (T -> T+8, T+32) ---
-    horizon_loss = 0.0
-    horizon_count = 0
-    for horizon, pred_key in zip((8, 32), ("pred_h8", "pred_h32")):
-        if L <= horizon:
-            continue
-        target = features.roll(-horizon, dims=1)
-        valid_h = valid.clone()
-        valid_h[:, -horizon:] = False
-        # Also require target position to be real
-        valid_target = valid.roll(-horizon, dims=1)
-        valid_target[:, -horizon:] = False
-        valid_h = valid_h & valid_target
-        diff = (out[pred_key] - target) ** 2
-        diff = diff.mean(dim=-1)
-        if valid_h.any():
-            horizon_loss = horizon_loss + diff[valid_h].mean()
-            horizon_count += 1
-    if horizon_count > 0:
-        losses["multi_horizon"] = horizon_loss / horizon_count
-    else:
-        losses["multi_horizon"] = torch.zeros((), device=features.device)
-
-    # --- 3. Time-to-next-event regression (Smooth L1) ---
-    time_target = batch["time_to_event"]  # (B, L), NaN where no future event
-    time_valid = valid & ~torch.isnan(time_target)
-    if time_valid.any():
-        pred_time = out["pred_time"]
-        # Normalize by TIME_TO_EVENT_MAX for stable regression
-        pred_norm = pred_time / TIME_TO_EVENT_MAX
-        target_norm = time_target / TIME_TO_EVENT_MAX
-        # Replace NaN in target with 0 (will be masked out anyway)
-        target_norm = torch.where(time_valid, target_norm, torch.zeros_like(target_norm))
-        l1 = F.smooth_l1_loss(pred_norm, target_norm, reduction="none")
-        losses["time_to_event"] = l1[time_valid].mean()
-    else:
-        losses["time_to_event"] = torch.zeros((), device=features.device)
-
-    # --- 4. Next-event-type prediction (CE) ---
-    event_target = batch["next_event_type"]  # (B, L), -1 where ignore
-    type_valid = valid & (event_target >= 0)
-    if type_valid.any():
-        # Cross-entropy with ignore_index=-1
-        logits = out["pred_event_type"]  # (B, L, N_EVENT_TYPES)
-        ce = F.cross_entropy(
-            logits.reshape(-1, N_EVENT_TYPES),
-            event_target.reshape(-1),
-            ignore_index=-1,
-            label_smoothing=cfg.label_smoothing,
-        )
-        losses["next_event_type"] = ce
-    else:
-        losses["next_event_type"] = torch.zeros((), device=features.device)
-
-    # Weighted sum
-    w_tick, w_horizon, w_time, w_type = cfg.loss_weights
-    total = (
-        w_tick * losses["forward_tick"]
-        + w_horizon * losses["multi_horizon"]
-        + w_time * losses["time_to_event"]
-        + w_type * losses["next_event_type"]
-    )
-
-    return total, {k: float(v.item()) for k, v in losses.items()}
-
-
-# ---------------------------------------------------------------------------
-# Per-player slot dropout (input-side regularization)
-# ---------------------------------------------------------------------------
-
-PER_PLAYER_DIM = 30
-N_PLAYER_SLOTS = 10
-
-
-def apply_player_slot_dropout(features: torch.Tensor, p: float, training: bool) -> torch.Tensor:
-    """Randomly zero entire player slots (per round, per slot) with probability p.
-
-    features: (B, L, F=N_player_slots*per_player_dim + global_dim)
+    Returns (total_loss, per_horizon_dict).
     """
-    if not training or p <= 0:
-        return features
-    B, L, F = features.shape
-    # Per-batch, per-slot dropout decision (consistent across the round)
-    # Shape: (B, N_PLAYER_SLOTS) -> mask each slot's chunk in features
-    mask = (torch.rand(B, N_PLAYER_SLOTS, device=features.device) > p).float()
-    # Build a (B, F) feature-level mask: 1 for global, dropout for player slots
-    feat_mask = torch.ones(B, F, device=features.device)
-    for slot in range(N_PLAYER_SLOTS):
-        start = slot * PER_PLAYER_DIM
-        end = start + PER_PLAYER_DIM
-        feat_mask[:, start:end] = mask[:, slot:slot + 1]
-    return features * feat_mask[:, None, :]
+    x = batch["x"].to(device, non_blocking=True)        # (B, T, F)
+    mask = batch["mask"].to(device, non_blocking=True)  # (B, T) — True = real
+    key_padding_mask = ~mask                            # (B, T) — True = PAD
+
+    h = encoder(x, key_padding_mask=key_padding_mask)   # (B, T, d_model)
+
+    total = torch.zeros((), device=device, dtype=h.dtype)
+    per_horizon: dict[str, float] = {}
+    _, T, _ = x.shape
+
+    for w, H, head in zip(cfg.horizon_weights, cfg.horizons, heads):
+        if H >= T:
+            per_horizon[f"L_h{H}"] = 0.0
+            continue
+        h_pred = head(h[:, : T - H, :])           # (B, T-H, F)
+        target = x[:, H:, :]                       # (B, T-H, F)
+        valid = mask[:, : T - H] & mask[:, H:]     # (B, T-H)
+        if not valid.any():
+            per_horizon[f"L_h{H}"] = 0.0
+            continue
+        diff = (h_pred - target) ** 2              # (B, T-H, F)
+        per_pos = diff.mean(dim=-1)                # (B, T-H)
+        loss_h = (per_pos * valid.to(per_pos.dtype)).sum() / valid.to(per_pos.dtype).sum()
+        total = total + w * loss_h
+        per_horizon[f"L_h{H}"] = float(loss_h.item())
+
+    return total, per_horizon
 
 
 # ---------------------------------------------------------------------------
-# LR schedule
+# LR schedule (linear warmup → cosine decay)
 # ---------------------------------------------------------------------------
-
-
-def lr_at_step(step: int, total_steps: int, peak_lr: float, warmup_frac: float, min_lr_frac: float) -> float:
-    warmup_steps = max(1, int(warmup_frac * total_steps))
+def lr_lambda(step: int, warmup_steps: int, total_steps: int) -> float:
     if step < warmup_steps:
-        return peak_lr * step / warmup_steps
+        return step / max(1, warmup_steps)
     progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
-    cos = 0.5 * (1 + math.cos(math.pi * progress))
-    return peak_lr * (min_lr_frac + (1 - min_lr_frac) * cos)
+    return 0.5 * (1.0 + math.cos(math.pi * min(1.0, progress)))
 
 
 # ---------------------------------------------------------------------------
-# Train loop
+# Training
 # ---------------------------------------------------------------------------
-
-
-def train(args: argparse.Namespace, cfg: EncoderConfig) -> None:
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Device: {device}")
-    if device.type == "cuda":
-        print(f"  GPU: {torch.cuda.get_device_name(0)}")
-        print(f"  VRAM total: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
-
-    data_dir = Path(args.data_dir)
-    schema_path = data_dir / "feature_schema_v1.json"
-    if not schema_path.exists():
-        raise FileNotFoundError(f"feature schema not found at {schema_path}; run build_tick_sequences.py first")
-    schema = json.loads(schema_path.read_text())
-    input_dim = schema["feature_dim"]
-    print(f"Feature dim: {input_dim}")
-
-    train_ds = TickSequenceDataset(data_dir / "train.pt")
-    val_ds = TickSequenceDataset(data_dir / "val.pt")
-    print(f"Train rounds: {len(train_ds)}, val rounds: {len(val_ds)}")
-
-    train_loader = DataLoader(
-        train_ds, batch_size=cfg.batch_size, shuffle=True, collate_fn=collate, num_workers=2
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=cfg.batch_size, shuffle=False, collate_fn=collate, num_workers=1
-    )
-
-    # Model
-    model = RoundDecoder(input_dim=input_dim, cfg=cfg).to(device)
-    n_params = sum(p.numel() for p in model.parameters())
-    n_trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"Model: {n_params/1e6:.2f}M params ({n_trainable/1e6:.2f}M trainable)")
-
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=cfg.lr,
-        betas=(0.9, 0.95),
-        weight_decay=cfg.weight_decay,
-    )
-    total_steps = max(1, cfg.epochs * len(train_loader) // cfg.grad_accum)
-    print(f"Total optimizer steps: {total_steps}")
-
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "config.json").write_text(json.dumps({**cfg.__dict__, "input_dim": input_dim}, indent=2, default=str))
-
-    log_path = output_dir / "train_log.jsonl"
-    log_f = open(log_path, "a")
-
-    use_amp = device.type == "cuda"
-    autocast_dtype = torch.bfloat16 if use_amp else torch.float32
-
-    step = 0
-    accum_count = 0
-    accum_loss = 0.0
-    accum_components: dict[str, float] = {k: 0.0 for k in ("forward_tick", "multi_horizon", "time_to_event", "next_event_type")}
-    optimizer.zero_grad()
-    t_step_start = time.time()
-    best_val = float("inf")
-
-    for epoch in range(cfg.epochs):
-        model.train()
-        for batch_idx, batch in enumerate(train_loader):
-            batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
-            # Player-slot dropout (input-side regularization)
-            batch["features"] = apply_player_slot_dropout(
-                batch["features"], cfg.player_slot_dropout, model.training
-            )
-
-            with torch.amp.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_amp):
-                out = model(batch["features"], batch["tick_seconds"], batch["map_ids"], batch["key_padding_mask"])
-                loss, components = compute_losses(out, batch, cfg)
-
-            (loss / cfg.grad_accum).backward()
-            accum_loss += loss.item()
-            for k in accum_components:
-                accum_components[k] += components[k]
-            accum_count += 1
-
-            if accum_count >= cfg.grad_accum:
-                # LR schedule
-                lr = lr_at_step(step, total_steps, cfg.lr, cfg.warmup_frac, cfg.min_lr_frac)
-                for pg in optimizer.param_groups:
-                    pg["lr"] = lr
-
-                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
-                optimizer.step()
-                optimizer.zero_grad()
-                step += 1
-
-                if step % cfg.log_every == 0:
-                    elapsed = time.time() - t_step_start
-                    avg_loss = accum_loss / accum_count
-                    avg_comp = {k: v / accum_count for k, v in accum_components.items()}
-                    rec = {
-                        "step": step,
-                        "epoch": epoch,
-                        "lr": lr,
-                        "loss": avg_loss,
-                        "grad_norm": float(grad_norm),
-                        "elapsed_s": elapsed,
-                        **avg_comp,
-                    }
-                    print(
-                        f"step {step}/{total_steps} | loss {avg_loss:.4f} "
-                        f"| fwd {avg_comp['forward_tick']:.4f} h_pool {avg_comp['multi_horizon']:.4f} "
-                        f"time {avg_comp['time_to_event']:.4f} type {avg_comp['next_event_type']:.4f} "
-                        f"| lr {lr:.2e} grad {float(grad_norm):.2f} | {elapsed:.1f}s"
-                    )
-                    log_f.write(json.dumps(rec) + "\n")
-                    log_f.flush()
-                    t_step_start = time.time()
-
-                if step % cfg.val_every == 0:
-                    val_loss = evaluate(model, val_loader, cfg, device, autocast_dtype, use_amp)
-                    print(f"  [val] step {step}: loss {val_loss:.4f}")
-                    log_f.write(json.dumps({"step": step, "val_loss": val_loss}) + "\n")
-                    log_f.flush()
-                    if val_loss < best_val:
-                        best_val = val_loss
-                        save_checkpoint(model, cfg, output_dir / "best.pt", step, val_loss)
-                    model.train()
-
-                if step % cfg.save_every == 0:
-                    save_checkpoint(model, cfg, output_dir / f"checkpoint_{step}.pt", step, None)
-
-                # Reset accumulators
-                accum_count = 0
-                accum_loss = 0.0
-                accum_components = {k: 0.0 for k in accum_components}
-
-    save_checkpoint(model, cfg, output_dir / "final.pt", step, None)
-    log_f.close()
-    print(f"\nDone. Best val loss: {best_val:.4f}. Outputs in {output_dir}")
-    if device.type == "cuda":
-        peak_alloc = torch.cuda.max_memory_allocated() / 1e9
-        peak_reserved = torch.cuda.max_memory_reserved() / 1e9
-        total = torch.cuda.get_device_properties(0).total_memory / 1e9
-        print(f"Peak VRAM: {peak_alloc:.2f} GB allocated / {peak_reserved:.2f} GB reserved "
-              f"of {total:.1f} GB total ({100*peak_reserved/total:.1f}% utilization)")
-
-
-@torch.no_grad()
-def evaluate(model, loader, cfg, device, autocast_dtype, use_amp) -> float:
-    model.eval()
+def evaluate(encoder: RoundEncoder, heads: nn.ModuleList, val_loader: DataLoader,
+             cfg: TrainConfig, device: torch.device) -> dict:
+    encoder.eval()
+    heads.eval()
     total = 0.0
     n = 0
-    for batch in loader:
-        batch = {k: v.to(device, non_blocking=True) for k, v in batch.items()}
-        with torch.amp.autocast(device_type=device.type, dtype=autocast_dtype, enabled=use_amp):
-            out = model(batch["features"], batch["tick_seconds"], batch["map_ids"], batch["key_padding_mask"])
-            loss, _ = compute_losses(out, batch, cfg)
-        total += loss.item()
-        n += 1
-    return total / max(1, n)
+    horizon_sums: dict[str, float] = {f"L_h{H}": 0.0 for H in cfg.horizons}
+    with torch.no_grad():
+        for batch in val_loader:
+            with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16,
+                                    enabled=device.type == "cuda"):
+                loss, per_h = compute_loss(encoder, heads, batch, cfg, device)
+            total += float(loss.item())
+            n += 1
+            for k, v in per_h.items():
+                horizon_sums[k] = horizon_sums.get(k, 0.0) + v
+    if n == 0:
+        return {"val_total": float("nan")}
+    out = {"val_total": total / n}
+    for k, v in horizon_sums.items():
+        out[f"val_{k}"] = v / n
+    return out
 
 
-def save_checkpoint(model, cfg, path: Path, step: int, val_loss: float | None) -> None:
-    torch.save(
-        {
-            "model": model.state_dict(),
-            "config": {**cfg.__dict__, "_step": step, "_val_loss": val_loss},
-        },
-        path,
+def train(cfg: TrainConfig) -> None:
+    torch.manual_seed(cfg.seed)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    dev_name = f" ({torch.cuda.get_device_name(0)})" if device.type == "cuda" else ""
+    print(f"Device: {device}{dev_name}")
+
+    train_ds = RoundDataset(DATA_DIR / "train.pt")
+    val_ds = RoundDataset(DATA_DIR / "val.pt")
+    cfg.feature_dim = train_ds.feature_dim
+    print(f"Train: {len(train_ds)} rounds | Val: {len(val_ds)} rounds | "
+          f"feature_dim={cfg.feature_dim}")
+
+    train_loader = DataLoader(
+        train_ds, batch_size=cfg.batch_size, shuffle=True,
+        num_workers=cfg.num_workers, collate_fn=collate, pin_memory=True,
+        persistent_workers=cfg.num_workers > 0,
+    )
+    val_loader = DataLoader(
+        val_ds, batch_size=cfg.batch_size, shuffle=False,
+        num_workers=cfg.num_workers, collate_fn=collate, pin_memory=True,
+        persistent_workers=cfg.num_workers > 0,
     )
 
+    encoder = RoundEncoder(cfg).to(device)
+    heads = nn.ModuleList([
+        ForwardPredHead(cfg.d_model, cfg.feature_dim).to(device)
+        for _ in cfg.horizons
+    ])
+    n_enc = sum(p.numel() for p in encoder.parameters())
+    n_heads = sum(p.numel() for p in heads.parameters())
+    print(f"Params: encoder {n_enc/1e6:.2f}M + heads {n_heads/1e6:.2f}M "
+          f"= {(n_enc + n_heads)/1e6:.2f}M total")
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
+    params = list(encoder.parameters()) + list(heads.parameters())
+    optimizer = torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay,
+                                  betas=(0.9, 0.95))
+    total_steps = max(1, cfg.epochs * len(train_loader))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(
+        optimizer, lr_lambda=lambda step: lr_lambda(step, cfg.warmup_steps, total_steps),
+    )
+    print(f"Total steps: {total_steps}, warmup: {cfg.warmup_steps}")
+
+    out_dir = Path(cfg.output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "config.json").write_text(json.dumps(asdict(cfg), indent=2))
+    log_path = out_dir / "train_log.jsonl"
+    log_f = open(log_path, "a")
+    print(f"Output: {out_dir}")
+    print()
+    print("=" * 60)
+    print("Training start")
+    print("=" * 60)
+
+    step = 0
+    best_val = float("inf")
+    for epoch in range(cfg.epochs):
+        encoder.train()
+        heads.train()
+        epoch_t0 = time.time()
+        epoch_total = 0.0
+        epoch_n = 0
+        for batch in train_loader:
+            optimizer.zero_grad(set_to_none=True)
+            with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16,
+                                    enabled=device.type == "cuda"):
+                loss, per_h = compute_loss(encoder, heads, batch, cfg, device)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(params, cfg.grad_clip)
+            optimizer.step()
+            scheduler.step()
+            step += 1
+            epoch_total += float(loss.item())
+            epoch_n += 1
+
+            if step % cfg.log_every == 0:
+                lr = scheduler.get_last_lr()[0]
+                msg = {"step": step, "epoch": epoch, "loss": float(loss.item()),
+                       "lr": lr, **per_h}
+                log_f.write(json.dumps(msg) + "\n")
+                log_f.flush()
+                horizon_str = " ".join(f"{k}={v:.4f}" for k, v in per_h.items())
+                print(f"  [e{epoch} s{step}] loss={loss.item():.4f} lr={lr:.2e} "
+                      f"{horizon_str}", flush=True)
+
+        epoch_loss = epoch_total / max(1, epoch_n)
+        epoch_dt = time.time() - epoch_t0
+
+        val_metrics: dict = {}
+        if (epoch + 1) % cfg.val_every_epochs == 0 or epoch == cfg.epochs - 1:
+            val_metrics = evaluate(encoder, heads, val_loader, cfg, device)
+
+        msg = {"step": step, "epoch": epoch, "epoch_train_loss": epoch_loss,
+               "epoch_seconds": epoch_dt, **val_metrics}
+        log_f.write(json.dumps(msg) + "\n")
+        log_f.flush()
+        val_str = " ".join(f"{k}={v:.4f}" for k, v in val_metrics.items())
+        print(f"  epoch {epoch} done: train_loss={epoch_loss:.4f} "
+              f"({epoch_dt:.0f}s) {val_str}", flush=True)
+
+        ckpt = {
+            "epoch": epoch, "step": step,
+            "encoder": encoder.state_dict(),
+            "heads": heads.state_dict(),
+            "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict(),
+            "config": asdict(cfg),
+            "val_metrics": val_metrics,
+        }
+        torch.save(ckpt, out_dir / "last.pt")
+        cur_val = val_metrics.get("val_total", float("inf"))
+        if cur_val < best_val:
+            best_val = cur_val
+            torch.save(ckpt, out_dir / "best.pt")
+            print(f"  → new best val_total={best_val:.4f}", flush=True)
+
+    log_f.close()
+    print()
+    print(f"Done. best val_total={best_val:.4f} | last.pt + best.pt at {out_dir}")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--data-dir", type=Path, default=Path("data/processed/tick_sequences"))
-    ap.add_argument("--output-dir", type=Path, default=Path("outputs/round_encoder"))
-    ap.add_argument("--smoke", action="store_true", help="use smoke-test config (~2-3M params)")
-    ap.add_argument("--full", action="store_true", help="use full config (~50M params)")
-    ap.add_argument("--epochs", type=int, default=None, help="override config epochs")
+    ap.add_argument("--d-model", type=int, default=512)
+    ap.add_argument("--n-layers", type=int, default=4)
+    ap.add_argument("--n-heads", type=int, default=8)
+    ap.add_argument("--d-ff", type=int, default=2048)
+    ap.add_argument("--dropout", type=float, default=0.15)
+    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--weight-decay", type=float, default=0.01)
+    ap.add_argument("--warmup-steps", type=int, default=200)
+    ap.add_argument("--batch-size", type=int, default=8)
+    ap.add_argument("--epochs", type=int, default=30)
+    ap.add_argument("--num-workers", type=int, default=2)
+    ap.add_argument("--horizons", type=int, nargs="+", default=[1, 8, 32])
+    ap.add_argument("--horizon-weights", type=float, nargs="+", default=[1.0, 0.7, 0.4])
+    ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--run-id", type=str, default=None,
+                    help="output dir name (default: timestamped)")
     args = ap.parse_args()
 
-    if not (args.smoke or args.full):
-        ap.error("specify --smoke or --full")
-    cfg = smoke_config() if args.smoke else full_config()
-    if args.epochs is not None:
-        cfg.epochs = args.epochs
+    if len(args.horizon_weights) != len(args.horizons):
+        ap.error(f"--horizons ({len(args.horizons)}) and --horizon-weights "
+                 f"({len(args.horizon_weights)}) must be the same length")
 
-    torch.manual_seed(args.seed)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(args.seed)
+    run_id = args.run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = OUTPUT_ROOT / run_id
 
-    print(f"Config: {'smoke' if args.smoke else 'full'}")
-    print(f"  d_model={cfg.d_model}, n_blocks={cfg.n_blocks}, n_heads={cfg.n_heads}, d_ff={cfg.d_ff}")
-    print(f"  batch={cfg.batch_size}, grad_accum={cfg.grad_accum}, epochs={cfg.epochs}, lr={cfg.lr}")
-    print()
-
-    train(args, cfg)
+    cfg = TrainConfig(
+        d_model=args.d_model,
+        n_layers=args.n_layers,
+        n_heads=args.n_heads,
+        d_ff=args.d_ff,
+        dropout=args.dropout,
+        lr=args.lr,
+        weight_decay=args.weight_decay,
+        warmup_steps=args.warmup_steps,
+        batch_size=args.batch_size,
+        epochs=args.epochs,
+        num_workers=args.num_workers,
+        horizons=args.horizons,
+        horizon_weights=args.horizon_weights,
+        log_every=args.log_every,
+        seed=args.seed,
+        output_dir=str(out_dir),
+    )
+    train(cfg)
 
 
 if __name__ == "__main__":
