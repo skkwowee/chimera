@@ -371,22 +371,53 @@ class CS2GRPOTrainer:
     def build_recall_index(self, train_data: list[dict[str, Any]]):
         """Build FAISS kNN index from training samples for RECALL reward.
 
-        If env var CHIMERA_RECALL_ENCODER is set to a path, swap in the
-        learned sentence-transformer encoder instead of the 19-dim
-        hand-engineered tactical_embedding. Lets us A/B the two without
-        touching the call sites or the rest of the trainer config.
+        Embedder selection (in order):
+          1. CHIMERA_RECALL_L2_CACHE = path/to/embedding_cache.pt
+             → Level-2 v6 encoder lookup (preferred, d=512 event embeddings).
+                Falls back per-sample to the 19-d tactical_embedding when a
+                row's (demo, round, tick) isn't in the cache.
+          2. CHIMERA_RECALL_ENCODER  = path/to/sentence-transformer-model
+             → SentenceTransformer wrapper (legacy A/B route).
+          3. Default: 19-d hand-engineered tactical_embedding.
+
+        Lets us A/B all three without touching call sites.
         """
         from .recall import RECALLIndex
 
+        l2_cache_path = os.environ.get("CHIMERA_RECALL_L2_CACHE")
         encoder_path = os.environ.get("CHIMERA_RECALL_ENCODER")
         state_embedder = None
-        if encoder_path:
+        state_embedder_full = None
+
+        if l2_cache_path:
+            from ..perception.encoder_cache import EncoderEmbeddingCache
+            print(f"RECALL using Level-2 encoder cache: {l2_cache_path}")
+            cache = EncoderEmbeddingCache(l2_cache_path)
+            print(f"  cache: {cache.n_rounds} rounds, "
+                  f"{cache.n_ticks:,} ticks, d_model={cache.d_model}")
+
+            def _l2_embedder(sample: dict[str, Any]):
+                src = sample.get("source") or sample.get("ground_truth", {}).get("source")
+                if not isinstance(src, dict):
+                    return None
+                ds = src.get("demo_stem")
+                rn = src.get("round_num")
+                tk = src.get("tick")
+                if ds is None or rn is None or tk is None:
+                    return None
+                return cache.lookup(str(ds), int(rn), int(tk))
+
+            state_embedder_full = _l2_embedder
+        elif encoder_path:
             from .learned_state_embedder import LearnedStateEmbedder
             print(f"RECALL using learned encoder: {encoder_path}")
             state_embedder = LearnedStateEmbedder(encoder_path, redact=True)
 
         print("Building RECALL index...")
-        self.recall_index = RECALLIndex(state_embedder=state_embedder)
+        self.recall_index = RECALLIndex(
+            state_embedder=state_embedder,
+            state_embedder_full=state_embedder_full,
+        )
         samples = [s for s in train_data if "ground_truth" in s]
         if samples:
             self.recall_index.build_from_samples(samples)

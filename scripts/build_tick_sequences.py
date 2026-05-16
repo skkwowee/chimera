@@ -80,6 +80,25 @@ WEAPON_CAT_IDX = {c: i for i, c in enumerate(WEAPON_CAT_LIST)}
 # Round phases — derived from rounds.json fields
 PHASE_VOCAB = ["freeze", "live", "post_plant", "end"]
 
+# Per-tick event labels (axis-1 SSL, augments forward-prediction with event prediction).
+# Index 6 ("none") means no listed event happens within EVENT_HORIZON_TICKS.
+EVENT_VOCAB = [
+    "kill_t",        # T player killed a CT player
+    "kill_ct",       # CT player killed a T player
+    "bomb_planted",
+    "bomb_defused",
+    "bomb_exploded",
+    "round_end",
+    "none",
+]
+EVENT_IDX = {e: i for i, e in enumerate(EVENT_VOCAB)}
+NONE_EVENT_IDX = EVENT_IDX["none"]
+# In 64Hz raw ticks: 256 = 4.0s. Event labels look at the next 256 raw ticks.
+# Short enough that "next event" is temporally precise (vs aggregating over a
+# whole round); long enough that "none" is meaningfully informative during
+# slow phases instead of being the trivial answer everywhere.
+EVENT_HORIZON_TICKS = 256
+
 DOWNSAMPLE_DEFAULT = 8  # 64Hz -> 8Hz
 PLAYERS_PER_SIDE = 5
 N_PLAYERS = 2 * PLAYERS_PER_SIDE
@@ -143,10 +162,22 @@ def inventory_to_categorical(inv: list[str] | None) -> dict:
 #   + primary_onehot (len(WEAPON_CAT_LIST)) + secondary_onehot (len(WEAPON_CAT_LIST))
 #   + util_bits (5)
 PER_PLAYER_DIM = 3 + 4 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + len(WEAPON_CAT_LIST) * 2 + 5
-# Global feature dim:
-#   map_onehot (7) + phase_onehot (4) + score (2) + round_num (1) + round_time (1)
-#   + bomb_state_onehot (4) + bomb_pos (2) + bomb_age (1)
-GLOBAL_DIM = len(MAP_VOCAB) + len(PHASE_VOCAB) + 2 + 1 + 1 + 4 + 2 + 1
+# Global feature dim (v2 schema, bumped from v1):
+#   v1 components (22 dims):
+#     map_onehot (7) + phase_onehot (4) + score (2) + round_num (1) + round_time (1)
+#     + bomb_state_onehot (4) + bomb_pos (2) + bomb_age (1)
+#   v2 additions (15 dims) — team aggregates and tempo, requested 2026-05-16:
+#     money_diff_norm (1)     — (T_money_total - CT_money_total) / 5e4
+#     equip_diff_norm (1)     — (T_equip_total - CT_equip_total) / 5e4
+#     alive_t_norm (1)        — T_alive / 5
+#     alive_ct_norm (1)       — CT_alive / 5
+#     alive_diff_norm (1)     — (T_alive - CT_alive) / 5
+#     ticks_since_last_kill (1)   — capped, normalized to [0, 1] over 256 ticks
+#     ticks_since_last_event (1)  — same, includes plant/defuse/explode too
+#     round_time_sin_cos (8)  — multi-scale sinusoidal at periods 5s/20s/115s
+#                              (was only 1 raw normalized dim before)
+GLOBAL_DIM = (len(MAP_VOCAB) + len(PHASE_VOCAB) + 2 + 1 + 1 + 4 + 2 + 1
+              + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 8)
 TOTAL_DIM = N_PLAYERS * PER_PLAYER_DIM + GLOBAL_DIM
 
 
@@ -332,18 +363,93 @@ def _encode_player_block_vectorized(
     return out
 
 
+def compute_event_labels(
+    kept_ticks: np.ndarray,
+    round_meta: dict,
+    kills: list[dict],
+    bomb_events: list[dict],
+    horizon_ticks: int = EVENT_HORIZON_TICKS,
+) -> tuple[np.ndarray, np.ndarray]:
+    """For each kept tick, find the next significant event within `horizon_ticks`
+    raw ticks. Returns (labels (T,) int8, time_to_event (T,) int16).
+
+    `time_to_event` is in raw ticks (not downsampled). When no event lands in
+    the window, label is `none` and time = horizon_ticks (so the regression
+    target is bounded and the loss can be masked or weighted).
+    """
+    rn = round_meta["round_num"]
+    end_tick = round_meta.get("end") or round_meta.get("official_end")
+
+    # Gather (tick, event_idx) pairs for THIS round, sorted by tick.
+    events: list[tuple[int, int]] = []
+    for k in kills:
+        if k.get("round_num") != rn:
+            continue
+        # `attacker_side` ∈ {t, ct, ""}; sometimes the kill has no attacker
+        # (suicide / world damage). Ignore those — they're noisy labels.
+        side = (k.get("attacker_side") or "").lower()
+        if side == "t":
+            events.append((int(k["tick"]), EVENT_IDX["kill_t"]))
+        elif side == "ct":
+            events.append((int(k["tick"]), EVENT_IDX["kill_ct"]))
+    for be in bomb_events:
+        if be.get("round_num") != rn:
+            continue
+        ev = (be.get("event") or "").lower()
+        # awpy emits "bomb_planted" / "bomb_defused" / "bomb_exploded" — match prefix
+        if "plant" in ev:
+            events.append((int(be["tick"]), EVENT_IDX["bomb_planted"]))
+        elif "defus" in ev:
+            events.append((int(be["tick"]), EVENT_IDX["bomb_defused"]))
+        elif "explod" in ev or "detonat" in ev:
+            events.append((int(be["tick"]), EVENT_IDX["bomb_exploded"]))
+    if end_tick is not None:
+        events.append((int(end_tick), EVENT_IDX["round_end"]))
+
+    events.sort()
+    if not events:
+        T = len(kept_ticks)
+        return (np.full(T, NONE_EVENT_IDX, dtype=np.int8),
+                np.full(T, horizon_ticks, dtype=np.int16))
+
+    ev_ticks = np.array([e[0] for e in events], dtype=np.int64)
+    ev_types = np.array([e[1] for e in events], dtype=np.int8)
+
+    # For each kept tick, np.searchsorted finds the index of the first event
+    # at or after that tick. Then check if it's within horizon.
+    idxs = np.searchsorted(ev_ticks, kept_ticks, side="left")
+    T = len(kept_ticks)
+    labels = np.full(T, NONE_EVENT_IDX, dtype=np.int8)
+    times = np.full(T, horizon_ticks, dtype=np.int16)
+    in_range = idxs < len(ev_ticks)
+    if in_range.any():
+        next_ticks = ev_ticks[idxs[in_range]]
+        delta = next_ticks - kept_ticks[in_range]
+        within_horizon = delta <= horizon_ticks
+        target_positions = np.flatnonzero(in_range)[within_horizon]
+        labels[target_positions] = ev_types[idxs[target_positions]]
+        times[target_positions] = delta[within_horizon].astype(np.int16)
+    return labels, times
+
+
 def build_round_tensor(
     round_df: pl.DataFrame,
     round_meta: dict,
     map_name: str,
     score_so_far: tuple[int, int],
     bomb_events: list[dict],
+    kills: list[dict],
     downsample: int,
-) -> tuple[torch.Tensor, dict]:
-    """Build the (T, F) tensor for one round at the given downsample rate."""
+) -> tuple[torch.Tensor, dict, np.ndarray, np.ndarray]:
+    """Build the (T, F) tensor for one round at the given downsample rate.
+
+    Returns:
+      tensor (T, F) float32, meta dict, event_labels (T,) int8, event_times (T,) int16
+    """
     ticks_all = round_df["tick"].unique().sort().to_numpy()
     if len(ticks_all) == 0:
-        return torch.empty(0, TOTAL_DIM), {}
+        return (torch.empty(0, TOTAL_DIM), {},
+                np.zeros(0, dtype=np.int8), np.zeros(0, dtype=np.int16))
 
     start_tick = round_meta["start"]
     freeze_end = round_meta["freeze_end"]
@@ -402,6 +508,68 @@ def build_round_tensor(
 
     round_time_s = np.maximum(0, (kept_ticks - start_tick) / 64.0).astype(np.float32)
 
+    # v2: team aggregates (money, equipment, alive count) per kept tick.
+    # Vectorized via polars group_by(tick) sum filtered by side.
+    agg = (round_df
+           .group_by("tick")
+           .agg([
+               pl.when(pl.col("side") == "t").then(pl.col("balance")).otherwise(0).sum().alias("t_money"),
+               pl.when(pl.col("side") == "ct").then(pl.col("balance")).otherwise(0).sum().alias("ct_money"),
+               pl.when(pl.col("side") == "t").then(pl.col("current_equip_value")).otherwise(0).sum().alias("t_equip"),
+               pl.when(pl.col("side") == "ct").then(pl.col("current_equip_value")).otherwise(0).sum().alias("ct_equip"),
+               pl.when((pl.col("side") == "t") & (pl.col("health") > 0)).then(1).otherwise(0).sum().alias("t_alive"),
+               pl.when((pl.col("side") == "ct") & (pl.col("health") > 0)).then(1).otherwise(0).sum().alias("ct_alive"),
+           ]))
+    lookup = pl.DataFrame({"tick": kept_ticks.astype(np.int64)})
+    aligned = lookup.join(agg, on="tick", how="left").fill_null(0)
+    t_money = aligned["t_money"].to_numpy().astype(np.float32)
+    ct_money = aligned["ct_money"].to_numpy().astype(np.float32)
+    t_equip = aligned["t_equip"].to_numpy().astype(np.float32)
+    ct_equip = aligned["ct_equip"].to_numpy().astype(np.float32)
+    t_alive = aligned["t_alive"].to_numpy().astype(np.float32)
+    ct_alive = aligned["ct_alive"].to_numpy().astype(np.float32)
+    # Normalizations: $5e4 is a typical full-team fresh-buy total.
+    money_diff_n = (t_money - ct_money) / 5.0e4
+    equip_diff_n = (t_equip - ct_equip) / 5.0e4
+    alive_t_n = t_alive / 5.0
+    alive_ct_n = ct_alive / 5.0
+    alive_diff_n = (t_alive - ct_alive) / 5.0
+
+    # v2: tempo features — ticks since last KILL and since last ANY event
+    # (kill/plant/defuse/explode). Capped at 256 ticks (4s) then normalized.
+    rn = round_meta["round_num"]
+    kill_ticks = sorted(int(k["tick"]) for k in kills if k.get("round_num") == rn)
+    event_only_ticks = sorted(set(kill_ticks) | set(
+        int(b["tick"]) for b in bomb_events
+        if b.get("round_num") == rn
+        and (b.get("event") or "").lower() in {"plant", "defuse", "detonate"}
+    ))
+    cap = 256  # 4s at 64Hz; same horizon as EVENT_HORIZON_TICKS so labels and
+               # tempo features share a time scale.
+
+    def ticks_since(prior_ticks: list[int], at_ticks: np.ndarray) -> np.ndarray:
+        if not prior_ticks:
+            return np.full(len(at_ticks), cap, dtype=np.float32)
+        arr = np.array(prior_ticks, dtype=np.int64)
+        # For each at_tick, find the largest tick in arr that is <= at_tick.
+        idx = np.searchsorted(arr, at_ticks, side="right") - 1
+        out = np.full(len(at_ticks), cap, dtype=np.float32)
+        mask = idx >= 0
+        if mask.any():
+            out[mask] = np.minimum(at_ticks[mask] - arr[idx[mask]], cap)
+        return out
+
+    tsl_kill = ticks_since(kill_ticks, kept_ticks) / float(cap)
+    tsl_event = ticks_since(event_only_ticks, kept_ticks) / float(cap)
+
+    # v2: multi-scale round-time sinusoidal at 4 periods (2s / 5s / 20s / 115s)
+    # Periods in seconds — gives the model "where are we in the round" at
+    # multiple time scales. 2s/5s capture micro-tempo (post-kill window,
+    # plant-timing); 20s/115s capture macro (mid-round, end-of-round).
+    periods_s = np.array([2.0, 5.0, 20.0, 115.0], dtype=np.float32)
+    theta = 2 * np.pi * round_time_s[:, None] / periods_s[None, :]  # (T, 4)
+    ts_sin_cos = np.concatenate([np.sin(theta), np.cos(theta)], axis=1)  # (T, 8)
+
     # Build the global block per-tick (still Python loop but only T iterations)
     bomb_state_names = ["none", "carried", "planted_a", "planted_b"]
     map_idx = MAP_VOCAB.index(map_name) if map_name in MAP_VOCAB else -1
@@ -426,7 +594,20 @@ def build_round_tensor(
         g[gi] = bomb_x[t_idx] / 3000.0; gi += 1
         g[gi] = bomb_y[t_idx] / 3000.0; gi += 1
         g[gi] = bomb_age_s[t_idx] / 40.0; gi += 1
+        # v2 additions
+        g[gi] = money_diff_n[t_idx]; gi += 1
+        g[gi] = equip_diff_n[t_idx]; gi += 1
+        g[gi] = alive_t_n[t_idx]; gi += 1
+        g[gi] = alive_ct_n[t_idx]; gi += 1
+        g[gi] = alive_diff_n[t_idx]; gi += 1
+        g[gi] = tsl_kill[t_idx]; gi += 1
+        g[gi] = tsl_event[t_idx]; gi += 1
+        g[gi:gi + 8] = ts_sin_cos[t_idx]; gi += 8
         out[t_idx, offset:offset + GLOBAL_DIM] = g
+
+    event_labels, event_times = compute_event_labels(
+        kept_ticks, round_meta, kills, bomb_events,
+    )
 
     meta = {
         "round_num": round_meta["round_num"],
@@ -437,16 +618,20 @@ def build_round_tensor(
         "winner": round_meta.get("winner"),
         "reason": round_meta.get("reason"),
     }
-    return torch.from_numpy(out), meta
+    return torch.from_numpy(out), meta, event_labels, event_times
 
 
-def process_demo(parq: Path, downsample: int) -> tuple[list[torch.Tensor], list[dict], dict]:
-    """Process one demo into per-round tensors + meta + a demo-level summary."""
+def process_demo(
+    parq: Path, downsample: int,
+) -> tuple[list[torch.Tensor], list[dict], list[torch.Tensor], list[torch.Tensor], dict]:
+    """Process one demo into per-round (tensors, metas, event_labels, event_times)
+    plus a demo-level summary."""
     stem = parq.stem.replace("_ticks", "")
     base = parq.parent
 
     rounds = json.loads((base / f"{stem}_rounds.json").read_text())
     bomb = json.loads((base / f"{stem}_bomb.json").read_text())
+    kills = json.loads((base / f"{stem}_kills.json").read_text())
     header = json.loads((base / f"{stem}_header.json").read_text())
     map_name = header.get("map_name", "unknown")
 
@@ -456,13 +641,15 @@ def process_demo(parq: Path, downsample: int) -> tuple[list[torch.Tensor], list[
     score_t = score_ct = 0
     tensors = []
     metas = []
+    label_seqs = []
+    time_seqs = []
     for r in rounds:
         round_df = df.filter(pl.col("round_num") == r["round_num"])
         if round_df.height == 0:
             continue
-        ten, m = build_round_tensor(
+        ten, m, ev_lbl, ev_time = build_round_tensor(
             round_df, r, map_name,
-            (score_t, score_ct), bomb, downsample,
+            (score_t, score_ct), bomb, kills, downsample,
         )
         if ten.numel() == 0:
             continue
@@ -470,6 +657,8 @@ def process_demo(parq: Path, downsample: int) -> tuple[list[torch.Tensor], list[
         m["demo_stem"] = stem
         tensors.append(ten)
         metas.append(m)
+        label_seqs.append(torch.from_numpy(ev_lbl).long())
+        time_seqs.append(torch.from_numpy(ev_time).float())
         # update score for NEXT round
         if r.get("winner") == "t":
             score_t += 1
@@ -483,15 +672,15 @@ def process_demo(parq: Path, downsample: int) -> tuple[list[torch.Tensor], list[
         "total_ticks": sum(t.shape[0] for t in tensors),
         "feature_dim": TOTAL_DIM,
     }
-    return tensors, metas, summary
+    return tensors, metas, label_seqs, time_seqs, summary
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--downsample", type=int, default=DOWNSAMPLE_DEFAULT,
                     help=f"keep every Nth tick (64Hz / N) — default {DOWNSAMPLE_DEFAULT} (8Hz)")
-    ap.add_argument("--val-demos", type=int, default=4,
-                    help="how many demos to hold out for validation (default 4)")
+    ap.add_argument("--val-demos", type=int, default=12,
+                    help="how many demos to hold out for validation (default 12, ~15%)")
     ap.add_argument("--limit", type=int, default=None,
                     help="cap total demos processed (for smoke testing)")
     ap.add_argument("--seed", type=int, default=42)
@@ -524,18 +713,24 @@ def main() -> None:
     def process_split(parqs_sub: list[Path], split_name: str) -> dict:
         all_tensors = []
         all_metas = []
+        all_event_labels = []
+        all_event_times = []
         summaries = []
         t0 = time.time()
         for i, p in enumerate(parqs_sub):
             t1 = time.time()
             try:
-                tensors, metas, summary = process_demo(p, args.downsample)
+                tensors, metas, ev_lbls, ev_times, summary = process_demo(
+                    p, args.downsample,
+                )
             except Exception as e:
                 print(f"  [{split_name} {i+1}/{len(parqs_sub)}] FAIL {p.stem}: "
                       f"{type(e).__name__}: {e}")
                 continue
             all_tensors.extend(tensors)
             all_metas.extend(metas)
+            all_event_labels.extend(ev_lbls)
+            all_event_times.extend(ev_times)
             summaries.append(summary)
             elapsed = time.time() - t1
             print(f"  [{split_name} {i+1}/{len(parqs_sub)}] {summary['demo_stem']}: "
@@ -547,6 +742,10 @@ def main() -> None:
         torch.save({
             "tensors": all_tensors,
             "metas": all_metas,
+            "event_labels": all_event_labels,
+            "event_times": all_event_times,
+            "event_vocab": EVENT_VOCAB,
+            "event_horizon_ticks": EVENT_HORIZON_TICKS,
             "summaries": summaries,
             "feature_dim": TOTAL_DIM,
             "downsample": args.downsample,
@@ -573,7 +772,7 @@ def main() -> None:
 
     # Schema doc — every downstream consumer reads this
     schema = {
-        "version": "feature_schema_v1",
+        "version": "feature_schema_v2",
         "downsample": args.downsample,
         "tickrate_hz": 8,
         "feature_dim": TOTAL_DIM,
@@ -599,7 +798,19 @@ def main() -> None:
             "score_t_norm", "score_ct_norm",
             "round_num_norm", "round_time_s_norm",
             "bomb_state_onehot(4)", "bomb_x", "bomb_y", "bomb_age_s_norm",
+            # v2 additions
+            "money_diff_norm", "equip_diff_norm",
+            "alive_t_norm", "alive_ct_norm", "alive_diff_norm",
+            "ticks_since_last_kill_norm", "ticks_since_last_event_norm",
+            "round_time_multi_scale_sinusoidal(8)",
         ],
+        "event_vocab": EVENT_VOCAB,
+        "event_horizon_ticks": EVENT_HORIZON_TICKS,
+        "event_label_dtypes": {
+            "event_labels": "int64 (T,) per round, 0..6 indexing event_vocab",
+            "event_times": "float32 (T,) per round, ticks until next event "
+                           "(capped at event_horizon_ticks; raw 64Hz ticks)",
+        },
     }
     (OUT_DIR / "feature_schema_v1.json").write_text(json.dumps(schema, indent=2))
 

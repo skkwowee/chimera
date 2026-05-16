@@ -232,19 +232,32 @@ class RECALLIndex:
     state-action advantage estimates.
     """
 
-    def __init__(self, state_embedder: Any = None):
+    def __init__(
+        self,
+        state_embedder: Any = None,
+        state_embedder_full: Any = None,
+    ):
         """
         Args:
             state_embedder: Optional callable(game_state: dict) -> np.ndarray.
                 Defaults to the hand-engineered 19-dim `tactical_embedding`.
                 Pass a learned encoder (e.g., sentence-transformer adapter) to
                 swap in a different equivalence metric.
+            state_embedder_full: Optional callable(sample: dict) -> np.ndarray.
+                When provided, takes precedence over state_embedder. Receives
+                the full GRPO sample dict (top-level keys include "source",
+                "ground_truth", etc.) so it can use provenance fields
+                (demo_stem, round_num, tick) — needed by the Level-2 event
+                encoder, which is keyed by (demo, round, tick) lookup rather
+                than game_state content. Return None to fall back to
+                state_embedder(game_state) for that sample.
         """
         self._state_index: Any = None  # faiss.IndexFlatL2
         self._action_embeddings: np.ndarray | None = None  # np.ndarray (N, d_a)
         self._outcomes: np.ndarray | None = None  # np.ndarray (N,) float32
         self._n: int = 0
         self._state_embedder = state_embedder or tactical_embedding
+        self._state_embedder_full = state_embedder_full
         # Optional per-sample source key (demo_stem, round_num) used for
         # same-round-exclusion at query time. Populated from sample["source"]
         # by build_from_samples; None means "this sample has no source meta".
@@ -291,7 +304,16 @@ class RECALLIndex:
             if gs is None or beh is None or won is None:
                 continue
 
-            state_vecs.append(np.asarray(self._state_embedder(gs), dtype=np.float32))
+            # Prefer full-sample embedder (Level-2 encoder lookup needs
+            # provenance fields, not just game_state). Fall back to the
+            # game_state-only embedder if the full embedder returns None
+            # (cache miss) or isn't configured at all.
+            vec = None
+            if self._state_embedder_full is not None:
+                vec = self._state_embedder_full(sample)
+            if vec is None:
+                vec = self._state_embedder(gs)
+            state_vecs.append(np.asarray(vec, dtype=np.float32))
             action_vecs.append(action_embedding(beh))
             outcomes.append(1.0 if won else 0.0)
             # Source key: prefer top-level sample["source"], fall back to
@@ -327,6 +349,7 @@ class RECALLIndex:
         k: int = 32,
         k_min: int = 5,
         query_source_key: tuple[str, int] | None = None,
+        query_sample: dict[str, Any] | None = None,
     ) -> tuple[float, float, bool]:
         """
         Query the index for advantage estimation.
@@ -365,7 +388,16 @@ class RECALLIndex:
         )
         k_fetch = min(k * 4, self._n) if do_mask else min(k, self._n)
 
-        state_vec = np.asarray(self._state_embedder(state), dtype=np.float32).reshape(1, -1)
+        # Match the embedder used when building the index: prefer the
+        # full-sample embedder when the caller passed `query_sample` and the
+        # index was built with `state_embedder_full`. Fall back to the
+        # game_state-only embedder otherwise.
+        vec = None
+        if self._state_embedder_full is not None and query_sample is not None:
+            vec = self._state_embedder_full(query_sample)
+        if vec is None:
+            vec = self._state_embedder(state)
+        state_vec = np.asarray(vec, dtype=np.float32).reshape(1, -1)
         _distances, indices = self._state_index.search(state_vec, k_fetch)
         indices = indices[0]
 
@@ -430,6 +462,7 @@ class RECALLIndex:
         k: int = 32,
         k_min: int = 5,
         query_source_key: tuple[str, int] | None = None,
+        query_sample: dict[str, Any] | None = None,
     ) -> float:
         """
         Compute RECALL advantage: A = Q̂(s,a) − V̂(s).
@@ -449,7 +482,8 @@ class RECALLIndex:
             Advantage ∈ [-1, 1], or 0.0 if uncertain.
         """
         q_hat, v_hat, confident = self.query(
-            state, action, k=k, k_min=k_min, query_source_key=query_source_key,
+            state, action, k=k, k_min=k_min,
+            query_source_key=query_source_key, query_sample=query_sample,
         )
         if not confident:
             return 0.0
@@ -532,8 +566,16 @@ def recall_reward(
     if isinstance(src, dict) and "demo_stem" in src and "round_num" in src:
         query_source_key = (str(src["demo_stem"]), int(src["round_num"]))
 
+    # Synthesize a minimal sample dict so the L2-encoder embedder (which
+    # needs the full sample, including `source`) can be used at query time.
+    # When RECALL is operating in the legacy 19-d mode, query_sample is
+    # ignored and this is a harmless extra arg.
+    query_sample = {"ground_truth": ground_truth, "source": src}
+
     return recall_index.recall_advantage(
-        game_state, model_action, query_source_key=query_source_key,
+        game_state, model_action,
+        query_source_key=query_source_key,
+        query_sample=query_sample,
     )
 
 

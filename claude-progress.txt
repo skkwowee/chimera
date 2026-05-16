@@ -1293,3 +1293,574 @@ SFT run:
    the Qwen 3.6 SFT-merged base, ideally after the Level-2 encoder
    exists so RECALL-family scorers have a real encoder to consume.
 
+
+================================================================================
+2026-05-15 — Level-2 encoder σ_s gate fails (data scarcity)
+================================================================================
+
+WHAT WAS RUN
+- v4 encoder (forward-pred only, 3 horizons, 13M params, 50ep) trained on the
+  20-demo / 405-round split. val_h1=0.0041, val_h8=0.0101, val_h32=0.0193 —
+  5× spread between h1 and h32 confirms it learned dynamics, not just smoothing.
+- σ_s diagnostic: scripts/encoder_sigma_s_diagnostic.py — k=32 cosine kNN over
+  query positions (12/round), σ_s = std of round_won across train neighbors.
+  Goldilocks band [0.15, 0.45] per docs/methodology.md axis 1.
+  v4 result: median 0.4635 (cap 0.4994). FAIL — above band, basically random.
+- v5 added 2 more SSL objectives:
+    L_event_ce        — 7-way CE over next event in next 256 raw ticks
+                         {kill_t, kill_ct, bomb_planted, bomb_defused,
+                          bomb_exploded, round_end, none}; weight=1.0,
+                         "none" class weight 0.1 (down-weighted dominant class).
+    L_time_to_event   — Huber on log(1+ticks) until next event, masked to
+                         non-"none" positions only; weight=0.5.
+  Per-tick event labels emitted by build_tick_sequences.py (compute_event_labels).
+  v5 result: best at epoch 5 (val_total=1.229, val_acc_event_only=0.465 vs
+  random 0.143 for 7 classes). σ_s STILL FAIL: median 0.4635 (identical to v4).
+  After epoch 5, event-CE val explodes (train 0.005 / val 6.26 by epoch 49) —
+  classic overfit signature.
+
+PER-POSITION BREAKDOWN (where the encoder has signal vs none)
+v4 / v5:
+  early (pos 0–0.33): 0.4841 / 0.4841 — fully random
+  mid   (pos 0.33–0.67): 0.4750 / 0.4750 — fully random
+  late  (pos 0.67–1.0): 0.3903 / 0.2915 — only useful signal lives here
+The encoder only learns endgame collapse (kills near round end are predictable
+from the state). Strategically interesting mid-round states embed near-randomly
+against round outcome.
+
+DIAGNOSIS
+Data scarcity, not method. 405 train rounds × 8 unique matches × 15M params
+= the encoder is severely over-parameterized. SSL objectives are sound (forward
+val ≈ train; event acc 46% > random 14%), but the dataset doesn't have enough
+variety in early/mid-round states for those states to cluster meaningfully
+against round outcome. σ_s asks "do similar embeddings share outcomes?" — at
+freezetime that requires the encoder to have learned economy/buy/site-pref →
+outcome correlations, which need hundreds of matches not 8.
+
+DECISION
+User picked: download more demos (target ~50–100 matches before retrying).
+Pipeline is idempotent and ready:
+  1. drop .dem files into data/demos_new/
+  2. .venv/bin/python scripts/parse_demos.py
+  3. .venv/bin/python scripts/build_tick_sequences.py
+  4. .venv/bin/python scripts/train_round_encoder.py --epochs 50 --run-id v6_<n>
+  5. .venv/bin/python scripts/encoder_sigma_s_diagnostic.py \
+       --ckpt outputs/round_encoder/v6_<n>/best.pt
+For v6 retrain, change early-stopping signal: monitor val_acc_event_only
+(currently best.pt is selected on val_total which gets dominated by event-CE
+overfitting after a few epochs).
+
+ARTIFACTS
+  scripts/build_tick_sequences.py  — event-label emission added
+  scripts/train_round_encoder.py   — 5-objective v5 with NextEventHead +
+                                      TimeToEventHead + class weights
+  scripts/encoder_sigma_s_diagnostic.py — new diagnostic, writes JSON
+  outputs/round_encoder/v4_default_50ep/{best,last,sigma_s_diag_*}.pt+.json
+  outputs/round_encoder/v5_5obj_50ep/{best,last,sigma_s_diag_*}.pt+.json
+  data/processed/tick_sequences/{train,val}.pt — now include event_labels +
+                                                  event_times
+
+================================================================================
+2026-05-15 (cont.) — v6 encoder PASSES σ_s gate (more data fixed it)
+================================================================================
+
+WHAT CHANGED
+- User downloaded 23 new tournament rars from BLAST Open Rotterdam 2026, BLAST
+  Rivals 2026 S1, IEM Atlanta 2026 → 77 .dem files added.
+- Disk now at 32% (~300GB used, 660GB free).
+- Total dataset: 24 → 81 demos (3.4×), 405 → 1471 train rounds (3.6×),
+  389K → 1.4M train ticks. Val: 4 → 12 demos (15% holdout, default bumped
+  in build_tick_sequences.py).
+
+PIPELINE TWEAKS
+- scripts/parse_demos.py: with 4 workers + 16GB RAM we hit swap thrashing on
+  large (~600-770MB) demos. Killed and restarted with --workers 2; all 81
+  demos done. Total parse time ~30 min (vs estimated 70 min serial).
+- scripts/train_round_encoder.py: changed early-stopping signal from val_total
+  to val_acc_event_only when event objectives are on. val_total is dominated
+  by event-CE which overfits fast; val_acc_event_only is the real
+  generalization signal. Old behavior is the fallback when events are off.
+
+V6 RESULT (passes σ_s gate for the first time)
+- Trained 50ep, batch 8, 9200 steps, ~7 min on RTX 4090.
+- Best at epoch 2 (val_acc_event_only=0.5269 vs random 0.143 for 7-class).
+- Event-CE val degrades from 0.96 → 6.84 after epoch 2 — same overfitting
+  behavior as v5 just delayed slightly by more data.
+- Forward-pred val_h1=0.0055, val_h32=0.0202 — stable across the whole run.
+- σ_s diagnostic: median 0.4496 (cap 0.4989) → **PASS** [0.15, 0.45].
+
+Per-position σ_s evolution (theoretical max ~0.499):
+                  v4        v5        v6        ∆ (v4→v6)
+  early          0.4841   0.4841   0.4750     -0.009 (noise)
+  mid            0.4750   0.4750   0.4635     -0.012 (marginal)
+  late           0.3903   0.2915   0.2421     -0.148 (real signal)
+  overall median 0.4635   0.4635   0.4496     -0.014
+
+INTERPRETATION
+The encoder is learning late-round dynamics (kills, plant aftermath, defuse
+windows) very well — 37% of late-round queries have all-collapsed neighbors
+on the round outcome. Mid/early-round clustering remains weak (only 32-42%
+of those queries land in band). This is consistent with the SSL choice:
+forward prediction + next-event prediction reward the encoder for
+short-horizon prediction; round-outcome only correlates with state once the
+match dynamics resolve.
+
+PASSING the gate is enough to proceed to Stage C — downstream RL doesn't
+require perfect early-round embedding, just that nearest-neighbor states
+share *some* tactical structure. Median in-band with PSS=42.5% mid-round
+in-band fraction clears that bar.
+
+ARTIFACTS
+  outputs/round_encoder/v6_81demos/{best,last}.pt — encoder trained 50ep
+  outputs/round_encoder/v6_81demos/sigma_s_diag_best.json — diagnostic result
+  data/processed/tick_sequences/{train,val}.pt — 81-demo dataset
+  data/processed/demos/*_ticks.parquet — 81 parsed demos
+
+NEXT
+- Stage C (bridge bootstrap): captioning task that maps visual frames →
+  encoder soft tokens. Needs both L1 (Qwen 3.6 SFT-merged for vision) and
+  L2 (v6 encoder for soft tokens) ready. Encoder is ready; captioning data
+  prep is the next blocker.
+- Or: try one more encoder iteration with early-stopping at epoch 2-3
+  baked into the train loop (or much higher dropout to delay event-CE
+  overfit) and see if we can push mid-round σ_s lower.
+
+================================================================================
+2026-05-15 (cont. 2) — L2 ALL THREE GATES PASS, encoder promoted
+================================================================================
+
+scripts/probe_features.py (new) — L2-G2 implementation. Tiny MLP probe
+(128-hidden, 2-layer) trained on frozen encoder embeddings to predict
+round_won. Reports overall + per-position-bin accuracy.
+
+scripts/probe_clustering.py (new) — L2-G3 implementation. 2D PCA + UMAP
+projection of frozen encoder embeddings, colored by next-event-type AND by
+round_won. Pass = event-cluster within/global-spread ratio < win-cluster
+ratio (event tighter, win diffuse).
+
+RESULTS for outputs/round_encoder/v6_81demos/best.pt:
+  L2-G1 (σ_s):       median 0.4496 ∈ [0.15, 0.45]               PASS
+  L2-G2 (probe acc): best val_acc 0.7630 ≥ 0.65                 PASS
+                      per-position: early 0.637, mid 0.746, late 0.906
+                      majority baseline 0.5496 (+21.3 pp lift)
+  L2-G3 (cluster):   UMAP event/global=0.410 vs win/global=0.992 PASS
+                      (event clusters 2.4× tighter than outcome)
+                      PCA  event/global=0.500 vs win/global=0.983
+
+Crucially: L2-G2 reveals the encoder captures MORE than σ_s suggested.
+σ_s is a kNN-clustering measure; a nonlinear probe can extract structure
+kNN can't find. At early-round positions probe scored 0.637 (well above
+majority 0.55) even though σ_s for early ticks was 0.4750 (near-random).
+
+Per docs/alignment-delta.md §8 level-dependency rule: any L3 scorer that
+consumes the v6 encoder inherits these L2 gates. They are now cleared.
+
+Artifacts:
+  outputs/round_encoder/v6_81demos/probe_features_best.json
+  outputs/round_encoder/v6_81demos/clustering_best.{json,png}
+
+NEXT: Level-2 → Level-3 integration (F11). The plug-in point already
+exists in src/training/recall.py (RECALLIndex), and the work per the doc
+is plumbing `--level2-encoder` through scripts/train_grpo.py and
+generalizing LearnedStateEmbedder from "JSON → SentenceTransformer" to
+"window-of-states → event encoder". Compatibility concern: v6 encoder
+consumes 582-dim feature vectors from demo parquets; at L3 inference
+the input would be a window of L1 outputs (GameStateJSON), which is a
+different schema. Need a converter or matching schema. Worth a design
+pass before code.
+
+================================================================================
+2026-05-15 (cont. 3) — L2→L3 integration (F11) shipped
+================================================================================
+
+WHAT SHIPPED
+- scripts/build_encoder_embedding_cache.py: pre-computes v6 embeddings for
+  every (demo_stem, round_num) in the tick-sequence dataset. Output is a
+  single .pt file (~2.5GB at fp16 for 1733 rounds × ~1000 ticks × 512 dim).
+- src/perception/encoder_cache.py:EncoderEmbeddingCache — lookup adapter.
+  `cache.lookup(demo_stem, round_num, raw_tick) -> np.ndarray(512,)`.
+  Picks nearest downsampled position (encoder ran at 8 Hz). Returns None
+  on miss; caller can fall back.
+- src/training/recall.py:RECALLIndex now accepts `state_embedder_full=`
+  in addition to the legacy game_state-only embedder. When provided,
+  receives the full sample dict (so it can read `source.demo_stem/
+  round_num/tick`). Falls back per-sample to the legacy 19-d embedder if
+  the full embedder returns None. Backward-compatible — every existing
+  call site keeps working.
+- src/training/recall.py:recall_reward synthesizes `query_sample` from
+  ground_truth + source so the L2-cache embedder works at query time too,
+  not just at index-build time.
+- src/training/grpo_trainer.py:build_recall_index adds env var
+  CHIMERA_RECALL_L2_CACHE=path/to/embedding_cache.pt. Same A/B pattern
+  as the existing CHIMERA_RECALL_ENCODER hook. No code changes needed
+  in train_grpo.py call sites.
+
+SMOKE TEST RESULTS (scripts/test_encoder_recall.py)
+- 100% cache hit on all 2013 smoke_test rows (4 furia-vs-vitality demos)
+- RECALL index builds with d=512 (vs 19 for baseline)
+- V̂ spread mean=0.500, std=0.280 — no collapse
+- Advantage signal A = Q̂ - V̂:
+    v6 encoder:    mean=+0.002, std=0.151, non-zero on 43/50 queries (86%)
+    19-d baseline: mean=-0.012, std=0.113, non-zero on 33/50 queries (66%)
+- v6 yields a stronger and more-often-non-zero advantage signal — the
+  thing GRPO actually needs from a reward.
+
+INTEGRATION CONTRACT (now in code, was just a doc claim before)
+- L2 encoder is queried by (demo_stem, round_num, raw_tick) lookup, NOT
+  by re-encoding L1 game_state JSONs. This sidesteps the schema mismatch
+  entirely (the encoder ate 582-d god-view features at training time,
+  L1 outputs only have single-player perception — but at GRPO time we
+  only need to retrieve precomputed embeddings, not run the encoder live).
+- Per-row provenance for the existing GRPO dataset comes from
+  smoke_test_source.jsonl, joined to smoke_test.jsonl by line index. Any
+  new GRPO dataset prep must emit the same provenance triple or RECALL
+  will silently fall back to the 19-d embedder.
+
+ARTIFACTS
+  outputs/round_encoder/v6_81demos/embedding_cache.pt   (2.5 GB)
+  src/perception/encoder_cache.py
+  scripts/build_encoder_embedding_cache.py
+  scripts/test_encoder_recall.py
+
+NEXT
+- Actually run a GRPO smoke step end-to-end with
+  CHIMERA_RECALL_L2_CACHE set. Will likely surface 1-2 more wiring bugs
+  (sample-merge logic for source provenance at training time) and give
+  a real A/B comparison of advantage variance / format pass / mean
+  reward between 19-d and v6.
+- BT-head retraining on v6 — gated on this integration; same plug-in
+  point (state_embedder_full).
+- F05 dataset regen if we want more demos in the index (currently the
+  cache covers all 81 demos but smoke_test rows only span the original
+  4 furia-vs-vitality demos).
+
+================================================================================
+2026-05-15 (cont. 4) — Probe ablations confirm encoder isn't cheating
+================================================================================
+
+User asked "how do we know the encoder is in a good spot?" Honest answer:
+the σ_s gate barely passed (0.4496 vs 0.45 ceiling), early/mid-round bins
+were still essentially random there, and the L2-G2 probe could in
+principle have been reading bookkeeping features (score, round_num,
+round_time) that trivially correlate with outcome.
+
+scripts/probe_ablations.py — zero specific input feature dims, re-encode
+through frozen v6 encoder, re-train probe, report mean val_acc over 3
+seeds. 12 ablations covering individual features + aggressive
+keep-only-spatial / keep-only-bookkeeping controls.
+
+KEY RESULTS (ckpt: outputs/round_encoder/v6_81demos/best.pt)
+  baseline                    0.7631       (reference)
+  no_bookkeeping (sc+rn+rt)   0.7693 (+0.006)  ← acc actually went UP
+  no_bomb                     0.7604 (−0.003)
+  no_alive                    0.7599 (−0.003)
+  no_hp_armor                 0.7594 (−0.004)
+  no_alive_hp_armor           0.7571 (−0.006)  ← combined still tiny
+  spatial_only                0.6019 (−0.161)
+  bookkeeping_only            0.6296 (−0.134)
+
+INTERPRETATION
+- Removing score+round_num+round_time (the obvious "cheating" features)
+  leaves accuracy intact. The encoder is not reading team-quality
+  shortcuts from those.
+- Bookkeeping features alone are insufficient (0.63 vs 0.65 gate). They
+  carry some signal but not enough — the per-player state info is
+  doing the actual work.
+- No single feature ablation costs more than ~0.6 pp. The encoder
+  distributes outcome signal across the entire 582-d input.
+- Aggressive ablations (keep only spatial OR only bookkeeping) collapse
+  to ~0.60 — the encoder needs the full feature set, but no single
+  piece is load-bearing.
+
+The "probe was riding on bookkeeping" hypothesis is falsified. v6
+encoder has learned distributed tactical structure.
+
+Still untested (lower priority but real):
+  - Held-out RECALL test on the 12 demos never seen during encoder
+    training (smoke_test rows are all in-distribution)
+  - Raw-feature-vector baseline (kNN over the 582-d directly, no encoder)
+    — does the encoder add anything over no-op projection?
+  - Actual GRPO step run with the new reward signal — the only "real"
+    test of usefulness for downstream RL.
+
+ARTIFACTS
+  scripts/probe_ablations.py
+  outputs/round_encoder/v6_81demos/probe_ablations.json
+
+================================================================================
+2026-05-16 — v7 encoder (1024-d + salience attention)
+================================================================================
+
+User asked to bump d_model to 1024 and add variable-attention mechanism.
+Built SalienceCausalBlock: standard causal MHA with a learned per-key
+scalar additive bias on attention logits. Salience score is content-derived
+(from input projection), shared across layers + queries + heads. Implements
+F.scaled_dot_product_attention with composed causal+salience+padding mask.
+
+v7 CONFIG: d_model=1024, n_heads=16, d_ff=4096, n_layers=4, use_salience=True
+v7 PARAMS: 58.5M total (vs 15.1M for v6 — 4× more)
+
+CACHE BUILDER OOM FIX
+At d_model=1024 the train.pt blob (3.3GB) + accumulating cache (3GB) +
+torch.save serialization buffer didn't fit in 16GB WSL RAM. Rewrote
+scripts/build_encoder_embedding_cache.py to flush per-N-rounds chunk
+files (default 300 rounds = ~600MB each). 6 chunk files total, 5GB on
+disk. src/perception/encoder_cache.py auto-discovers chunks via
+glob("embedding_cache*.pt").
+
+GATE RESULTS (v6 vs v7 side by side)
+
+  Metric                       v6 (512-d)       v7 (1024-d + salience)
+  val_acc_event_only           0.5269           0.5391  (+0.012)
+  σ_s median                   0.4496           0.4496  (no change)
+  L2-G2 probe acc              0.7631           0.7529  (-0.010)
+  L2-G3 event-cluster ratio    0.410            0.439   (slightly looser)
+  no_bookkeeping ablation      0.7693           0.7635  (same lesson)
+
+Verdict: the bigger model + salience moves event-CE val acc up slightly
+(+1.2 pp on a 7-class task) but everything else is wash or marginally
+worse. Data is the bottleneck, not capacity or attention mechanism.
+
+WHAT THE SALIENCE HEAD ACTUALLY LEARNED (the interesting finding)
+Inspected per-event-type salience distribution on val:
+  none         -1.57   (idle ticks suppressed — baseline)
+  kill_t       -0.33    +0.96  vs global
+  kill_ct      -0.26    +1.03
+  bomb_planted -0.03    +1.27
+  bomb_exploded +0.55   +1.84
+  round_end    +0.64    +1.93
+  bomb_defused +3.34    +4.64  ← defuses get MASSIVE priority
+
+Range -8.25 to +6.00, std 2.43 — actively used (not a degenerate
+constant). The mechanism works: the encoder identifies tactically
+important ticks and biases attention toward them. Defuses dominate
+because they're decisive endgame anchors.
+
+Why no metric improvement: probably the plain attention already
+implicitly learns the same prioritization, and the bottleneck for
+mid/early-round σ_s is data variety, not where attention focuses.
+
+ARTIFACTS
+  outputs/round_encoder/v7_1024d_salience/best.pt
+  outputs/round_encoder/v7_1024d_salience/embedding_cache_{train,val}_chunk*.pt (6 files)
+  outputs/round_encoder/v7_1024d_salience/{sigma_s_diag,probe_features,probe_ablations,clustering}_best.{json,png}
+  scripts/train_round_encoder.py — SalienceCausalBlock added, --salience CLI flag
+  src/perception/encoder_cache.py — multi-chunk loader
+
+DECISION
+Keep v6 as the production encoder (slightly better probe acc, 4× smaller).
+v7 is a useful data point: salience mechanism works as designed, just
+doesn't help our downstream metric. If we ever scale to 200+ demos and
+hit a new ceiling, revisit — salience might unlock more then.
+
+================================================================================
+2026-05-16 — Encoder learning curve (data is not the bottleneck)
+================================================================================
+
+User asked "how do we know how much data is ideal? storage matters."
+Built scripts/learning_curve.py: train v6-config encoder on subsets of
+{16, 32, 48, 64, 69} demos (nested by demo-stem, seeded shuffle), fixed
+val split (12 demos). Each subset trained 15 epochs, then re-run the
+L2-G2 probe to get probe_outcome val_acc.
+
+RESULT (the figure now lives at outputs/round_encoder/learning_curve/
+learning_curve.{png,pdf}):
+
+  n_demos  rounds   event_acc   probe_acc
+       16     328     0.5276     0.7592
+       32     643     0.4756     0.7680
+       48     996     0.5231     0.7748  ← peak
+       64    1369     0.5060     0.7723
+       69    1471     0.5586     0.7615
+
+Top-end slope: −0.022 probe_acc per +10 demos. NEGATIVE.
+
+The probe saturates by 16 demos. Going to 69 demos buys nothing on the
+L2-G2 metric (and σ_s/clustering improved from the bigger N but probe
+didn't). Combined with v7 (1024-d + salience same data → no gain), this
+means:
+
+  - data is not the bottleneck for this encoder design
+  - capacity is not the bottleneck either
+  - what is bottlenecked: the architecture + SSL objective combination
+    has extracted ~all the round_won-correlated information available
+    at ~16 demos
+
+For the paper this is a useful negative result: it constrains the design
+space. Future encoder iterations must justify themselves by improving
+probe_acc at fixed small N, not by training on more data.
+
+CAVEATS (in docs/learning-curve-finding.md):
+- The curve measures only probe (the strongest gate). σ_s clustering
+  and RECALL retrieval density may still benefit from more data.
+- Tactical diversity is limited to 4 tournaments × ~20 pro teams. Demos
+  from different skill brackets / eras could shift the curve.
+- Event-prediction val_acc is noisy run-to-run (event-CE overfits fast).
+
+For STORAGE: each demo costs ~150 MB (if .dem deleted after parsing) to
+~300 MB (everything kept). Given this curve, adding 100+ more demos
+from the same regime isn't worth ~15-30 GB of storage. Better to
+spend the budget on demos from a *different* distribution (older meta,
+lower skill, MR12) if we want to test generalization.
+
+ARTIFACTS
+  docs/learning-curve-finding.md (the paper-ready writeup)
+  outputs/round_encoder/learning_curve/curve_epochs15.json (raw numbers)
+  outputs/round_encoder/learning_curve/learning_curve.{png,pdf}
+  scripts/learning_curve.py (reproducer)
+  scripts/plot_learning_curve.py (figure renderer)
+
+================================================================================
+2026-05-16 (cont.) — Pro-action probe + event-timing precision (the harder gates)
+================================================================================
+
+User pushed back on probe_outcome (round_won) being the right test — "you
+can infer that by X vs X". What actually matters is whether the encoder
+captures (1) what events happen next and (2) what pros are trying to
+DO in disadvantage situations. Built three new artifacts:
+
+1. EncoderEmbeddingCache.event_embedding(demo, round, event_tick, window=128)
+   in src/perception/encoder_cache.py — causal mean-pool of encoder
+   embeddings over the 16 downsampled ticks ending at event_tick (2 seconds
+   of buildup). One vector per event, strictly causal.
+
+2. scripts/probe_pro_action.py — predict pro behavioral labels from event
+   embeddings. Uses smoke_test.jsonl (2013 labeled rows, 4 demos).
+   Demo-disjoint split (m1+m2+m4 train, m3-nuke val).
+
+   RESULTS on v6 cache (val=224 samples):
+     target                    classes  majority  probe   lift    verdict
+     movement_direction        3         0.411    0.518  +10.7pp  PASS
+     objective_direction       3         0.397    0.515  +11.8pp  PASS
+     initiated_engagement      2         0.714    0.714  +0.0pp   FAIL
+     used_utility              2         0.701    0.708  +0.7pp   weak
+
+   Encoder captures CONTINUOUS tactical movement (where pros are going)
+   but NOT DISCRETE DECISION POINTS (when to engage, when to throw
+   utility). Both PASSing targets are essentially "trajectory" — they
+   trend with positional context. The FAILs are commitments — they
+   require knowing player intent that the per-tick god-view doesn't
+   expose (a low-HP scout decides to peek or hide; the state doesn't
+   say which).
+
+   This validates user's intuition: round_won probe at 0.76 was a soft
+   target. Pro-decision probes are the harder, more relevant gates.
+
+3. scripts/event_timing_precision.py — measure |pred_ticks - true_ticks|
+   on type-correct positions, per event type.
+
+   RESULTS on v6:
+     event           median err   in seconds
+     ALL events      58.8 ticks   0.92s
+     kill_t          59.2 ticks   0.92s
+     kill_ct         57.8 ticks   0.90s
+     bomb_planted    61.6 ticks   0.96s
+     bomb_defused    66.5 ticks   1.04s  ← worst (7s process, hard to time)
+     bomb_exploded   62.4 ticks   0.98s
+     round_end       40.1 ticks   0.63s  ← best (anchored by end-of-round state)
+     TYPE-WRONG      59.2 ticks   0.93s
+
+   Type-wrong timing matches type-correct timing → the two heads are
+   decoupled. Median 0.92s within a 4s horizon = ~23% of horizon —
+   moderate precision.
+
+SYNTHESIZED CAPABILITY MAP (where v6 actually stands)
+  state prediction (continuous)     STRONG  (val_h32 MSE 0.019)
+  outcome prediction (binary)       STRONG  (probe 0.76, easy)
+  movement direction (3-way)        MODERATE (+10pp lift)
+  objective direction (3-way)       MODERATE (+12pp lift)
+  next-event type (7-way)           MODERATE (0.52 vs 0.14 random)
+  next-event timing                 MODERATE (±0.92s in 4s horizon)
+  engagement initiation             FAIL    (no lift over majority)
+  utility usage commitment          FAIL    (weak, +0.7pp)
+
+The fail modes are precisely the discrete pro decisions that would
+distinguish "good advice in disadvantage" from "describe what just
+happened". Closing those gaps is more important than scaling demos or
+making the encoder bigger — those have been ruled out empirically.
+
+ARTIFACTS
+  src/perception/encoder_cache.py — event_embedding() method
+  scripts/probe_pro_action.py
+  scripts/event_timing_precision.py
+  outputs/round_encoder/v6_81demos/probe_pro_action.json
+  outputs/round_encoder/v6_81demos/event_timing_precision.json
+
+================================================================================
+2026-05-16 (cont. 3) — v8 (team aggregates + window forecast) didn't fix pro-action
+================================================================================
+
+User feedback: round_won probe is too easy to hill-climb (you can infer it
+from "X alive vs Y alive"). The real test is whether the encoder can
+(1) predict what events happen next and (2) understand pro intent. v6 was
+strong on (1) and weak on (2). User asked for:
+  - Better INPUT features (round timer, money, weapon, weapons seen)
+  - "Tick aggregation TRAINED" — encoder should learn to aggregate over time
+
+Implemented:
+  feature_schema_v2 (+15 dims, total 597-d, was 582):
+    - money_diff_norm, equip_diff_norm
+    - alive_t_norm, alive_ct_norm, alive_diff_norm
+    - ticks_since_last_kill_norm, ticks_since_last_event_norm
+    - multi-scale round_time sinusoidal at 4 periods (2s/5s/20s/115s) × 2
+
+  WindowForecastHead + L_window_count + L_window_bin (v8 SSL #6, #7):
+    - At tick T, predict (kills_t_count, kills_ct_count, any_plant, any_defuse,
+      any_explode, any_round_end) over next 16 downsampled ticks = 2 seconds.
+    - count loss: smooth-L1 on log1p(count); binary: BCE-with-logits
+    - weight=0.3 in total loss
+
+  Skipped: "weapons seen by enemies" — requires LOS reasoning (raycast through
+  map BSP, or FOV-cone proxy with viewangle+positions we have). Real work,
+  deferred.
+
+RESULTS
+
+  Metric                       v6           v7 (1024+sal)  v8 (v2+window)
+  σ_s median                   0.4496       0.4496         0.4496
+  L2-G2 probe overall          0.7631       0.7529         0.7684 (best)
+  L2-G2 probe early-round      0.6371       0.6285         0.6495 (+1.3pp v6)
+  L2-G2 probe mid              0.7462       0.7233         0.7452
+  L2-G2 probe late             0.9056       0.9066         0.9104
+  movement_dir lift (pp)       +10.7        n/a            +7.4 (WORSE)
+  objective_dir lift (pp)      +11.8        n/a            +8.0 (WORSE)
+  initiated_engagement lift    +0.0         n/a            +0.9 (tiny, noise)
+  used_utility lift            +0.7         n/a            +0.0 (WORSE)
+
+VERDICT
+The added aggregate features bought a small early-round probe lift (+1.3pp).
+The window-forecast objective trained fine on training set (val_L_window_count
+0.23) but didn't transfer to pro-action prediction. Both pro-action targets
+that worked in v6 (movement/objective direction) got noticeably worse — std
+went up 3× too, less stable training.
+
+WHY IT DIDN'T WORK (hypothesis)
+Window-forecast has the same "dominant zero class" problem as event-CE: most
+2s windows have 0 events, so the head learns "predict 0 nearly always." It
+predicts WHAT HAPPENS but not WHAT'S BEING DECIDED. The two are different
+functions of the embedding — kill counts in window are downstream of
+positions+momentum (continuous), pro decisions are conditional on intent
+information not available in god-view state.
+
+The discrete-decision capability gap is real and not addressed by either
+"more aggregate features" or "more SSL objectives on this state space."
+
+WHAT MIGHT ACTUALLY HELP (informed by both negative results)
+  1. Per-player intent labels — harder data prep but addresses the right gap.
+     E.g., "did this player initiate engagement in the next 2s?" as PER-PLAYER
+     binary target, fed back via a per-player auxiliary head.
+  2. LOS/perception features — what the player has SEEN, not god-view. Closes
+     the information asymmetry between the encoder and the actual decision
+     maker.
+  3. Sequence-of-actions modeling — model pro behavior as Markov over a tick
+     window, not single-tick classification.
+
+For now, v6 remains production-quality on its claims (probe + σ_s + event
+prediction) and the limits on pro-decision prediction are well-documented.
+
+ARTIFACTS
+  scripts/build_tick_sequences.py — v2 schema, 597-d
+  scripts/train_round_encoder.py — WindowForecastHead, --window-forecast flag
+  outputs/round_encoder/v8_aggregates_window/best.pt + cache chunks
+  outputs/round_encoder/v8_aggregates_window/{sigma_s_diag,probe_features,
+    probe_pro_action}_best.json

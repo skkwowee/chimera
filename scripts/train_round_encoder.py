@@ -1,20 +1,27 @@
 #!/usr/bin/env python3
-"""Train the Level-2 round encoder (v4: causal decoder).
+"""Train the Level-2 round encoder (v5: causal decoder + event objectives).
 
-Per docs/round-encoder-design.md v4:
+Per docs/round-encoder-design.md v4 architecture, v5 SSL objectives:
   - Round-as-sequence-of-downsampled-ticks (8 Hz, ~960 tokens per round)
   - Causal self-attention so h_T is a function of ticks 0..T only (F2-safe)
-  - Predict-forward SSL objectives — none consume round_won
+  - All SSL objectives are C1-clean (never consume round_won)
 
-This v1 of the script ships TWO of the four planned SSL objectives:
-  - L_next:  MSE on per-tick feature vector at T+1
-  - L_multi: MSE on per-tick feature vector at T+H for H ∈ {8, 32}
-             (1s and 4s ahead — multi-horizon prevents short-horizon shortcut)
+SSL objectives (5 in total):
+  - L_h1, L_h8, L_h32: MSE on the input feature vector H ticks ahead
+                        (multi-horizon forward prediction — v4 inherits)
+  - L_event_ce:        7-way CE on next-event type within EVENT_HORIZON_TICKS
+                        ({kill_t, kill_ct, bomb_planted, bomb_defused,
+                          bomb_exploded, round_end, none}). "none" is
+                        down-weighted to keep the rare events visible.
+  - L_time_to_event:   Huber regression on log(1+ticks) until next event.
+                        Masked to non-"none" positions only — otherwise the
+                        model trivially learns "predict the cap everywhere".
 
-The other two objectives (time-to-next-event regression, next-event-type CE)
-need per-tick event labels that build_tick_sequences.py doesn't currently
-emit. Adding them is incremental — extend the data prep with kills.json /
-bomb.json walkthroughs, plug new heads into the loss sum here.
+v4 (forward-pred only) failed σ_s gate because forward prediction alone
+clusters states by visual continuity, not strategic structure. Adding
+event objectives forces the encoder to differentiate states by what's
+about to happen — kills, plants, etc. — which is exactly the signal a
+downstream RL policy needs.
 
 Usage:
     # Smoke test (small model, few epochs) — verify training works
@@ -65,6 +72,47 @@ class TrainConfig:
     horizons: list[int] = field(default_factory=lambda: [1, 8, 32])
     horizon_weights: list[float] = field(default_factory=lambda: [1.0, 0.7, 0.4])
 
+    # Event objectives (v5)
+    n_event_classes: int = 7  # matches EVENT_VOCAB
+    none_event_idx: int = 6
+    event_ce_weight: float = 1.0       # weight in total loss
+    event_time_weight: float = 0.5     # weight in total loss (regression scale)
+    none_class_weight: float = 0.1     # CE weight for the dominant "none" class
+    event_horizon_ticks: float = 256.0 # for log-time normalization (raw 64Hz)
+
+    # v7: salience-biased causal attention. When True, each tick learns a
+    # scalar salience score; that score is added as additive bias to
+    # attention logits for that tick as a KEY. Net effect: model can
+    # learn to weight ticks variably (freeze-time low salience, kills/
+    # plants high salience) without hand-specifying which ticks matter.
+    use_salience: bool = False
+
+    # v8: window-forecast SSL — at tick T predict aggregates over the next
+    # WINDOW_DOWNSAMPLED ticks (default 16 = 2s at 8Hz). Forces per-tick
+    # output to encode "what's about to happen in this window" instead of
+    # just "what's the very next event". Targets:
+    #   - kills_t_in_window (count, regression)
+    #   - kills_ct_in_window (count, regression)
+    #   - any_plant_in_window (binary)
+    #   - any_defuse_in_window (binary)
+    #   - any_explode_in_window (binary)
+    #   - any_round_end_in_window (binary)
+    # Labels derived at training time from the per-tick event_labels list.
+    window_forecast_ticks: int = 16  # downsampled ticks; at 8Hz = 2 seconds
+    window_forecast_weight: float = 0.3
+    use_window_forecast: bool = False
+
+    # v9: change-point segmentation. Per-tick boundary head predicts where
+    # an "event" ends; cumsum of boundaries → segment ID per tick. Aggregate
+    # head forecasts per-segment event counts. Density penalty prevents
+    # trivial "boundary every tick" collapse. The forecast loss prevents
+    # trivial "no boundaries" collapse. Equilibrium = boundaries at real
+    # state transitions, i.e., emergent event segmentation.
+    use_change_point: bool = False
+    change_point_max_segments: int = 64   # max segments per round (cap for batching)
+    change_point_weight: float = 0.3      # weight on segment-forecast loss
+    change_point_density_weight: float = 0.05  # λ_d penalty on boundary density
+
     # Optim
     lr: float = 3e-4
     weight_decay: float = 0.01
@@ -85,34 +133,61 @@ class TrainConfig:
 # Dataset
 # ---------------------------------------------------------------------------
 class RoundDataset(Dataset):
-    """Wraps the list of per-round (T, F) tensors from train.pt / val.pt."""
+    """Wraps the list of per-round (T, F) tensors from train.pt / val.pt.
+
+    For v5+ datasets, also exposes per-tick event labels and times (used by
+    the event-prediction SSL heads). Falls back gracefully if a v4 blob is
+    loaded — event_labels/event_times become None, and the trainer skips the
+    event loss.
+    """
 
     def __init__(self, pt_path: Path):
         blob = torch.load(pt_path, weights_only=False)
         self.tensors: list[torch.Tensor] = blob["tensors"]
         self.metas: list[dict] = blob["metas"]
         self.feature_dim: int = int(blob["feature_dim"])
+        self.event_labels: list[torch.Tensor] | None = blob.get("event_labels")
+        self.event_times: list[torch.Tensor] | None = blob.get("event_times")
+        self.event_vocab: list[str] | None = blob.get("event_vocab")
+
+    def has_events(self) -> bool:
+        return self.event_labels is not None and self.event_times is not None
 
     def __len__(self) -> int:
         return len(self.tensors)
 
-    def __getitem__(self, i: int) -> tuple[torch.Tensor, dict]:
-        return self.tensors[i], self.metas[i]
+    def __getitem__(self, i: int) -> tuple[torch.Tensor, dict, torch.Tensor | None,
+                                           torch.Tensor | None]:
+        ev_l = self.event_labels[i] if self.event_labels is not None else None
+        ev_t = self.event_times[i] if self.event_times is not None else None
+        return self.tensors[i], self.metas[i], ev_l, ev_t
 
 
-def collate(batch: list[tuple[torch.Tensor, dict]]) -> dict:
+def collate(batch: list[tuple[torch.Tensor, dict, torch.Tensor | None, torch.Tensor | None]]) -> dict:
     """Pad rounds to max-T-in-batch; build attention mask (1=real, 0=pad)."""
-    tensors, metas = zip(*batch)
+    tensors, metas, ev_lbls, ev_times = zip(*batch)
     lengths = torch.tensor([t.shape[0] for t in tensors], dtype=torch.long)
     T_max = int(lengths.max().item())
     F_dim = tensors[0].shape[1]
     B = len(tensors)
     out = torch.zeros(B, T_max, F_dim, dtype=torch.float32)
     mask = torch.zeros(B, T_max, dtype=torch.bool)
+    has_events = ev_lbls[0] is not None
+    if has_events:
+        ev_l_pad = torch.full((B, T_max), -100, dtype=torch.long)  # -100 = ignore_index
+        ev_t_pad = torch.zeros(B, T_max, dtype=torch.float32)
     for i, t in enumerate(tensors):
-        out[i, : t.shape[0]] = t
-        mask[i, : t.shape[0]] = True
-    return {"x": out, "mask": mask, "lengths": lengths, "metas": list(metas)}
+        T_i = t.shape[0]
+        out[i, : T_i] = t
+        mask[i, : T_i] = True
+        if has_events:
+            ev_l_pad[i, : T_i] = ev_lbls[i]
+            ev_t_pad[i, : T_i] = ev_times[i]
+    res = {"x": out, "mask": mask, "lengths": lengths, "metas": list(metas)}
+    if has_events:
+        res["event_labels"] = ev_l_pad
+        res["event_times"] = ev_t_pad
+    return res
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +209,93 @@ class SinusoidalPositionalEncoding(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# Salience-biased causal attention block (v7)
+# ---------------------------------------------------------------------------
+class SalienceCausalBlock(nn.Module):
+    """Pre-norm transformer block with causal self-attention + per-key salience.
+
+    Standard MHA computes attention logits = (Q @ K.T) / sqrt(d). We add a
+    learned per-key scalar `salience[K]` to those logits, so when any query
+    Q attends, it sees keys K weighted by both content similarity AND a
+    content-derived salience score. The salience score is computed once
+    (per-tick, shared across layers + heads + queries) from the post-input
+    projected representation — so the encoder learns "ticks where the
+    state changes meaningfully" without hand-specifying event boundaries.
+
+    Bias is additive in log-space; sigmoid would have been multiplicative
+    in probability-space but that bounds salience to [0,1] which is more
+    restrictive than what the model can express here.
+
+    Causal mask + padding mask are composed into the same additive bias.
+    Uses F.scaled_dot_product_attention so it dispatches to fused kernels
+    where available.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, d_ff: int, dropout: float):
+        super().__init__()
+        assert d_model % n_heads == 0
+        self.n_heads = n_heads
+        self.d_head = d_model // n_heads
+        self.scale = self.d_head ** -0.5
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.qkv = nn.Linear(d_model, 3 * d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
+
+        self.norm2 = nn.LayerNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, d_model),
+        )
+        self.drop = nn.Dropout(dropout)
+
+    def forward(
+        self,
+        x: torch.Tensor,                              # (B, T, D)
+        salience: torch.Tensor,                       # (B, T) — per-key bias
+        key_padding_mask: torch.Tensor | None = None, # (B, T) — True = PAD
+    ) -> torch.Tensor:
+        B, T, D = x.shape
+        h = self.norm1(x)
+        qkv = self.qkv(h).reshape(B, T, 3, self.n_heads, self.d_head)
+        q, k, v = qkv.unbind(dim=2)
+        # (B, n_heads, T, d_head)
+        q = q.transpose(1, 2).contiguous()
+        k = k.transpose(1, 2).contiguous()
+        v = v.transpose(1, 2).contiguous()
+
+        # Combined additive mask: (B, 1, T, T)
+        # - causal triangle: future positions get -inf
+        # - per-key salience bias: broadcast across queries
+        # - padding: PAD keys get -inf
+        neg_inf = torch.finfo(q.dtype).min
+        causal = torch.full((T, T), neg_inf, device=x.device, dtype=q.dtype)
+        causal = torch.triu(causal, diagonal=1)   # (T, T)
+        bias = salience.unsqueeze(1).unsqueeze(1)  # (B, 1, 1, T)
+        if key_padding_mask is not None:
+            pad_bias = torch.where(
+                key_padding_mask.unsqueeze(1).unsqueeze(1),
+                neg_inf, 0.0,
+            ).to(q.dtype)                          # (B, 1, 1, T)
+            bias = bias + pad_bias
+        attn_mask = causal.unsqueeze(0).unsqueeze(0) + bias  # (B, 1, T, T)
+
+        out = nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask,
+        )
+        out = out.transpose(1, 2).reshape(B, T, D)
+        out = self.out_proj(out)
+        x = x + self.drop(out)
+
+        # Pre-norm FFN
+        h2 = self.norm2(x)
+        x = x + self.drop(self.ffn(h2))
+        return x
+
+
+# ---------------------------------------------------------------------------
 # Causal-decoder transformer + prediction head
 # ---------------------------------------------------------------------------
 class RoundEncoder(nn.Module):
@@ -147,21 +309,40 @@ class RoundEncoder(nn.Module):
     def __init__(self, cfg: TrainConfig):
         super().__init__()
         self.cfg = cfg
+        self.use_salience = bool(getattr(cfg, "use_salience", False))
         self.input_proj = nn.Linear(cfg.feature_dim, cfg.d_model)
         self.norm_in = nn.LayerNorm(cfg.d_model)
         self.pos_emb = SinusoidalPositionalEncoding(cfg.d_model, cfg.max_seq_len)
-        self.layers = nn.ModuleList([
-            nn.TransformerEncoderLayer(
-                d_model=cfg.d_model,
-                nhead=cfg.n_heads,
-                dim_feedforward=cfg.d_ff,
-                dropout=cfg.dropout,
-                activation="gelu",
-                batch_first=True,
-                norm_first=True,
+        if self.use_salience:
+            self.layers = nn.ModuleList([
+                SalienceCausalBlock(
+                    d_model=cfg.d_model,
+                    n_heads=cfg.n_heads,
+                    d_ff=cfg.d_ff,
+                    dropout=cfg.dropout,
+                )
+                for _ in range(cfg.n_layers)
+            ])
+            # Salience head: content-derived per-tick scalar. Computed once
+            # from input projection, shared across layers + queries + heads.
+            self.salience_head = nn.Sequential(
+                nn.Linear(cfg.d_model, cfg.d_model // 2),
+                nn.GELU(),
+                nn.Linear(cfg.d_model // 2, 1),
             )
-            for _ in range(cfg.n_layers)
-        ])
+        else:
+            self.layers = nn.ModuleList([
+                nn.TransformerEncoderLayer(
+                    d_model=cfg.d_model,
+                    nhead=cfg.n_heads,
+                    dim_feedforward=cfg.d_ff,
+                    dropout=cfg.dropout,
+                    activation="gelu",
+                    batch_first=True,
+                    norm_first=True,
+                )
+                for _ in range(cfg.n_layers)
+            ])
         self.norm_out = nn.LayerNorm(cfg.d_model)
 
     def forward(self, x: torch.Tensor,
@@ -171,18 +352,36 @@ class RoundEncoder(nn.Module):
         """
         h = self.norm_in(self.input_proj(x))
         h = self.pos_emb(h)
-        T = h.shape[1]
-        causal_mask = nn.Transformer.generate_square_subsequent_mask(
-            T, device=h.device, dtype=h.dtype,
-        )
-        for layer in self.layers:
-            h = layer(
-                h,
-                src_mask=causal_mask,
-                src_key_padding_mask=key_padding_mask,
-                is_causal=True,
+        if self.use_salience:
+            # Per-tick salience score; padding positions get -inf so they
+            # neither attract nor get attended (combined with key_padding
+            # bias inside the block).
+            salience = self.salience_head(h).squeeze(-1)   # (B, T)
+            for layer in self.layers:
+                h = layer(h, salience=salience,
+                          key_padding_mask=key_padding_mask)
+        else:
+            T = h.shape[1]
+            causal_mask = nn.Transformer.generate_square_subsequent_mask(
+                T, device=h.device, dtype=h.dtype,
             )
+            for layer in self.layers:
+                h = layer(
+                    h,
+                    src_mask=causal_mask,
+                    src_key_padding_mask=key_padding_mask,
+                    is_causal=True,
+                )
         return self.norm_out(h)
+
+    def compute_salience(self, x: torch.Tensor) -> torch.Tensor | None:
+        """Return per-tick salience scores for diagnostic/visualization use.
+        None when the encoder wasn't trained with salience."""
+        if not self.use_salience:
+            return None
+        h = self.norm_in(self.input_proj(x))
+        h = self.pos_emb(h)
+        return self.salience_head(h).squeeze(-1)
 
 
 class ForwardPredHead(nn.Module):
@@ -200,22 +399,301 @@ class ForwardPredHead(nn.Module):
         return self.net(h)
 
 
+class NextEventHead(nn.Module):
+    """Predicts the type of the next event (within EVENT_HORIZON_TICKS)."""
+
+    def __init__(self, d_model: int, n_classes: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, n_classes),
+        )
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        return self.net(h)
+
+
+class TimeToEventHead(nn.Module):
+    """Predicts ticks-until-next-event in log space (real-valued scalar)."""
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, 1),
+        )
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        return self.net(h).squeeze(-1)
+
+
+class WindowForecastHead(nn.Module):
+    """Predicts an aggregate over the next-W-tick window from h_T.
+
+    Output dims (6):
+      0: kills_t_count       (regression, target log1p)
+      1: kills_ct_count      (regression, target log1p)
+      2: any_plant_in_window (binary, sigmoid)
+      3: any_defuse_in_window (binary)
+      4: any_explode_in_window (binary)
+      5: any_round_end_in_window (binary)
+
+    The model is forced to encode "what's about to happen in this window",
+    not just "what's the very next event". A retake-style situation looks
+    structurally different from a save-style situation in terms of these
+    window aggregates, even if the very next event is the same in both.
+    """
+
+    OUT_DIM = 6
+    KILLS_T = 0
+    KILLS_CT = 1
+    BIN_FIRST = 2  # indices [2..5] are binary
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, self.OUT_DIM),
+        )
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        return self.net(h)
+
+
+class ChangePointHead(nn.Module):
+    """Learned event segmentation: per-tick boundary head + per-segment forecast.
+
+    Boundary head produces a sigmoid probability b_T at each tick. Hard
+    boundaries (b_T > 0.5) are used for segmentation in forward pass; the
+    gradient flows through the soft sigmoid via straight-through estimator.
+
+    Segment IDs are cumsum of hard boundaries (T,) → values in [0, max_segments).
+    Per-segment embedding = mean of h within the segment (scatter_mean).
+    Forecast head predicts per-segment aggregate counts of {kill_t, kill_ct,
+    plant, defuse, explode, round_end}.
+
+    Density penalty on b_prob.mean() keeps boundaries from collapsing to
+    "boundary every tick" (degenerate). The forecast loss keeps boundaries
+    from collapsing to "no boundaries" (one giant segment → poor per-event
+    aggregation).
+
+    Equilibrium: boundaries emerge at real state transitions where keeping
+    the prior ticks together costs more forecast loss than the marginal
+    boundary-density cost.
+    """
+
+    OUT_DIM = WindowForecastHead.OUT_DIM
+    KILLS_T = WindowForecastHead.KILLS_T
+    KILLS_CT = WindowForecastHead.KILLS_CT
+    BIN_FIRST = WindowForecastHead.BIN_FIRST
+
+    def __init__(self, d_model: int, max_segments: int = 64):
+        super().__init__()
+        self.max_segments = max_segments
+        self.boundary_head = nn.Sequential(
+            nn.Linear(d_model, d_model // 2),
+            nn.GELU(),
+            nn.Linear(d_model // 2, 1),
+        )
+        self.forecast_head = nn.Sequential(
+            nn.Linear(d_model, d_model),
+            nn.GELU(),
+            nn.Linear(d_model, self.OUT_DIM),
+        )
+
+    def forward(
+        self,
+        h: torch.Tensor,             # (B, T, d_model)
+        key_padding_mask: torch.Tensor | None = None,  # (B, T) True=PAD
+    ) -> dict:
+        """Returns dict with:
+          'b_logits':   (B, T)  raw boundary logits
+          'b_prob':     (B, T)  sigmoid(logits) — soft probability
+          'seg_id':     (B, T)  long, segment index per tick (after STE)
+          'seg_pred':   (B, max_segments, OUT_DIM) per-segment forecast
+          'seg_mask':   (B, max_segments) True for segments that have ticks
+        """
+        B, T, D = h.shape
+        b_logits = self.boundary_head(h).squeeze(-1)  # (B, T)
+        b_prob = torch.sigmoid(b_logits)
+        b_hard = (b_prob > 0.5).float()
+        # Straight-through estimator: forward uses hard, backward uses soft.
+        b_ste = b_hard.detach() + b_prob - b_prob.detach()  # (B, T)
+
+        # Segment IDs = cumsum of boundaries up to (and including) this tick.
+        # Each tick belongs to the segment that "starts" after the previous
+        # boundary. Convention: tick 0 is segment 0; first boundary opens
+        # segment 1; etc.
+        seg_id_soft = torch.cumsum(b_ste, dim=1)  # (B, T) float, gradient-carrying
+        seg_id = seg_id_soft.detach().long().clamp(max=self.max_segments - 1)
+
+        # Pool h within each segment (scatter_mean).
+        seg_pred = self._segment_pool_and_forecast(h, seg_id, key_padding_mask)
+        seg_mask = self._segment_mask(seg_id, key_padding_mask)
+        return {
+            "b_logits": b_logits,
+            "b_prob": b_prob,
+            "b_ste": b_ste,
+            "seg_id": seg_id,
+            "seg_pred": seg_pred,
+            "seg_mask": seg_mask,
+        }
+
+    def _segment_pool_and_forecast(
+        self,
+        h: torch.Tensor,             # (B, T, D)
+        seg_id: torch.Tensor,        # (B, T) long
+        key_padding_mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        B, T, D = h.shape
+        S = self.max_segments
+        sum_h = torch.zeros(B, S, D, device=h.device, dtype=h.dtype)
+        cnt = torch.zeros(B, S, 1, device=h.device, dtype=h.dtype)
+        if key_padding_mask is not None:
+            weight = (~key_padding_mask).to(h.dtype).unsqueeze(-1)  # (B, T, 1)
+        else:
+            weight = torch.ones(B, T, 1, device=h.device, dtype=h.dtype)
+        sum_h.scatter_add_(1, seg_id.unsqueeze(-1).expand(-1, -1, D), h * weight)
+        cnt.scatter_add_(1, seg_id.unsqueeze(-1), weight)
+        pooled = sum_h / cnt.clamp(min=1.0)  # (B, S, D)
+        return self.forecast_head(pooled)             # (B, S, OUT_DIM)
+
+    def _segment_mask(
+        self,
+        seg_id: torch.Tensor,        # (B, T) long
+        key_padding_mask: torch.Tensor | None,
+    ) -> torch.Tensor:
+        """True where the segment has at least one non-pad tick."""
+        B, T = seg_id.shape
+        S = self.max_segments
+        cnt = torch.zeros(B, S, device=seg_id.device, dtype=torch.float32)
+        if key_padding_mask is not None:
+            valid = (~key_padding_mask).float()
+        else:
+            valid = torch.ones(B, T, device=seg_id.device, dtype=torch.float32)
+        cnt.scatter_add_(1, seg_id, valid)
+        return cnt > 0
+
+
 # ---------------------------------------------------------------------------
 # Loss
 # ---------------------------------------------------------------------------
+def _build_window_forecast_targets(
+    ev_labels: torch.Tensor,    # (B, T)
+    mask: torch.Tensor,          # (B, T)
+    window: int,
+    cfg: TrainConfig,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """For each tick T predict aggregates over (T+1, T+window].
+
+    Targets shape (B, T, 6): kills_t_count, kills_ct_count, plant, defuse,
+    explode, round_end. Valid mask (B, T): True where (T+window) is within
+    the round AND the position itself is real (not pad).
+
+    Built once per batch using vectorized scatter/sum. Cheap.
+    """
+    B, T = ev_labels.shape
+    device = ev_labels.device
+
+    # One-hot the event types per tick (B, T, 7) — we then sum/max over window.
+    # int64 → onehot float32. Pad / -100 positions are masked later.
+    safe = ev_labels.clamp(min=0)  # avoid -100 indexing
+    onehot = nn.functional.one_hot(safe, num_classes=cfg.n_event_classes).float()  # (B, T, 7)
+    # Zero out pad rows so they contribute nothing to window sums
+    onehot = onehot * mask.float().unsqueeze(-1)
+
+    # Window aggregation: for each position p, sum over (p+1)..(p+window).
+    # Use cumulative sum then difference.
+    cs = torch.cumsum(onehot, dim=1)  # (B, T, 7)
+    # window_sum[p] = cs[p+window] - cs[p], clamped at T-1
+    end_idx = torch.clamp(torch.arange(T, device=device) + window, max=T - 1)
+    win_sum = cs[:, end_idx, :] - cs                       # (B, T, 7)
+
+    # Build target (B, T, 6)
+    tgt = torch.zeros(B, T, WindowForecastHead.OUT_DIM, device=device, dtype=torch.float32)
+    tgt[:, :, WindowForecastHead.KILLS_T] = win_sum[:, :, 0]   # kill_t
+    tgt[:, :, WindowForecastHead.KILLS_CT] = win_sum[:, :, 1]  # kill_ct
+    # Binary flags from "any" → sum > 0
+    tgt[:, :, WindowForecastHead.BIN_FIRST + 0] = (win_sum[:, :, 2] > 0).float()  # plant
+    tgt[:, :, WindowForecastHead.BIN_FIRST + 1] = (win_sum[:, :, 3] > 0).float()  # defuse
+    tgt[:, :, WindowForecastHead.BIN_FIRST + 2] = (win_sum[:, :, 4] > 0).float()  # explode
+    tgt[:, :, WindowForecastHead.BIN_FIRST + 3] = (win_sum[:, :, 5] > 0).float()  # round_end
+
+    # Valid: position must be real AND window must not extend past the round.
+    # We require the full window to land inside non-pad ticks.
+    valid_window = torch.zeros(B, T, dtype=torch.bool, device=device)
+    # End-of-window must be a real position (mask[end_idx]) AND start must be too
+    valid_window = mask & mask[:, end_idx]
+    # Also exclude the very last `window` ticks where the window would be truncated
+    # (cumsum-diff approach clamps, so labels would be biased low — easier to mask)
+    if window < T:
+        valid_window[:, -window:] = False
+    return tgt, valid_window
+
+
+def _build_segment_targets(
+    event_labels: torch.Tensor,    # (B, T)
+    event_times: torch.Tensor,     # (B, T)
+    mask: torch.Tensor,             # (B, T) True=real
+    seg_id: torch.Tensor,           # (B, T) long
+    downsample: int,
+    n_event_classes: int,
+    none_idx: int,
+    max_segments: int,
+) -> torch.Tensor:
+    """Per-segment count tensor (B, S, 6) of {kill_t, kill_ct, plant, defuse,
+    explode, round_end}. An event is "at" a tick when its tick-distance to
+    the next event is less than the downsample step (i.e., it falls in this
+    tick's downsample window). Sum over ticks in segment = segment count."""
+    B, T = event_labels.shape
+    is_event_at_tick = (
+        (event_labels != none_idx)
+        & (event_labels >= 0)
+        & (event_times < downsample)
+        & mask
+    )                                                  # (B, T) bool
+    safe = event_labels.clamp(min=0)                   # avoid -100
+    # One-hot the event type per tick, zero rows where no event-at-this-tick
+    onehot = nn.functional.one_hot(safe, num_classes=n_event_classes).to(torch.float32)
+    onehot = onehot * is_event_at_tick.float().unsqueeze(-1)   # (B, T, 7)
+    # Drop the "none" column — only forecast real events
+    onehot = onehot[..., :n_event_classes - 1]                  # (B, T, 6)
+    # Scatter-add into segments
+    targets = torch.zeros(B, max_segments, onehot.shape[-1],
+                           device=event_labels.device, dtype=torch.float32)
+    sid = seg_id.unsqueeze(-1).expand(-1, -1, onehot.shape[-1])
+    targets.scatter_add_(1, sid, onehot)
+    return targets
+
+
 def compute_loss(
     encoder: RoundEncoder,
-    heads: nn.ModuleList,
+    forward_heads: nn.ModuleList,
+    event_head: NextEventHead | None,
+    time_head: TimeToEventHead | None,
+    window_head: "WindowForecastHead | None",
+    change_point_head: "ChangePointHead | None",
+    class_weights: torch.Tensor | None,
     batch: dict,
     cfg: TrainConfig,
     device: torch.device,
 ) -> tuple[torch.Tensor, dict[str, float]]:
-    """Multi-horizon forward-prediction loss.
+    """Multi-horizon forward-prediction loss + (optional) event objectives.
 
-    For each horizon H, the target at position t is the input feature vector
-    at position t+H. Padded positions and out-of-bounds positions are excluded.
+    Forward-pred: for each horizon H, target at position t is the input
+    feature vector at t+H. Padded and out-of-bounds positions excluded.
 
-    Returns (total_loss, per_horizon_dict).
+    Event-CE: 7-way CE over the next event type within EVENT_HORIZON_TICKS,
+    with class_weights down-weighting "none" (the dominant class).
+
+    Time-to-event: smoothed L1 on log(1+ticks) until next event, masked to
+    non-"none" positions only — otherwise the model trivially predicts the
+    cap.
+
+    Returns (total_loss, metrics_dict).
     """
     x = batch["x"].to(device, non_blocking=True)        # (B, T, F)
     mask = batch["mask"].to(device, non_blocking=True)  # (B, T) — True = real
@@ -224,26 +702,141 @@ def compute_loss(
     h = encoder(x, key_padding_mask=key_padding_mask)   # (B, T, d_model)
 
     total = torch.zeros((), device=device, dtype=h.dtype)
-    per_horizon: dict[str, float] = {}
+    metrics: dict[str, float] = {}
     _, T, _ = x.shape
 
-    for w, H, head in zip(cfg.horizon_weights, cfg.horizons, heads):
+    # --- Forward prediction ---
+    for w, H, head in zip(cfg.horizon_weights, cfg.horizons, forward_heads):
         if H >= T:
-            per_horizon[f"L_h{H}"] = 0.0
+            metrics[f"L_h{H}"] = 0.0
             continue
         h_pred = head(h[:, : T - H, :])           # (B, T-H, F)
         target = x[:, H:, :]                       # (B, T-H, F)
         valid = mask[:, : T - H] & mask[:, H:]     # (B, T-H)
         if not valid.any():
-            per_horizon[f"L_h{H}"] = 0.0
+            metrics[f"L_h{H}"] = 0.0
             continue
         diff = (h_pred - target) ** 2              # (B, T-H, F)
         per_pos = diff.mean(dim=-1)                # (B, T-H)
         loss_h = (per_pos * valid.to(per_pos.dtype)).sum() / valid.to(per_pos.dtype).sum()
         total = total + w * loss_h
-        per_horizon[f"L_h{H}"] = float(loss_h.item())
+        metrics[f"L_h{H}"] = float(loss_h.item())
 
-    return total, per_horizon
+    # --- Event objectives ---
+    if event_head is not None and "event_labels" in batch:
+        ev_labels = batch["event_labels"].to(device, non_blocking=True)  # (B, T)
+        ev_times = batch["event_times"].to(device, non_blocking=True)    # (B, T)
+        # Mask out PAD (already -100 from collate, but be defensive)
+        ev_labels = torch.where(mask, ev_labels, torch.full_like(ev_labels, -100))
+
+        # CE over 7 classes — flatten and use ignore_index=-100, weight handles
+        # class imbalance (none gets a small weight)
+        logits = event_head(h)                      # (B, T, n_classes)
+        loss_ce = nn.functional.cross_entropy(
+            logits.reshape(-1, cfg.n_event_classes),
+            ev_labels.reshape(-1),
+            weight=class_weights,
+            ignore_index=-100,
+        )
+        if torch.isfinite(loss_ce):
+            total = total + cfg.event_ce_weight * loss_ce
+            metrics["L_event_ce"] = float(loss_ce.item())
+            # Track event-only accuracy too (mask "none")
+            with torch.no_grad():
+                pred = logits.argmax(dim=-1)
+                non_none = (ev_labels != cfg.none_event_idx) & (ev_labels != -100)
+                if non_none.any():
+                    acc_event = (pred[non_none] == ev_labels[non_none]).float().mean()
+                    metrics["acc_event_only"] = float(acc_event.item())
+
+    if time_head is not None and "event_times" in batch:
+        # log(1 + ticks) target, valid only at non-"none", non-pad positions
+        ev_labels = batch["event_labels"].to(device, non_blocking=True)
+        ev_times = batch["event_times"].to(device, non_blocking=True)
+        time_valid = mask & (ev_labels != cfg.none_event_idx) & (ev_labels >= 0)
+        if time_valid.any():
+            # Normalize to log space so the loss isn't dominated by far events
+            log_target = torch.log1p(ev_times) / math.log(1.0 + cfg.event_horizon_ticks)
+            t_pred = time_head(h)
+            loss_time = nn.functional.smooth_l1_loss(
+                t_pred[time_valid], log_target[time_valid], beta=0.1,
+            )
+            if torch.isfinite(loss_time):
+                total = total + cfg.event_time_weight * loss_time
+                metrics["L_time_to_event"] = float(loss_time.item())
+
+    # --- v9: change-point segmentation ---
+    if change_point_head is not None and "event_labels" in batch:
+        ev_labels = batch["event_labels"].to(device, non_blocking=True)
+        ev_times = batch["event_times"].to(device, non_blocking=True)
+        cp_out = change_point_head(h, key_padding_mask=key_padding_mask)
+        seg_id = cp_out["seg_id"]
+        seg_pred = cp_out["seg_pred"]      # (B, S, 6)
+        seg_mask = cp_out["seg_mask"]      # (B, S)
+        b_prob = cp_out["b_prob"]          # (B, T)
+        # Downsample step: how many raw ticks per kept tick
+        downsample = int(batch.get("downsample", 8)) if isinstance(batch.get("downsample"), (int, float)) else 8
+        tgt = _build_segment_targets(
+            ev_labels, ev_times, mask, seg_id,
+            downsample=downsample,
+            n_event_classes=cfg.n_event_classes,
+            none_idx=cfg.none_event_idx,
+            max_segments=change_point_head.max_segments,
+        )                                   # (B, S, 6)
+
+        if seg_mask.any():
+            # Counts: smooth-L1 on log1p
+            cnt_pred = seg_pred[..., :ChangePointHead.BIN_FIRST]
+            cnt_tgt = torch.log1p(tgt[..., :ChangePointHead.BIN_FIRST])
+            # Binary: BCE on (count > 0)
+            bin_pred = seg_pred[..., ChangePointHead.BIN_FIRST:]
+            bin_tgt = (tgt[..., ChangePointHead.BIN_FIRST:] > 0).float()
+            valid_seg = seg_mask  # (B, S)
+            cnt_loss = nn.functional.smooth_l1_loss(
+                cnt_pred[valid_seg], cnt_tgt[valid_seg], beta=0.5,
+            )
+            bin_loss = nn.functional.binary_cross_entropy_with_logits(
+                bin_pred[valid_seg], bin_tgt[valid_seg],
+            )
+            seg_loss = cnt_loss + bin_loss
+            # Density penalty: encourage low mean boundary probability
+            density = b_prob[mask].mean()
+            density_pen = cfg.change_point_density_weight * density
+            cp_loss = cfg.change_point_weight * seg_loss + density_pen
+            if torch.isfinite(cp_loss):
+                total = total + cp_loss
+                metrics["L_cp_count"] = float(cnt_loss.item())
+                metrics["L_cp_bin"] = float(bin_loss.item())
+                metrics["cp_density"] = float(density.item())
+                metrics["cp_n_segments_avg"] = float(seg_mask.float().sum(dim=1).mean().item())
+
+    # --- v8: window-forecast objective ---
+    if window_head is not None and "event_labels" in batch:
+        ev_labels = batch["event_labels"].to(device, non_blocking=True)
+        tgt, valid_w = _build_window_forecast_targets(
+            ev_labels, mask, cfg.window_forecast_ticks, cfg,
+        )
+        if valid_w.any():
+            pred = window_head(h)  # (B, T, 6)
+            # Counts: regress log1p (so 0, 1, 2 kills aren't unequal in magnitude)
+            cnt_pred = pred[..., :WindowForecastHead.BIN_FIRST]
+            cnt_tgt = torch.log1p(tgt[..., :WindowForecastHead.BIN_FIRST])
+            cnt_loss = nn.functional.smooth_l1_loss(
+                cnt_pred[valid_w], cnt_tgt[valid_w], beta=0.5,
+            )
+            # Binary: BCE-with-logits per flag
+            bin_pred = pred[..., WindowForecastHead.BIN_FIRST:]
+            bin_tgt = tgt[..., WindowForecastHead.BIN_FIRST:]
+            bin_loss = nn.functional.binary_cross_entropy_with_logits(
+                bin_pred[valid_w], bin_tgt[valid_w],
+            )
+            loss_window = cnt_loss + bin_loss
+            if torch.isfinite(loss_window):
+                total = total + cfg.window_forecast_weight * loss_window
+                metrics["L_window_count"] = float(cnt_loss.item())
+                metrics["L_window_bin"] = float(bin_loss.item())
+
+    return total, metrics
 
 
 # ---------------------------------------------------------------------------
@@ -259,27 +852,44 @@ def lr_lambda(step: int, warmup_steps: int, total_steps: int) -> float:
 # ---------------------------------------------------------------------------
 # Training
 # ---------------------------------------------------------------------------
-def evaluate(encoder: RoundEncoder, heads: nn.ModuleList, val_loader: DataLoader,
+def evaluate(encoder: RoundEncoder, forward_heads: nn.ModuleList,
+             event_head: NextEventHead | None, time_head: TimeToEventHead | None,
+             window_head: "WindowForecastHead | None",
+             change_point_head: "ChangePointHead | None",
+             class_weights: torch.Tensor | None, val_loader: DataLoader,
              cfg: TrainConfig, device: torch.device) -> dict:
     encoder.eval()
-    heads.eval()
+    forward_heads.eval()
+    if event_head is not None:
+        event_head.eval()
+    if time_head is not None:
+        time_head.eval()
+    if window_head is not None:
+        window_head.eval()
+    if change_point_head is not None:
+        change_point_head.eval()
     total = 0.0
     n = 0
-    horizon_sums: dict[str, float] = {f"L_h{H}": 0.0 for H in cfg.horizons}
+    metric_sums: dict[str, float] = {}
+    metric_counts: dict[str, int] = {}
     with torch.no_grad():
         for batch in val_loader:
             with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16,
                                     enabled=device.type == "cuda"):
-                loss, per_h = compute_loss(encoder, heads, batch, cfg, device)
+                loss, m = compute_loss(
+                    encoder, forward_heads, event_head, time_head, window_head,
+                    change_point_head, class_weights, batch, cfg, device,
+                )
             total += float(loss.item())
             n += 1
-            for k, v in per_h.items():
-                horizon_sums[k] = horizon_sums.get(k, 0.0) + v
+            for k, v in m.items():
+                metric_sums[k] = metric_sums.get(k, 0.0) + v
+                metric_counts[k] = metric_counts.get(k, 0) + 1
     if n == 0:
         return {"val_total": float("nan")}
     out = {"val_total": total / n}
-    for k, v in horizon_sums.items():
-        out[f"val_{k}"] = v / n
+    for k, v in metric_sums.items():
+        out[f"val_{k}"] = v / metric_counts[k]
     return out
 
 
@@ -311,12 +921,56 @@ def train(cfg: TrainConfig) -> None:
         ForwardPredHead(cfg.d_model, cfg.feature_dim).to(device)
         for _ in cfg.horizons
     ])
+    use_events = train_ds.has_events()
+    event_head: NextEventHead | None = None
+    time_head: TimeToEventHead | None = None
+    window_head: WindowForecastHead | None = None
+    change_point_head: ChangePointHead | None = None
+    class_weights: torch.Tensor | None = None
+    if use_events:
+        event_head = NextEventHead(cfg.d_model, cfg.n_event_classes).to(device)
+        time_head = TimeToEventHead(cfg.d_model).to(device)
+        # Class weights: down-weight the dominant "none" class so rare events
+        # actually drive gradient.
+        cw = torch.ones(cfg.n_event_classes, dtype=torch.float32)
+        cw[cfg.none_event_idx] = cfg.none_class_weight
+        class_weights = cw.to(device)
+        print(f"Event objectives ON (vocab: {train_ds.event_vocab})")
+        print(f"  none class weight = {cfg.none_class_weight}")
+        if cfg.use_window_forecast:
+            window_head = WindowForecastHead(cfg.d_model).to(device)
+            print(f"Window forecast ON (window={cfg.window_forecast_ticks} "
+                  f"downsampled ticks, weight={cfg.window_forecast_weight})")
+        if cfg.use_change_point:
+            change_point_head = ChangePointHead(
+                cfg.d_model, max_segments=cfg.change_point_max_segments,
+            ).to(device)
+            print(f"Change-point segmentation ON (max_segments="
+                  f"{cfg.change_point_max_segments}, seg_weight="
+                  f"{cfg.change_point_weight}, density_weight="
+                  f"{cfg.change_point_density_weight})")
+    else:
+        print("Event objectives OFF — dataset has no event_labels")
+
     n_enc = sum(p.numel() for p in encoder.parameters())
     n_heads = sum(p.numel() for p in heads.parameters())
-    print(f"Params: encoder {n_enc/1e6:.2f}M + heads {n_heads/1e6:.2f}M "
-          f"= {(n_enc + n_heads)/1e6:.2f}M total")
+    n_event = (sum(p.numel() for p in event_head.parameters())
+               + sum(p.numel() for p in time_head.parameters())) if use_events else 0
+    n_window = sum(p.numel() for p in window_head.parameters()) if window_head else 0
+    n_cp = sum(p.numel() for p in change_point_head.parameters()) if change_point_head else 0
+    print(f"Params: encoder {n_enc/1e6:.2f}M + forward heads {n_heads/1e6:.2f}M"
+          f"{' + event heads ' + f'{n_event/1e6:.2f}M' if use_events else ''}"
+          f"{' + window head ' + f'{n_window/1e6:.2f}M' if window_head else ''}"
+          f"{' + cp head ' + f'{n_cp/1e6:.2f}M' if change_point_head else ''}"
+          f" = {(n_enc + n_heads + n_event + n_window + n_cp)/1e6:.2f}M total")
 
     params = list(encoder.parameters()) + list(heads.parameters())
+    if use_events:
+        params += list(event_head.parameters()) + list(time_head.parameters())
+    if window_head is not None:
+        params += list(window_head.parameters())
+    if change_point_head is not None:
+        params += list(change_point_head.parameters())
     optimizer = torch.optim.AdamW(params, lr=cfg.lr, weight_decay=cfg.weight_decay,
                                   betas=(0.9, 0.95))
     total_steps = max(1, cfg.epochs * len(train_loader))
@@ -341,6 +995,14 @@ def train(cfg: TrainConfig) -> None:
     for epoch in range(cfg.epochs):
         encoder.train()
         heads.train()
+        if event_head is not None:
+            event_head.train()
+        if time_head is not None:
+            time_head.train()
+        if window_head is not None:
+            window_head.train()
+        if change_point_head is not None:
+            change_point_head.train()
         epoch_t0 = time.time()
         epoch_total = 0.0
         epoch_n = 0
@@ -348,7 +1010,10 @@ def train(cfg: TrainConfig) -> None:
             optimizer.zero_grad(set_to_none=True)
             with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16,
                                     enabled=device.type == "cuda"):
-                loss, per_h = compute_loss(encoder, heads, batch, cfg, device)
+                loss, m = compute_loss(
+                    encoder, heads, event_head, time_head, window_head,
+                    change_point_head, class_weights, batch, cfg, device,
+                )
             loss.backward()
             torch.nn.utils.clip_grad_norm_(params, cfg.grad_clip)
             optimizer.step()
@@ -360,19 +1025,22 @@ def train(cfg: TrainConfig) -> None:
             if step % cfg.log_every == 0:
                 lr = scheduler.get_last_lr()[0]
                 msg = {"step": step, "epoch": epoch, "loss": float(loss.item()),
-                       "lr": lr, **per_h}
+                       "lr": lr, **m}
                 log_f.write(json.dumps(msg) + "\n")
                 log_f.flush()
-                horizon_str = " ".join(f"{k}={v:.4f}" for k, v in per_h.items())
+                metric_str = " ".join(f"{k}={v:.4f}" for k, v in m.items())
                 print(f"  [e{epoch} s{step}] loss={loss.item():.4f} lr={lr:.2e} "
-                      f"{horizon_str}", flush=True)
+                      f"{metric_str}", flush=True)
 
         epoch_loss = epoch_total / max(1, epoch_n)
         epoch_dt = time.time() - epoch_t0
 
         val_metrics: dict = {}
         if (epoch + 1) % cfg.val_every_epochs == 0 or epoch == cfg.epochs - 1:
-            val_metrics = evaluate(encoder, heads, val_loader, cfg, device)
+            val_metrics = evaluate(
+                encoder, heads, event_head, time_head, window_head,
+                change_point_head, class_weights, val_loader, cfg, device,
+            )
 
         msg = {"step": step, "epoch": epoch, "epoch_train_loss": epoch_loss,
                "epoch_seconds": epoch_dt, **val_metrics}
@@ -386,17 +1054,32 @@ def train(cfg: TrainConfig) -> None:
             "epoch": epoch, "step": step,
             "encoder": encoder.state_dict(),
             "heads": heads.state_dict(),
+            "event_head": event_head.state_dict() if event_head is not None else None,
+            "time_head": time_head.state_dict() if time_head is not None else None,
+            "window_head": window_head.state_dict() if window_head is not None else None,
+            "change_point_head": change_point_head.state_dict() if change_point_head is not None else None,
             "optimizer": optimizer.state_dict(),
             "scheduler": scheduler.state_dict(),
             "config": asdict(cfg),
             "val_metrics": val_metrics,
         }
         torch.save(ckpt, out_dir / "last.pt")
-        cur_val = val_metrics.get("val_total", float("inf"))
-        if cur_val < best_val:
-            best_val = cur_val
+        # Early-stopping signal selection: if the event objectives are on,
+        # val_total gets dominated and quickly polluted by event-CE overfit
+        # (train→0, val→huge while forward-pred stays stable). The true
+        # generalization signal is val_acc_event_only — pick the ckpt that
+        # maximizes that. When event objectives are off, fall back to val_total.
+        if "val_acc_event_only" in val_metrics:
+            cur_signal = -float(val_metrics["val_acc_event_only"])  # negate so "lower=better"
+            signal_name = "val_acc_event_only"
+        else:
+            cur_signal = float(val_metrics.get("val_total", float("inf")))
+            signal_name = "val_total"
+        if cur_signal < best_val:
+            best_val = cur_signal
             torch.save(ckpt, out_dir / "best.pt")
-            print(f"  → new best val_total={best_val:.4f}", flush=True)
+            display = -best_val if signal_name == "val_acc_event_only" else best_val
+            print(f"  → new best ({signal_name})={display:.4f}", flush=True)
 
     log_f.close()
     print()
@@ -418,6 +1101,25 @@ def main() -> None:
     ap.add_argument("--num-workers", type=int, default=2)
     ap.add_argument("--horizons", type=int, nargs="+", default=[1, 8, 32])
     ap.add_argument("--horizon-weights", type=float, nargs="+", default=[1.0, 0.7, 0.4])
+    ap.add_argument("--salience", action="store_true",
+                    help="enable per-tick learned salience bias on attention "
+                         "(v7+; default off preserves v6 architecture)")
+    ap.add_argument("--window-forecast", action="store_true",
+                    help="enable window-forecast SSL objective (v8+; predicts "
+                         "kill counts + bomb-event flags over next 2s window)")
+    ap.add_argument("--window-forecast-ticks", type=int, default=16,
+                    help="window size in downsampled ticks (default 16 = 2s)")
+    ap.add_argument("--window-forecast-weight", type=float, default=0.3,
+                    help="weight on window-forecast loss in total")
+    ap.add_argument("--change-point", action="store_true",
+                    help="enable change-point segmentation head (v9+; learned "
+                         "event boundaries via straight-through estimator)")
+    ap.add_argument("--change-point-max-segments", type=int, default=64,
+                    help="max segments per round for change-point head")
+    ap.add_argument("--change-point-weight", type=float, default=0.3)
+    ap.add_argument("--change-point-density-weight", type=float, default=0.05,
+                    help="penalty on mean boundary probability (prevents "
+                         "boundary-everywhere collapse)")
     ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--run-id", type=str, default=None,
@@ -445,6 +1147,14 @@ def main() -> None:
         num_workers=args.num_workers,
         horizons=args.horizons,
         horizon_weights=args.horizon_weights,
+        use_salience=args.salience,
+        use_window_forecast=args.window_forecast,
+        window_forecast_ticks=args.window_forecast_ticks,
+        window_forecast_weight=args.window_forecast_weight,
+        use_change_point=args.change_point,
+        change_point_max_segments=args.change_point_max_segments,
+        change_point_weight=args.change_point_weight,
+        change_point_density_weight=args.change_point_density_weight,
         log_every=args.log_every,
         seed=args.seed,
         output_dir=str(out_dir),
