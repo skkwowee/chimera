@@ -120,6 +120,21 @@ class TrainConfig:
     # Pulls density toward target from either side; stable equilibrium.
     change_point_density_weight: float = 5.0
 
+    # v10: change-point loss variants. v9 (forecast) gave the boundary head
+    # gradient ONLY from density penalty (seg_id is detached after STE).
+    # That left placement up to chance + the auxiliary signal of the
+    # density target, hence anti-correlated boundaries. v10 variants add
+    # an aux "boundary at large state-change" term that gives DIRECT
+    # gradient to b_prob, then replace the segment-level objective with
+    # one that's better aligned with "natural" event boundaries:
+    #   forecast    — v9 baseline (per-segment event counts)
+    #   contrastive — InfoNCE: same-segment ticks pull together
+    #   variance    — intra-segment h-variance penalty (k-means-style)
+    #   outcome     — forecast events in the NEXT segment (shifted target)
+    change_point_loss: str = "forecast"
+    change_point_aux_align_weight: float = 0.0
+    contrastive_temperature: float = 0.1
+
     # Optim
     lr: float = 3e-4
     weight_decay: float = 0.01
@@ -665,6 +680,113 @@ def _build_window_forecast_targets(
     return tgt, valid_window
 
 
+def _contrastive_segment_loss(
+    h: torch.Tensor,          # (B, T, D)
+    seg_id: torch.Tensor,     # (B, T) long, detached
+    mask: torch.Tensor,       # (B, T) True=real
+    temperature: float,
+) -> torch.Tensor:
+    """InfoNCE: for each anchor tick, positives are other ticks in the same
+    segment (and same round); negatives are all other valid ticks. Maximizes
+    intra-segment cosine similarity and minimizes cross-segment similarity.
+
+    Gradient through h goes to the encoder; gradient through which ticks
+    are positives is blocked by the detached seg_id (the auxiliary
+    boundary-alignment term handles boundary-head gradient separately).
+    """
+    B, T, D = h.shape
+    h_norm = nn.functional.normalize(h, dim=-1)
+    sim = torch.bmm(h_norm, h_norm.transpose(1, 2)) / temperature  # (B, T, T)
+    eye = torch.eye(T, device=h.device, dtype=torch.bool).unsqueeze(0)
+    valid_keys = mask.unsqueeze(1)         # (B, 1, T)
+    valid_anchors = mask.unsqueeze(2)      # (B, T, 1)
+    same_seg = (seg_id.unsqueeze(1) == seg_id.unsqueeze(2))  # (B, T, T)
+    pos_mask = same_seg & valid_keys & valid_anchors & (~eye)
+    all_mask = valid_keys & valid_anchors & (~eye)
+    neg_inf = torch.finfo(sim.dtype).min
+    sim_all = sim.masked_fill(~all_mask, neg_inf)
+    sim_pos = sim.masked_fill(~pos_mask, neg_inf)
+    log_p_all = torch.logsumexp(sim_all, dim=-1)  # (B, T)
+    log_p_pos = torch.logsumexp(sim_pos, dim=-1)  # (B, T)
+    has_pos = pos_mask.any(dim=-1)
+    valid_anchor = mask & has_pos
+    if not valid_anchor.any():
+        return torch.zeros((), device=h.device, dtype=h.dtype)
+    nll = -(log_p_pos - log_p_all)
+    return nll[valid_anchor].mean()
+
+
+def _intra_segment_variance(
+    h: torch.Tensor,          # (B, T, D)
+    seg_id: torch.Tensor,     # (B, T) long, detached
+    mask: torch.Tensor,       # (B, T)
+    max_segments: int,
+) -> torch.Tensor:
+    """Mean squared deviation of each tick's h from its segment's centroid.
+    K-means objective with fixed (STE) assignments. Encoder is rewarded for
+    placing ticks of the same segment near each other in embedding space.
+    """
+    B, T, D = h.shape
+    S = max_segments
+    weight = mask.to(h.dtype).unsqueeze(-1)         # (B, T, 1)
+    sum_h = torch.zeros(B, S, D, device=h.device, dtype=h.dtype)
+    cnt = torch.zeros(B, S, 1, device=h.device, dtype=h.dtype)
+    sid_full = seg_id.unsqueeze(-1).expand(-1, -1, D)
+    sum_h.scatter_add_(1, sid_full, h * weight)
+    cnt.scatter_add_(1, seg_id.unsqueeze(-1), weight)
+    mean_h = sum_h / cnt.clamp(min=1.0)              # (B, S, D)
+    mean_per_tick = torch.gather(mean_h, 1, sid_full)  # (B, T, D)
+    dev2 = (h - mean_per_tick).pow(2).mean(dim=-1)   # (B, T)
+    if not mask.any():
+        return torch.zeros((), device=h.device, dtype=h.dtype)
+    return dev2[mask].mean()
+
+
+def _boundary_align_aux(
+    h: torch.Tensor,          # (B, T, D)
+    b_prob: torch.Tensor,     # (B, T)
+    mask: torch.Tensor,       # (B, T)
+) -> torch.Tensor:
+    """Negative correlation between b_prob[t] and ||h[t] - h[t-1]||.
+
+    Gives the boundary head DIRECT gradient: where the encoder representation
+    changes a lot between adjacent ticks, b_prob should be high. h is detached
+    so this term only updates the boundary head (not the encoder).
+
+    L_aux = -E[ b_prob[t] * detach(||Δh[t]||) ] for t >= 1, masked to ticks
+    where both t and t-1 are real. Negative sign because higher correlation
+    → lower loss → boundaries align with state-changes.
+    """
+    B, T, D = h.shape
+    if T < 2:
+        return torch.zeros((), device=h.device, dtype=h.dtype)
+    with torch.no_grad():
+        delta = (h[:, 1:, :] - h[:, :-1, :]).norm(dim=-1)  # (B, T-1)
+        # Normalize per-batch so different rounds are comparable
+        delta_mean = delta.mean(dim=1, keepdim=True).clamp(min=1e-6)
+        delta_norm = delta / delta_mean
+    valid = mask[:, 1:] & mask[:, :-1]
+    if not valid.any():
+        return torch.zeros((), device=h.device, dtype=h.dtype)
+    score = (b_prob[:, 1:] * delta_norm)[valid].mean()
+    return -score
+
+
+def _shifted_segment_targets(tgt_seg: torch.Tensor, seg_mask: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Shift per-segment targets by +1 along segment dim → predict events in
+    the NEXT segment from the current segment's embedding. Last real segment
+    has no next-segment target → drop from loss."""
+    # tgt_seg: (B, S, 6); seg_mask: (B, S)
+    B, S, K = tgt_seg.shape
+    shifted = torch.zeros_like(tgt_seg)
+    shifted[:, :-1, :] = tgt_seg[:, 1:, :]
+    valid = seg_mask.clone()
+    # Drop segments whose next segment is invalid (i.e., out of range or no ticks)
+    valid_next = torch.zeros_like(seg_mask)
+    valid_next[:, :-1] = seg_mask[:, 1:]
+    return shifted, valid & valid_next
+
+
 def _build_segment_targets(
     event_labels: torch.Tensor,    # (B, T)
     event_times: torch.Tensor,     # (B, T)
@@ -796,7 +918,7 @@ def compute_loss(
                 total = total + cfg.event_time_weight * loss_time
                 metrics["L_time_to_event"] = float(loss_time.item())
 
-    # --- v9: change-point segmentation ---
+    # --- v9 / v10: change-point segmentation ---
     if change_point_head is not None and "event_labels" in batch:
         ev_labels = batch["event_labels"].to(device, non_blocking=True)
         ev_times = batch["event_times"].to(device, non_blocking=True)
@@ -805,45 +927,73 @@ def compute_loss(
         seg_pred = cp_out["seg_pred"]      # (B, S, 6)
         seg_mask = cp_out["seg_mask"]      # (B, S)
         b_prob = cp_out["b_prob"]          # (B, T)
-        # Downsample step: how many raw ticks per kept tick
         downsample = int(batch.get("downsample", 8)) if isinstance(batch.get("downsample"), (int, float)) else 8
-        tgt = _build_segment_targets(
-            ev_labels, ev_times, mask, seg_id,
-            downsample=downsample,
-            n_event_classes=cfg.n_event_classes,
-            none_idx=cfg.none_event_idx,
-            max_segments=change_point_head.max_segments,
-        )                                   # (B, S, 6)
 
-        if seg_mask.any():
-            # Counts: smooth-L1 on log1p
+        # Density penalty is always on (anchors the rate).
+        density = b_prob[mask].mean()
+        density_pen = cfg.change_point_density_weight * (density - cfg.change_point_target_density) ** 2
+
+        # Aux: direct gradient to boundary head, telling it "place boundaries
+        # where adjacent h changes a lot". v9 had NO gradient to b_prob from
+        # the forecast loss (seg_id is detached after STE) — only density
+        # penalty influenced placement. That's the root cause of anti-alignment.
+        aux_align = torch.zeros((), device=device, dtype=h.dtype)
+        if cfg.change_point_aux_align_weight > 0.0:
+            aux_align = _boundary_align_aux(h, b_prob, mask)
+            metrics["L_cp_align"] = float(aux_align.item())
+
+        cp_loss_aux = density_pen + cfg.change_point_aux_align_weight * aux_align
+
+        loss_variant = cfg.change_point_loss
+        if loss_variant in ("forecast", "outcome") and seg_mask.any():
+            tgt = _build_segment_targets(
+                ev_labels, ev_times, mask, seg_id,
+                downsample=downsample,
+                n_event_classes=cfg.n_event_classes,
+                none_idx=cfg.none_event_idx,
+                max_segments=change_point_head.max_segments,
+            )                                   # (B, S, 6)
+            if loss_variant == "outcome":
+                tgt, valid_seg = _shifted_segment_targets(tgt, seg_mask)
+            else:
+                valid_seg = seg_mask
             cnt_pred = seg_pred[..., :ChangePointHead.BIN_FIRST]
             cnt_tgt = torch.log1p(tgt[..., :ChangePointHead.BIN_FIRST])
-            # Binary: BCE on (count > 0)
             bin_pred = seg_pred[..., ChangePointHead.BIN_FIRST:]
             bin_tgt = (tgt[..., ChangePointHead.BIN_FIRST:] > 0).float()
-            valid_seg = seg_mask  # (B, S)
-            cnt_loss = nn.functional.smooth_l1_loss(
-                cnt_pred[valid_seg], cnt_tgt[valid_seg], beta=0.5,
-            )
-            bin_loss = nn.functional.binary_cross_entropy_with_logits(
-                bin_pred[valid_seg], bin_tgt[valid_seg],
-            )
-            seg_loss = cnt_loss + bin_loss
-            # Density target penalty: MSE between mean(b_prob) and target.
-            # Pulls density from either side toward target (≈ one boundary per
-            # 50 ticks at target=0.02). Without this the model converges to
-            # either zero boundaries (1 segment) or every-tick boundaries.
-            density = b_prob[mask].mean()
-            density_pen = cfg.change_point_density_weight * (density - cfg.change_point_target_density) ** 2
-            cp_loss = cfg.change_point_weight * seg_loss + density_pen
-            if torch.isfinite(cp_loss):
-                total = total + cp_loss
+            if valid_seg.any():
+                cnt_loss = nn.functional.smooth_l1_loss(
+                    cnt_pred[valid_seg], cnt_tgt[valid_seg], beta=0.5,
+                )
+                bin_loss = nn.functional.binary_cross_entropy_with_logits(
+                    bin_pred[valid_seg], bin_tgt[valid_seg],
+                )
+                seg_loss = cnt_loss + bin_loss
+                cp_loss = cfg.change_point_weight * seg_loss + cp_loss_aux
                 metrics["L_cp_count"] = float(cnt_loss.item())
                 metrics["L_cp_bin"] = float(bin_loss.item())
-                metrics["cp_density"] = float(density.item())
-                metrics["cp_density_target"] = float(cfg.change_point_target_density)
-                metrics["cp_n_segments_avg"] = float(seg_mask.float().sum(dim=1).mean().item())
+            else:
+                cp_loss = cp_loss_aux
+        elif loss_variant == "contrastive":
+            con_loss = _contrastive_segment_loss(
+                h, seg_id, mask, temperature=cfg.contrastive_temperature,
+            )
+            cp_loss = cfg.change_point_weight * con_loss + cp_loss_aux
+            metrics["L_cp_contrastive"] = float(con_loss.item())
+        elif loss_variant == "variance":
+            var_loss = _intra_segment_variance(
+                h, seg_id, mask, change_point_head.max_segments,
+            )
+            cp_loss = cfg.change_point_weight * var_loss + cp_loss_aux
+            metrics["L_cp_variance"] = float(var_loss.item())
+        else:
+            cp_loss = cp_loss_aux
+
+        if torch.isfinite(cp_loss):
+            total = total + cp_loss
+            metrics["cp_density"] = float(density.item())
+            metrics["cp_density_target"] = float(cfg.change_point_target_density)
+            metrics["cp_n_segments_avg"] = float(seg_mask.float().sum(dim=1).mean().item())
 
     # --- v8: window-forecast objective ---
     if window_head is not None and "event_labels" in batch:
@@ -1159,6 +1309,18 @@ def main() -> None:
                          "0.02 ≈ 1 boundary per 50 ticks ≈ 6.25s")
     ap.add_argument("--change-point-density-weight", type=float, default=5.0,
                     help="MSE penalty weight around target density")
+    ap.add_argument("--change-point-loss", type=str, default="forecast",
+                    choices=["forecast", "contrastive", "variance", "outcome"],
+                    help="v10 segment loss variant. forecast=v9 baseline "
+                         "(per-segment event counts); contrastive=InfoNCE on "
+                         "same-segment ticks; variance=intra-segment h-variance; "
+                         "outcome=forecast NEXT segment's event counts.")
+    ap.add_argument("--change-point-aux-align-weight", type=float, default=0.0,
+                    help="weight on aux 'boundary at state-change' term that "
+                         "gives DIRECT gradient to boundary head. v9 was 0; "
+                         "v10 variants typically use 0.1.")
+    ap.add_argument("--contrastive-temperature", type=float, default=0.1,
+                    help="InfoNCE softmax temperature for contrastive variant")
     ap.add_argument("--log-every", type=int, default=10)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--run-id", type=str, default=None,
@@ -1195,6 +1357,9 @@ def main() -> None:
         change_point_weight=args.change_point_weight,
         change_point_target_density=args.change_point_target_density,
         change_point_density_weight=args.change_point_density_weight,
+        change_point_loss=args.change_point_loss,
+        change_point_aux_align_weight=args.change_point_aux_align_weight,
+        contrastive_temperature=args.contrastive_temperature,
         log_every=args.log_every,
         seed=args.seed,
         output_dir=str(out_dir),

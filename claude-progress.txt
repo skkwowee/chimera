@@ -1945,3 +1945,126 @@ v6 remains production. v9 demonstrates the change-point mechanism works
 mechanically but doesn't learn semantically meaningful boundaries
 under this loss. Documented as a research direction (intra-segment
 homogeneity loss) for a future iteration.
+
+================================================================================
+2026-05-16 (cont. 5) — v10: testing the three "homogeneity" alternatives
+                       to v9 forecast (contrastive / variance / outcome)
+================================================================================
+
+Background: v9 (cont. 4) entry said v9 boundaries were anti-correlated
+with events based on 6 val rounds (46 events). That was a SAMPLING
+ARTIFACT. On the full val set (262 rounds, 1918 events) v9 actually
+shows +10.8% / +7.1% / -1.7% alignment lift at ±2 / ±4 / ±8 ticks
+vs random. Earlier doc is corrected by THIS entry.
+
+Hypothesis going in: per-segment count forecasting (v9) is misaligned;
+"intra-segment homogeneity" objectives should produce cleaner event-
+aligned boundaries.
+
+v10 DESIGN (one new TrainConfig.change_point_loss flag + optional aux):
+  forecast   — v9 baseline (per-segment event counts: kills, plant, etc.)
+  contrastive — InfoNCE; same-segment ticks pull together in h-space
+  variance   — intra-segment k-means-style variance penalty on h
+  outcome    — same head as forecast but predict NEXT segment's counts
+
+Plus a new optional aux term `change_point_aux_align_weight`:
+  L_aux = -E[ b_prob[t] * detach(||h[t]-h[t-1]||) ]
+  Idea: give DIRECT gradient to boundary head telling it to fire where
+  the encoder state changes a lot. (v9 had no such direct gradient —
+  seg_id is detached after STE, so boundary head only learned from the
+  density penalty.)
+
+Six new training runs (50 epochs each, d_model=512, n_layers=4, same
+v6 config as v9):
+  v10a_contrastive       (aux=0.1)
+  v10b_variance          (aux=0.1)
+  v10c_outcome           (aux=0.1)
+  v10a_contrastive_noaux (aux=0.0)
+  v10b_variance_noaux    (aux=0.0)
+  v10c_outcome_noaux     (aux=0.0)
+
+NEW DIAGNOSTIC (scripts/compare_changepoint_variants.py)
+Evaluates each ckpt over the full 262-round val set:
+  - actual events tagged: kill_t, kill_ct, plant, defuse, explode, round_end
+  - picked boundaries = top-K positions by b_prob, K = target_density * T
+  - alignment[W] = % of events within ±W ticks of any picked boundary
+  - random baseline[W] = 1 - (1 - (2W+1)/T)^K   (uniformly-placed boundaries)
+  - lift = alignment - random; lift > 0 means boundaries beat chance
+
+RESULTS (n=1918 events, val set, target_density=0.02)
+
+  variant                  avg_segs   W=2 lift   W=4 lift   W=8 lift
+  --------                 --------   --------   --------   --------
+  v9 forecast (baseline)      17.9     +10.8%      +7.1%      -1.7%
+  v10a contrastive (aux)      29.2      -9.6%     -16.6%     -29.1%
+  v10b variance    (aux)      28.7      -6.5%     -13.0%     -25.2%
+  v10c outcome     (aux)      26.5      -9.5%     -16.5%     -29.0%
+  v10a contrastive (no aux)   17.4      -8.4%     -15.1%     -26.8%
+  v10b variance    (no aux)   18.7      -7.8%     -14.5%     -26.7%
+  v10c outcome     (no aux)   18.4      -6.6%     -13.2%     -25.0%
+
+All v10 variants have val_acc_event_only within 0.005 of v9 (0.5370):
+  v10a 0.5254 / 0.5263, v10b 0.5386 / 0.5369, v10c 0.5391 / 0.5367.
+Encoder quality is preserved; only the boundary placement differs.
+
+NEGATIVE FINDING (strong)
+The intra-segment homogeneity hypothesis is WRONG for this domain. All
+three "homogeneity" losses produce boundaries that are anti-correlated
+with events:
+  - At ±2 ticks: v9 hits 20.3% of events vs 0-3% for v10 variants.
+  - At ±8 ticks (loose): v9 nearly random (27% vs 29% baseline), but
+    v10 variants are systematically AVOIDING events (1-4% vs 29%).
+
+The aux state-change term made things WORSE: avg_segs ballooned to 26-29
+(density target was 0.02 → expected ~17). Aux drives boundaries to
+high-||delta h|| points; events ARE high delta h, but so are many non-
+event positions (weapon switch, money awarded, freeze→playing
+transition). Aux spreads boundaries across all those noisy state-change
+points, pushing them AWAY from events on average.
+
+WHY V9 WINS (interpretation)
+Per-segment EVENT FORECASTING has a structural property the other losses
+lack: it forces each segment's pooled representation to predict the
+event mix WITHIN that segment. Segments that straddle real event
+boundaries (e.g., span a kill phase and a plant phase) get a confused
+count target and high forecast loss. Segments aligned with natural
+phases get clean targets and low forecast loss. So the loss implicitly
+rewards event-aligned boundaries via the encoder's gradient on h —
+even though seg_id itself is detached.
+
+The other losses don't have this property:
+  - Contrastive/variance reward h-space smoothness. Encoder h is
+    dominated by player position, equipment, time — events are RARE
+    perturbations. Smoothness loss prefers segments inside long
+    "quiet" stretches and places boundaries to ISOLATE the noisy
+    event ticks (one boundary just before, one just after) rather
+    than ON events. Net: -25% alignment at W=8.
+  - Outcome (next-segment forecasting) was supposed to inherit
+    forecast's alignment property but applied to the NEXT segment.
+    But the model can predict the next segment's events from the
+    current segment's content regardless of where the current
+    segment ends — there's no penalty for misaligned current
+    boundary as long as the encoder learns enough about "what
+    typically follows this kind of state". Lift = forecast's lift.
+
+PUBLICATION-LEVEL TAKEAWAY
+This is a useful methodology contribution: the intuition that
+"homogeneity-based losses produce cleaner segments than predictability-
+based losses" — which has support in the unsupervised segmentation
+literature for static signals (images, audio) — does NOT transfer
+to game state where the "homogeneity" axis is dominated by ambient
+state change (player movement, equipment) rather than event-relevant
+state change. The forecast loss's implicit alignment is the better
+inductive bias for this domain.
+
+The earlier (cont. 4) note proposing contrastive / variance / outcome
+as fixes was wrong; v9 forecast IS the right loss, the original 6-
+round sample just under-estimated its alignment.
+
+ARTIFACTS
+  scripts/train_round_encoder.py — added --change-point-loss flag with
+    {forecast, contrastive, variance, outcome}; --change-point-aux-align-weight
+  scripts/compare_changepoint_variants.py — full-val alignment diagnostic
+    with random baseline and per-W lift
+  outputs/round_encoder/v10{a_contrastive,b_variance,c_outcome}{,_noaux}/
+  outputs/round_encoder/v10_compare.json — full table
