@@ -87,6 +87,18 @@ class TrainConfig:
     # plants high salience) without hand-specifying which ticks matter.
     use_salience: bool = False
 
+    # v11: positional encoding. "sinusoidal" = the original additive
+    # SinusoidalPositionalEncoding (default — bit-identical to prior runs).
+    # "rotary" = RoPE applied to Q and K inside attention; additive pos_emb
+    # is skipped. RoPE tends to generalize better with longer sequences /
+    # more data — adopted ahead of the ~180-demo scale-up.
+    #   sinusoidal: works with both salience path and stock nn.TransformerEncoderLayer.
+    #   rotary:     works with salience path (RoPE applied inside SalienceCausalBlock)
+    #               and with a new CausalAttnBlock (RoPE inside, no salience)
+    #               that mirrors nn.TransformerEncoderLayer's pre-norm shape.
+    positional: str = "sinusoidal"
+    rope_base: float = 10000.0
+
     # v8: window-forecast SSL — at tick T predict aggregates over the next
     # WINDOW_DOWNSAMPLED ticks (default 16 = 2s at 8Hz). Forces per-tick
     # output to encode "what's about to happen in this window" instead of
@@ -231,6 +243,132 @@ class SinusoidalPositionalEncoding(nn.Module):
 
 
 # ---------------------------------------------------------------------------
+# Rotary positional embedding (v11) — RoPE
+# ---------------------------------------------------------------------------
+class RotaryEmbedding(nn.Module):
+    """Pre-computed cos/sin tables for RoPE.
+
+    RoPE rotates Q and K *inside* attention by a position-dependent angle so
+    the dot product Q[i]·K[j] depends only on (i - j). Replaces additive
+    sinusoidal pos_emb (don't apply both — they'd double-count position).
+
+    We use the half-rotation form: split the head dim into two halves and
+    rotate the (first, second) pair. This is the standard implementation
+    used by Llama / GPT-NeoX. Per-head-dim must be even.
+    """
+
+    def __init__(self, head_dim: int, max_len: int, base: float = 10000.0):
+        super().__init__()
+        assert head_dim % 2 == 0, f"RoPE needs even head_dim; got {head_dim}"
+        self.head_dim = head_dim
+        half = head_dim // 2
+        inv_freq = 1.0 / (base ** (torch.arange(0, half, dtype=torch.float32) / half))
+        pos = torch.arange(max_len, dtype=torch.float32)
+        freqs = torch.outer(pos, inv_freq)            # (max_len, half)
+        # Store cos/sin in (max_len, half) shape; we'll broadcast at apply-time.
+        self.register_buffer("cos", torch.cos(freqs), persistent=False)
+        self.register_buffer("sin", torch.sin(freqs), persistent=False)
+
+    def forward(self, seq_len: int, device: torch.device,
+                dtype: torch.dtype) -> tuple[torch.Tensor, torch.Tensor]:
+        cos = self.cos[:seq_len].to(device=device, dtype=dtype)
+        sin = self.sin[:seq_len].to(device=device, dtype=dtype)
+        return cos, sin
+
+
+def apply_rotary(x: torch.Tensor, cos: torch.Tensor,
+                 sin: torch.Tensor) -> torch.Tensor:
+    """Apply RoPE to x with shape (B, n_heads, T, head_dim).
+
+    cos / sin have shape (T, head_dim // 2). Rotates the (first half, second
+    half) of head_dim as a 2-D pair per position.
+    """
+    half = x.shape[-1] // 2
+    x1, x2 = x[..., :half], x[..., half:]
+    # cos/sin: (T, half) → broadcast to (1, 1, T, half)
+    cos_b = cos.unsqueeze(0).unsqueeze(0)
+    sin_b = sin.unsqueeze(0).unsqueeze(0)
+    rot1 = x1 * cos_b - x2 * sin_b
+    rot2 = x1 * sin_b + x2 * cos_b
+    return torch.cat((rot1, rot2), dim=-1)
+
+
+# ---------------------------------------------------------------------------
+# Causal attention block (no salience) — used for RoPE + non-salience path
+# ---------------------------------------------------------------------------
+class CausalAttnBlock(nn.Module):
+    """Pre-norm causal transformer block, mirrors nn.TransformerEncoderLayer.
+
+    Identical math to SalienceCausalBlock minus the per-key salience bias,
+    so RoPE can be applied to Q and K explicitly. Used when
+    cfg.use_salience=False AND cfg.positional='rotary'. Default sinusoidal
+    path still uses stock nn.TransformerEncoderLayer (bit-identical to v10).
+    """
+
+    def __init__(self, d_model: int, n_heads: int, d_ff: int, dropout: float,
+                 rope: RotaryEmbedding | None = None):
+        super().__init__()
+        assert d_model % n_heads == 0
+        self.n_heads = n_heads
+        self.d_head = d_model // n_heads
+        self.rope = rope
+
+        self.norm1 = nn.LayerNorm(d_model)
+        self.qkv = nn.Linear(d_model, 3 * d_model)
+        self.out_proj = nn.Linear(d_model, d_model)
+
+        self.norm2 = nn.LayerNorm(d_model)
+        self.ffn = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, d_model),
+        )
+        self.drop = nn.Dropout(dropout)
+
+    def forward(
+        self,
+        x: torch.Tensor,                              # (B, T, D)
+        key_padding_mask: torch.Tensor | None = None, # (B, T) — True = PAD
+    ) -> torch.Tensor:
+        B, T, D = x.shape
+        h = self.norm1(x)
+        qkv = self.qkv(h).reshape(B, T, 3, self.n_heads, self.d_head)
+        q, k, v = qkv.unbind(dim=2)
+        q = q.transpose(1, 2).contiguous()
+        k = k.transpose(1, 2).contiguous()
+        v = v.transpose(1, 2).contiguous()
+
+        if self.rope is not None:
+            cos, sin = self.rope(T, device=q.device, dtype=q.dtype)
+            q = apply_rotary(q, cos, sin)
+            k = apply_rotary(k, cos, sin)
+
+        # Causal + padding mask combined into one additive bias.
+        neg_inf = torch.finfo(q.dtype).min
+        causal = torch.full((T, T), neg_inf, device=x.device, dtype=q.dtype)
+        causal = torch.triu(causal, diagonal=1)
+        attn_mask = causal.unsqueeze(0).unsqueeze(0)             # (1, 1, T, T)
+        if key_padding_mask is not None:
+            pad_bias = torch.where(
+                key_padding_mask.unsqueeze(1).unsqueeze(1),
+                neg_inf, 0.0,
+            ).to(q.dtype)                                         # (B, 1, 1, T)
+            attn_mask = attn_mask + pad_bias                      # broadcasts
+
+        out = nn.functional.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask,
+        )
+        out = out.transpose(1, 2).reshape(B, T, D)
+        out = self.out_proj(out)
+        x = x + self.drop(out)
+
+        h2 = self.norm2(x)
+        x = x + self.drop(self.ffn(h2))
+        return x
+
+
+# ---------------------------------------------------------------------------
 # Salience-biased causal attention block (v7)
 # ---------------------------------------------------------------------------
 class SalienceCausalBlock(nn.Module):
@@ -253,12 +391,14 @@ class SalienceCausalBlock(nn.Module):
     where available.
     """
 
-    def __init__(self, d_model: int, n_heads: int, d_ff: int, dropout: float):
+    def __init__(self, d_model: int, n_heads: int, d_ff: int, dropout: float,
+                 rope: RotaryEmbedding | None = None):
         super().__init__()
         assert d_model % n_heads == 0
         self.n_heads = n_heads
         self.d_head = d_model // n_heads
         self.scale = self.d_head ** -0.5
+        self.rope = rope
 
         self.norm1 = nn.LayerNorm(d_model)
         self.qkv = nn.Linear(d_model, 3 * d_model)
@@ -287,6 +427,11 @@ class SalienceCausalBlock(nn.Module):
         q = q.transpose(1, 2).contiguous()
         k = k.transpose(1, 2).contiguous()
         v = v.transpose(1, 2).contiguous()
+
+        if self.rope is not None:
+            cos, sin = self.rope(T, device=q.device, dtype=q.dtype)
+            q = apply_rotary(q, cos, sin)
+            k = apply_rotary(k, cos, sin)
 
         # Combined additive mask: (B, 1, T, T)
         # - causal triangle: future positions get -inf
@@ -332,9 +477,27 @@ class RoundEncoder(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.use_salience = bool(getattr(cfg, "use_salience", False))
+        self.positional = str(getattr(cfg, "positional", "sinusoidal"))
+        assert self.positional in ("sinusoidal", "rotary"), (
+            f"unknown cfg.positional={self.positional!r}; "
+            "expected 'sinusoidal' or 'rotary'"
+        )
         self.input_proj = nn.Linear(cfg.feature_dim, cfg.d_model)
         self.norm_in = nn.LayerNorm(cfg.d_model)
+        # Always construct sinusoidal pos_emb (cheap, keeps ckpt compat with
+        # rotary runs that may later be evaluated against sinusoidal). Only
+        # applied in forward when positional == 'sinusoidal'.
         self.pos_emb = SinusoidalPositionalEncoding(cfg.d_model, cfg.max_seq_len)
+        # Build RoPE module if needed. Shared across all layers.
+        if self.positional == "rotary":
+            head_dim = cfg.d_model // cfg.n_heads
+            self.rope = RotaryEmbedding(
+                head_dim=head_dim,
+                max_len=cfg.max_seq_len,
+                base=float(getattr(cfg, "rope_base", 10000.0)),
+            )
+        else:
+            self.rope = None
         if self.use_salience:
             self.layers = nn.ModuleList([
                 SalienceCausalBlock(
@@ -342,6 +505,7 @@ class RoundEncoder(nn.Module):
                     n_heads=cfg.n_heads,
                     d_ff=cfg.d_ff,
                     dropout=cfg.dropout,
+                    rope=self.rope,
                 )
                 for _ in range(cfg.n_layers)
             ])
@@ -353,18 +517,32 @@ class RoundEncoder(nn.Module):
                 nn.Linear(cfg.d_model // 2, 1),
             )
         else:
-            self.layers = nn.ModuleList([
-                nn.TransformerEncoderLayer(
-                    d_model=cfg.d_model,
-                    nhead=cfg.n_heads,
-                    dim_feedforward=cfg.d_ff,
-                    dropout=cfg.dropout,
-                    activation="gelu",
-                    batch_first=True,
-                    norm_first=True,
-                )
-                for _ in range(cfg.n_layers)
-            ])
+            if self.positional == "rotary":
+                # Custom causal block (mirrors nn.TransformerEncoderLayer
+                # but exposes Q/K so RoPE can rotate them).
+                self.layers = nn.ModuleList([
+                    CausalAttnBlock(
+                        d_model=cfg.d_model,
+                        n_heads=cfg.n_heads,
+                        d_ff=cfg.d_ff,
+                        dropout=cfg.dropout,
+                        rope=self.rope,
+                    )
+                    for _ in range(cfg.n_layers)
+                ])
+            else:
+                self.layers = nn.ModuleList([
+                    nn.TransformerEncoderLayer(
+                        d_model=cfg.d_model,
+                        nhead=cfg.n_heads,
+                        dim_feedforward=cfg.d_ff,
+                        dropout=cfg.dropout,
+                        activation="gelu",
+                        batch_first=True,
+                        norm_first=True,
+                    )
+                    for _ in range(cfg.n_layers)
+                ])
         self.norm_out = nn.LayerNorm(cfg.d_model)
 
     def forward(self, x: torch.Tensor,
@@ -373,7 +551,10 @@ class RoundEncoder(nn.Module):
         Returns h: (B, T, d_model).
         """
         h = self.norm_in(self.input_proj(x))
-        h = self.pos_emb(h)
+        # Skip additive sinusoidal pos_emb under RoPE — rotary is applied
+        # inside attention; adding sinusoidal here would double-encode position.
+        if self.positional == "sinusoidal":
+            h = self.pos_emb(h)
         if self.use_salience:
             # Per-tick salience score; padding positions get -inf so they
             # neither attract nor get attended (combined with key_padding
@@ -382,6 +563,10 @@ class RoundEncoder(nn.Module):
             for layer in self.layers:
                 h = layer(h, salience=salience,
                           key_padding_mask=key_padding_mask)
+        elif self.positional == "rotary":
+            # Custom CausalAttnBlock stack — RoPE is applied inside.
+            for layer in self.layers:
+                h = layer(h, key_padding_mask=key_padding_mask)
         else:
             T = h.shape[1]
             causal_mask = nn.Transformer.generate_square_subsequent_mask(
@@ -402,7 +587,10 @@ class RoundEncoder(nn.Module):
         if not self.use_salience:
             return None
         h = self.norm_in(self.input_proj(x))
-        h = self.pos_emb(h)
+        # Mirror forward(): skip sinusoidal under RoPE so the salience head
+        # sees the same input distribution it was trained on.
+        if self.positional == "sinusoidal":
+            h = self.pos_emb(h)
         return self.salience_head(h).squeeze(-1)
 
 
@@ -1291,6 +1479,13 @@ def main() -> None:
     ap.add_argument("--salience", action="store_true",
                     help="enable per-tick learned salience bias on attention "
                          "(v7+; default off preserves v6 architecture)")
+    ap.add_argument("--positional", type=str, default="sinusoidal",
+                    choices=["sinusoidal", "rotary"],
+                    help="positional encoding: 'sinusoidal' (default; "
+                         "additive, bit-identical to prior runs) or 'rotary' "
+                         "(v11+; RoPE applied to Q/K inside attention, no "
+                         "additive pos_emb). Rotary typically generalizes "
+                         "better with longer sequences / more data.")
     ap.add_argument("--window-forecast", action="store_true",
                     help="enable window-forecast SSL objective (v8+; predicts "
                          "kill counts + bomb-event flags over next 2s window)")
@@ -1349,6 +1544,7 @@ def main() -> None:
         horizons=args.horizons,
         horizon_weights=args.horizon_weights,
         use_salience=args.salience,
+        positional=args.positional,
         use_window_forecast=args.window_forecast,
         window_forecast_ticks=args.window_forecast_ticks,
         window_forecast_weight=args.window_forecast_weight,
