@@ -1,0 +1,12 @@
+{
+  "val_demo": "furia-vs-vitality-m4-overpass",
+  "n_train": 1585,
+  "n_val": 428,
+  "majority_acc": 0.5794392523364486,
+  "structured_acc": 0.8457943925233645,
+  "structured_auc": 0.8673163082437276,
+  "caption_acc": 0.8714953271028038,
+  "caption_auc": 0.9173611111111111,
+  "verbalization_gap": -0.025700934579439227,
+  "verdict": "GREEN LIGHT: captions retain ~all structured signal. Language is a near-sufficient statistic here. Proceed to the encoder->language bridge."
+}
