@@ -485,111 +485,27 @@ class CS2GRPOTrainer:
         return wrappers
 
     def train(self, resume_from: str | None = None):
+        """REMOVED — the TRL GRPOTrainer path is not used and never worked here.
+
+        This used to build a `trl.GRPOTrainer` with `beta=kl_coef` and an
+        importance-sampling ratio. No committed launcher or doc ever invoked
+        it (every entry point passes `--manual`, which dispatches to
+        `train_manual`), and it does not work for multimodal Qwen3-VL via TRL
+        (image_grid_thw index OOB on prompt repetition — TRL #5120). Keeping
+        it around was actively misleading: a reader auditing this method would
+        wrongly conclude KL regularization and a clipped IS-ratio are active in
+        training, when the real path is the hand-rolled `train_manual` loop.
+
+        Use `train_manual()` (the `--manual` flag). The KL anchor that this
+        method advertised now lives in that loop (`kl_coef`, k3 estimator vs
+        the adapter-disabled SFT reference).
         """
-        Run GRPO training using TRL's GRPOTrainer.
-
-        With use_vllm=True, TRL handles model loading and uses vLLM for
-        fast generation. Without vLLM, falls back to HF generate.
-
-        Args:
-            resume_from: Path to checkpoint to resume from
-        """
-        if self.train_dataset is None:
-            raise ValueError("No training data prepared. Call prepare_data() first.")
-
-        try:
-            from trl.trainer.grpo_config import GRPOConfig
-            from trl.trainer.grpo_trainer import GRPOTrainer
-        except ImportError as err:
-            raise ImportError(
-                "TRL is required for GRPO training. Install with: pip install trl>=0.12.0"
-            ) from err
-
-        print("Configuring GRPO trainer...")
-        print(f"  vLLM: {self.config.use_vllm}")
-        print(f"  Reward signals: {len(self.reward_fns)}")
-        print(f"  Reward weights: {self.config.reward_weights}")
-        print(f"  KL coefficient: {self.config.kl_coef}")
-        print(f"  Group size (num_generations): {self.config.num_generations}")
-
-        # Create output directory
-        output_dir = Path(self.config.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save config
-        config_path = output_dir / "training_config.json"
-        with open(config_path, "w") as f:
-            json.dump(self.config.to_dict(), f, indent=2)
-
-        # GRPO training configuration
-        grpo_kwargs: dict[str, Any] = dict(
-            output_dir=str(output_dir),
-            num_train_epochs=self.config.num_epochs,
-            max_steps=self.config.max_steps,
-            per_device_train_batch_size=self.config.batch_size,
-            gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-            learning_rate=self.config.learning_rate,
-            warmup_ratio=self.config.warmup_ratio,
-            max_grad_norm=self.config.max_grad_norm,
-            weight_decay=self.config.weight_decay,
-            logging_steps=self.config.logging_steps,
-            save_steps=self.config.save_steps,
-            save_total_limit=3,
-            bf16=self.config.torch_dtype == "bfloat16",
-            fp16=self.config.torch_dtype == "float16",
-            # GRPO-specific settings
-            num_generations=self.config.num_generations,
-            max_completion_length=self.config.max_new_tokens,
-            temperature=self.config.temperature,
-            # GSPO variant for stability
-            importance_sampling_level=self.config.importance_sampling_level,
-            # KL regularization against SFT reference
-            beta=self.config.kl_coef,
-            # Reward weights for the separate reward functions (2 or 3)
-            reward_weights=self.config.reward_weights,
-            # Reporting — use wandb if available, otherwise none
-            report_to="none",
+        raise NotImplementedError(
+            "The TRL GRPOTrainer path has been removed (unused + broken for "
+            "multimodal Qwen3-VL, TRL #5120). Run with --manual to use "
+            "train_manual(), which is the real GRPO path (Dr.GRPO advantage "
+            "+ k3 KL to the SFT reference)."
         )
-        # vLLM for fast generation (text-only — multimodal hits TRL #5120)
-        if self.config.use_vllm:
-            grpo_kwargs["use_vllm"] = True
-            grpo_kwargs["vllm_gpu_memory_utilization"] = 0.7
-        grpo_config = GRPOConfig(**grpo_kwargs)
-
-        # With vLLM, TRL manages model loading — pass model name string.
-        # Without vLLM, load model ourselves and pass the object.
-        if self.config.use_vllm:
-            model_ref = self.config.model_name
-            # Load tokenizer/processor for reward wrappers
-            if self.processor is None:
-                from transformers import AutoProcessor
-                self.processor = AutoProcessor.from_pretrained(self.config.model_name)
-        else:
-            if self.model is None:
-                self.load_model()
-            model_ref = self.model
-
-        # Create GRPO trainer with separate reward functions
-        trainer = GRPOTrainer(
-            model=model_ref,  # type: ignore[reportArgumentType]
-            processing_class=self.processor,
-            args=grpo_config,
-            train_dataset=self.train_dataset,
-            eval_dataset=self.val_dataset,
-            reward_funcs=self._create_reward_wrappers(),  # type: ignore[reportArgumentType]
-        )
-
-        print("Starting GRPO training...")
-
-        # Train
-        if resume_from:
-            trainer.train(resume_from_checkpoint=resume_from)
-        else:
-            trainer.train()
-
-        print("Training complete!")
-
-        return trainer
 
     @staticmethod
     def _compute_sequence_log_probs(
@@ -597,20 +513,24 @@ class CS2GRPOTrainer:
         input_ids: Any,
         attention_mask: Any,
         completion_start: int,
+        reduce: str = "sum",
         **model_kwargs: Any,
     ) -> Any:
         """
-        Compute per-token log probs for the completion portion of a sequence.
+        Compute log probs for the completion portion of a sequence.
 
         Args:
             model: The language model.
             input_ids: Full sequence (prompt + completion), shape [1, seq_len].
             attention_mask: Attention mask, shape [1, seq_len].
             completion_start: Index where completion tokens begin.
+            reduce: "sum" -> scalar sum over completion tokens (default; the
+                REINFORCE term). "none" -> per-token log-prob vector, shape
+                [n_completion_tokens] (needed for the per-token KL estimator).
             **model_kwargs: Extra inputs (pixel_values, image_grid_thw, etc.).
 
         Returns:
-            Sum of log probs over completion tokens (scalar tensor).
+            Scalar sum (reduce="sum") or per-token log-prob vector (reduce="none").
         """
         outputs = model(
             input_ids=input_ids,
@@ -625,6 +545,9 @@ class CS2GRPOTrainer:
         log_probs = torch.nn.functional.log_softmax(shift_logits, dim=-1)
         # Gather log probs at the actual token positions
         token_log_probs = log_probs.gather(2, shift_labels.unsqueeze(-1)).squeeze(-1)
+        token_log_probs = token_log_probs.squeeze(0)  # [n_completion_tokens]
+        if reduce == "none":
+            return token_log_probs
         return token_log_probs.sum()
 
     def train_manual(self, resume_from: str | None = None):
@@ -933,12 +856,25 @@ class CS2GRPOTrainer:
                         skip_log_f.flush()
                     continue
 
-                advantages = (rewards_t - rewards_t.mean()) / (reward_std + 1e-8)
+                # Dr. GRPO ("GRPO Done Right", 2503.20783): advantage is the
+                # mean-centered reward ONLY — NO division by group std. Dividing
+                # by std injects a difficulty bias (low-variance / all-easy or
+                # all-hard groups get their advantages amplified relative to
+                # medium-variance groups). reward_std is still computed above
+                # purely as the all-equal-rewards skip guard.
+                advantages = rewards_t - rewards_t.mean()
 
                 # --- Step 4: Compute policy gradient loss ---
                 # Re-enable gradient checkpointing for training forward/backward.
                 self._set_generation_mode(generate=False)
                 sample_loss = torch.tensor(0.0, device=self.model.device)
+
+                # KL anchor to the SFT reference. With LoRA the reference policy
+                # is just the base with the adapter disabled (the SFT-merged
+                # base), so no second model is held in memory. Off when
+                # kl_coef<=0 or when not using LoRA (no adapter to disable).
+                use_kl = config.kl_coef > 0.0 and config.use_lora
+                kl_total = 0.0
 
                 t_bwd = time.time()
                 for g_idx in range(config.num_generations):
@@ -952,16 +888,41 @@ class CS2GRPOTrainer:
                     ]).unsqueeze(0)
                     full_mask = torch.ones_like(full_ids)
 
-                    log_prob = self._compute_sequence_log_probs(
+                    # Per-token policy log-probs (grad flows). Sum -> REINFORCE term.
+                    policy_tok = self._compute_sequence_log_probs(
                         self.model,
                         input_ids=full_ids,
                         attention_mask=full_mask,
                         completion_start=prompt_len,
+                        reduce="none",
                         **model_extra_kwargs,
                     )
+                    log_prob = policy_tok.sum()
 
                     # REINFORCE loss: -advantage * log_prob
-                    sample_loss = sample_loss + (-advantages[g_idx] * log_prob)
+                    g_loss = -advantages[g_idx] * log_prob
+
+                    # KL(policy || ref) via the k3 estimator (low-variance,
+                    # non-negative), per token then summed. ref log-probs come
+                    # from the adapter-disabled base (SFT) with no grad.
+                    if use_kl:
+                        with torch.no_grad():
+                            with self.model.disable_adapter():
+                                ref_tok = self._compute_sequence_log_probs(
+                                    self.model,
+                                    input_ids=full_ids,
+                                    attention_mask=full_mask,
+                                    completion_start=prompt_len,
+                                    reduce="none",
+                                    **model_extra_kwargs,
+                                )
+                        log_ratio = ref_tok - policy_tok          # Δ = logπ_ref - logπ
+                        kl_tok = torch.exp(log_ratio) - log_ratio - 1.0
+                        kl_seq = kl_tok.sum()
+                        g_loss = g_loss + config.kl_coef * kl_seq
+                        kl_total += float(kl_seq.detach())
+
+                    sample_loss = sample_loss + g_loss
 
                 # Average over group
                 sample_loss = sample_loss / config.num_generations
@@ -974,7 +935,8 @@ class CS2GRPOTrainer:
                 print(
                     f"  [sample] gen={gen_elapsed:.1f}s decode={decode_elapsed:.2f}s "
                     f"bwd={bwd_elapsed:.1f}s G={config.num_generations} "
-                    f"new_tokens<={config.max_new_tokens} fmt_pass={format_passes}/{config.num_generations}",
+                    f"new_tokens<={config.max_new_tokens} fmt_pass={format_passes}/{config.num_generations} "
+                    f"kl={kl_total:.3f}{'' if use_kl else '(off)'}",
                     flush=True,
                 )
                 # Audit trail for the EXPERT to inspect what gradient direction
