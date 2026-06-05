@@ -1,16 +1,63 @@
 # Chimera
 
-**See, Then Think: Two-Phase VLM Training for Game Understanding**
+**A next-state-prediction world model for Counter-Strike 2.**
 
-Vision-language models struggle with domain-specific visual grounding in competitive gaming, where rapid scene understanding is critical for strategic decision-making. Chimera is a two-phase training paradigm: first, supervised fine-tuning on screenshot–game state pairs teaches the model to read the HUD accurately (visual grounding); then, Group Relative Policy Optimization with demo-derived rewards teaches strategic reasoning scored against pro play and round outcomes. We evaluate on Counter-Strike 2, demonstrating improved performance over single-phase approaches.
+Chimera learns Counter-Strike 2 by predicting the future. A causal spatiotemporal transformer is trained over sequences of engine-accurate game-state frames — state → state, no text — exactly like language-model pretraining, but over game states instead of tokens. The hypothesis is that a model forced to predict where ten players, the bomb, and the economy will be a fraction of a second to a few seconds from now must internalize the game's tactics, geometry, and causality. Value functions, event detection, and (in a later phase) natural-language reasoning are then built as heads and bridges on top of the learned latent.
 
-## Motivation
+> **Status (2026-06):** the world model is the project's forward direction and is **just starting** — the 597-d state tensors are built and the cleanup is done, but no world model has been trained yet. The prior VLM line of work ("See, Then Think") is **superseded and parked**; its real findings are preserved below because they are what motivated the pivot. Nothing in the world-model sections describes completed training or measured results.
 
-Frontier VLMs fail at basic CS2 visual grounding (e.g., weapon identification, player counts), and they lack the strategic knowledge to advise on play. Both problems have cheap data sources: demo files provide engine-accurate game state for grounding, and pro match outcomes provide a reward signal for reasoning. The key insight: perception and reasoning are separable training objectives — teach them in sequence rather than asking RL to learn both at once.
+## Why the pivot — what the VLM line taught us
 
-**Hypothesis:** A VLM that first learns accurate visual grounding via SFT on screenshot–demo pairs, then learns strategic reasoning via GRPO scored against pro decisions and round outcomes, produces better tactical advice than either phase alone — and the two-phase approach is more data-efficient than end-to-end training.
+The original project was a vision-language pipeline ("See, Then Think": L1 See → L2 Situate → L3 Think) with a round-encoder trained by change-point segmentation and caster-commentary grounding for the language layer. We parked it after a series of consistent, load-bearing negative results:
 
-## Method
+- **Outcome supervision is information-starved.** The round encoder **saturates at ~16 demos** (negative slope beyond that). Round outcome is ~1 bit/round — far too little signal to learn a rich state representation from.
+- **Change-point losses find statistics, not semantics.** They locate *statistical* boundaries in the feature stream, not the *semantic* "events" we cared about — the wrong objective.
+- **Claude-generated captions are circular.** They only paraphrase the structured features fed to the captioner; a discriminative check showed only **+0.008** over the structured-feature ceiling. Distilling them teaches nothing new.
+- **Per-event commentary grounding hits a ceiling.** Global VOD↔demo alignment locks cleanly at **4.6σ** (kills ↔ caster-name-mention cross-correlation), but per-event anchoring tops out at **~25%** — bounded by auto-caption ASR name-recall. Parked to phase 2.
+
+The common thread: every one of these used a sparse, downstream, or circular signal. Next-frame prediction is the opposite — dense, self-supervised, and grounded in the actual dynamics of the game. That is the bet.
+
+## The world model (forward direction)
+
+**State as a "document."** Each frame is the existing `feature_schema_v2` vector: **597-d** (10 players × 56 per-player features + 37 global features), sampled at **8 Hz (125 ms/frame)**. A round is one document: the model does **not** attend across round resets — economy, score, and round number are carried as features instead.
+
+**Objective: next-state prediction.** Train the transformer to predict a future frame from the past, then **sweep the horizon** (125 ms → 2 s). At k = +1 frame the task is MLMove-style positional inertia; the strategic signal lives at the longer horizons. The prediction head is **distributional** (discretized / GMM) rather than a point regressor, so the model expresses multimodal futures instead of mode-averaging into blur.
+
+**Judge by transfer, not by loss.** Prediction MSE is not the metric. The world model is evaluated by **probe transfer** — freeze the latent, train lightweight value/event probes on it, and measure those. A lower prediction loss that doesn't move the probes is not progress.
+
+**Engineer perception, learn tactics.** Feature engineering borrows MLMove's recipe (per-player tokens, derived visibility/geometry) but engineers **only L1/See perception primitives**. Tactics (L2) are left for the model to learn. We do **not** hand-engineer tactical labels.
+
+**What falls out of the world model:**
+- **Events** emerge from **prediction surprise** (this subsumes the parked change-point work — surprise is the semantic boundary the change-point losses failed to find).
+- **Value / policy** are MuZero-style heads on the world-model latent.
+- **Reasoning** is verbalizing model rollouts.
+
+## Language layer (phase 2)
+
+Bridge a **frozen LLM** (Qwen 3.6 / 3.7, 35B-A3B MoE) into the world-model latents:
+
+1. Start **Flamingo-style** — a resampler turns the state latent into read tokens, injected via gated cross-attention. The LLM is LoRA-tuned because the state latent is far out-of-distribution for a text model.
+2. Graduate to a **Mixture-of-Transformers (MoT)** fusion.
+
+Training stages: templated grounding → contrastive commentary → **GRPO reasoning** rewarded by checking the model's *verbalized* predictions against the *actual* futures in the demo.
+
+**Discipline — ablate the latent.** If removing the world-model latent doesn't hurt the language head, the language head is being circular (paraphrasing inputs, as the captions were). The ablation is the test that keeps us honest.
+
+## Roadmap (world model)
+
+Each step reads defined inputs, writes defined outputs, and validates itself. The harness state lives in `feature-list.json` (`passes` boolean per feature). World-model features below are all `passes=false` — none are built.
+
+- [x] **State tensors built.** 81 demos parsed to per-tick parquet via `scripts/parse_demos.py`; `scripts/build_tick_sequences.py` assembles 597-d `feature_schema_v2` tensors at `data/processed/tick_sequences/{train,val}.pt` (69 train / 12 val demos; 1,471 + 262 rounds). Round-scoped, 8 Hz.
+- [ ] **Train the world model.** Causal spatiotemporal transformer, next-state prediction, round-scoped attention. Distributional head (discretize/GMM).
+- [ ] **Horizon sweep.** Train/evaluate across prediction horizons 125 ms → 2 s; characterize the inertia→strategy transition.
+- [ ] **Probe transfer eval.** Freeze the latent; train value/event probes on it; this — not prediction loss — is the model's score.
+- [ ] **Events from surprise.** Derive event boundaries from prediction surprise; compare against ground-truth kill/plant/defuse events.
+- [ ] **Value/policy heads.** MuZero-style heads on the latent.
+- [ ] **Phase 2 — language bridge.** Flamingo-style resampler + gated cross-attention into a LoRA'd Qwen MoE; ablate the latent.
+
+## Prior / superseded method — "See, Then Think" VLM (parked)
+
+> The two-phase VLM method below is **parked**, not deleted — it documents the approach the project pivoted away from, and the design rationale lives on in `decisions.md` (D013–D015, D024). The associated scripts have been moved to `scripts/_archive/`.
 
 ### Phase 1: Visual Grounding (SFT on Screenshots)
 
@@ -54,9 +101,9 @@ See `decisions.md` D013–D015, D024 for the full mathematical formulation, desi
 
 If C > B, GRPO improves reasoning beyond what SFT alone provides. If C > D, SFT visual grounding is a necessary foundation for effective GRPO.
 
-### Pipeline
+### Pipeline (superseded VLM pipeline)
 
-Each step is isolated: it reads from defined inputs, writes to defined outputs, and validates its own results. Intermediate artifacts are cleaned up.
+These steps describe the parked VLM pipeline. Steps 1–5b reached the marked state before the pivot; they are retained for provenance. Each step is isolated: it reads from defined inputs, writes to defined outputs, and validates its own results.
 
 - [x] **Step 1 — Data schema & manifest.** Unified data manifest (`src/data/manifest.py`, JSONL append-only) for tracking screenshot provenance, source, timestamps, and transcript context. Collection scripts write to `data/manifest.jsonl`, `ScreenshotDataset` loads/filters by manifest fields, training utils accept manifest filtering.
 - [x] **Step 2 — Demo data pipeline.** Parse pro demos with awpy into full-tick Parquet + metadata JSONs ([cs2-tools](https://github.com/skkwowee/cs2-tools)). Interactive demo viewer ([cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)) with radar canvas, vision cones (wall-clipped via raycasting), kill/damage lines, shot tracers, timeline scrubbing, and split upper/lower rendering for multi-level maps. 4 demos parsed (Furia vs Vitality, maps: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).
@@ -112,11 +159,22 @@ All models produce structured JSON with three sections:
 }
 ```
 
+## Data
+
+| | |
+|---|---|
+| Raw demos | **85** local `.dem` files (~37 GB) in `data/demos/` |
+| Parsed | **81** parsed to per-tick parquet (`scripts/parse_demos.py`, awpy) |
+| World-model tensors | `data/processed/tick_sequences/{train,val}.pt` — 597-d `feature_schema_v2`, 8 Hz, round-scoped (69 train + 12 val demos; 1,471 + 262 rounds) |
+
+Demos are ingested by a separate **HLTV → `.dem` → HuggingFace** zero-local-storage pipeline ([chimera-demo-pipeline](https://github.com/skkwowee/chimera-demo-pipeline)). The world-model data path is `parse_demos.py` (→ parquet) then `build_tick_sequences.py` (→ `.pt` tensors).
+
 ## Standalone Repos
 
-Two components live in their own repositories and are managed as dependencies:
+Components that live in their own repositories:
 
-- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays
+- **[chimera-demo-pipeline](https://github.com/skkwowee/chimera-demo-pipeline)** — HLTV scrape → demo download → tick-sequence build on HF, zero local storage. Hosts the parked commentary-grounding work.
+- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays; kept and repurposed for visualizing world-model rollouts.
 - **[cs2-tools](https://github.com/skkwowee/cs2-tools)** — Python utilities for demo parsing, viewer data export, and screenshot capture (`pip install cs2-tools[parse]`)
 
 ## Project Structure
@@ -124,31 +182,37 @@ Two components live in their own repositories and are managed as dependencies:
 ```
 chimera/
 ├── decisions.md                # Design decision log (D001–D024)
+├── feature-list.json           # Harness feature inventory (passes boolean per feature)
+├── claude-progress.txt         # Session-handoff doc — read first every session
 ├── paper/                      # NeurIPS 2026 submission
-│   ├── main.tex                # Main paper
-│   ├── references.bib          # Bibliography
-│   └── figures/                # Paper figures
-├── checkpoints/                # LoRA adapter checkpoints (250, 300, 304)
+├── checkpoints/                # LoRA adapter checkpoints (prior VLM SFT)
 ├── config/config.yaml          # Configuration settings
 ├── data/
-│   ├── manifest.jsonl          # Data provenance tracking
-│   ├── raw/                    # Raw screenshots
-│   ├── labeled/                # Demo-derived ground truth
-│   ├── processed/              # Processed data
-│   └── predictions/            # VLM predictions
+│   ├── demos/                  # Raw .dem files (85 local, ~37 GB)
+│   ├── processed/
+│   │   └── tick_sequences/     # WORLD-MODEL DATA
+│   │       ├── train.pt        # 597-d feature_schema_v2 tensors (69 demos)
+│   │       ├── val.pt          # (12 demos)
+│   │       └── feature_schema_v1.json  # schema doc (version: feature_schema_v2)
+│   ├── manifest.jsonl          # Data provenance (VLM screenshots)
+│   ├── raw/ labeled/           # Screenshots + demo-derived labels (parked VLM)
+│   └── predictions/            # VLM predictions (parked)
 ├── src/
 │   ├── data/                   # Data loading + manifest utilities
-│   ├── inference/              # VLM inference (Qwen3.5-35B-A3B)
-│   ├── training/               # SFT + GRPO training modules
-│   └── prompts.py              # Shared prompts for all models
+│   ├── inference/              # VLM inference (parked)
+│   ├── training/               # SFT + GRPO training modules (parked VLM)
+│   └── prompts.py              # Shared prompts (parked VLM)
 └── scripts/
-    ├── run_inference.py        # Run VLM inference
-    ├── evaluate.py             # Evaluate predictions
-    ├── train_sft.py            # Phase 1: SFT fine-tuning
-    ├── train_grpo.py           # Phase 2: GRPO fine-tuning
+    ├── parse_demos.py          # WORLD-MODEL: .dem → per-tick parquet (awpy)
+    ├── build_tick_sequences.py # WORLD-MODEL: parquet → 597-d tensors (.pt)
     ├── data.py                 # HF Hub data management (pull/push/clean)
-    └── generate_review.py      # Generate HTML viewer for review
+    ├── train_sft.py            # Parked VLM: Phase 1 SFT
+    ├── train_grpo.py           # Parked VLM: Phase 2 GRPO
+    └── _archive/               # 18 superseded scripts: round-encoder,
+                                #   change-point, probes, caption generation
 ```
+
+> **Cleanup (2026-06):** 18 superseded scripts (round-encoder, change-point, probes, captions) were moved to `scripts/_archive/`. The commentary-grounding work is parked in the separate demo-pipeline repo. `cs2-demo-viewer` is kept — repurposed for visualizing world-model rollouts.
 
 ## Setup
 
@@ -257,7 +321,7 @@ Training artifacts are split between this repo and HuggingFace. Use `python scri
 
 ## Why This Matters Beyond Games
 
-The general principle — *learn reasoning from cheap structured data, then ground in vision with minimal labels* — applies to robotics (sim logs → real-world), medical imaging (patient records → radiology), and autonomous driving (telemetry → camera perception). Games are the controlled environment to prove the paradigm.
+The general principle — *learn dynamics from cheap self-supervised next-state prediction, then read the learned latent for value, events, and language* — is the world-model recipe applied to a structured multi-agent domain. The same shape applies to robotics (predict sensor/state futures), autonomous driving (predict scene evolution), and any setting where dense self-supervision beats sparse outcome labels. CS2 is the controlled environment to prove it: engine-accurate state, clear outcomes, and a rich tactical layer to recover.
 
 ## License
 

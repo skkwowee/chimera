@@ -1,5 +1,36 @@
 # The Three-Level Perception / Reasoning Hierarchy
 
+> **PIVOT (2026-06): the world model is now how L1→L2 understanding is
+> learned.** The three-level decomposition (See / Situate / Think) still
+> holds as the organizing principle, but the *mechanism* for learning the
+> L1→L2 understanding has changed. Originally L2 was a round encoder
+> trained on self-supervised SSL heads and gated on outcome probes; that
+> encoder **saturated at ~16 demos** (`docs/learning-curve-finding.md`)
+> because outcome supervision (~1 bit/round) is info-starved. The new
+> foundation is a **next-state-prediction world model**
+> (`docs/world-model-design.md`): a causal spatiotemporal transformer
+> over game-state frames (state → state, no text) whose dense
+> distributional objective learns the *dynamics* of the game. Under this
+> framing:
+> - **L1 (See)** = the engineered **perception primitives** that make up
+>   each frame (position, view angle, derived visibility). Still
+>   hand-built — but only perception, never tactics.
+> - **L2 (Situate)** = the **latent of the world model**. Tactics are
+>   *learned* as the structure the model needs to predict the future, not
+>   trained against tactical labels. Events fall out of **prediction
+>   surprise**; value/policy are MuZero-style heads on the latent.
+> - **L3 (Think)** = a **downstream language bridge** into that latent
+>   (phase 2): a frozen Qwen 3.6/3.7 MoE wired in Flamingo-style, with
+>   reasoning trained as *verbalized rollouts scored against the actual
+>   future*.
+>
+> The sections below describe the prior three-level pipeline (VLM "See,
+> Then Think" with a round encoder at L2 and GRPO advice at L3). Read them
+> as the architectural lineage; `docs/world-model-design.md` is the
+> current central design doc. The per-level *evaluation discipline*
+> (probe transfer, σ_s, ablate-the-signal) carries over unchanged and is
+> still load-bearing.
+
 Organizing principle for chimera. Treats "look at the game", "understand what
 just happened", and "say what to do" as three different learning problems with
 three different ground truths, three different evaluation harnesses, and three

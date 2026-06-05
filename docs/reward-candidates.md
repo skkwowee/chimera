@@ -1,5 +1,17 @@
 # GRPO Strategy-Reward Candidates
 
+> **PARKED (2026-06).** These three rewards (RECALL+mask, Claude judge,
+> BT-head) belong to the prior VLM GRPO-advice direction, now parked.
+> chimera has pivoted to a **next-state-prediction world model**
+> (`docs/world-model-design.md`); language and reasoning move to **phase
+> 2**, where the reasoning reward is **verbalized prediction vs the
+> actual demo future** — grounded in ground truth rather than another
+> model's prior (the Claude-judge Goodhart concern below) or historical
+> kNN outcomes (RECALL). The candidates here are retained as recorded
+> analysis of the GRPO-reward design space and may inform the phase-2
+> bridge, but none is the current reward. The F08v4 collapse evidence
+> below is real and unchanged.
+
 Side-by-side comparison of the three reward signals chimera has in flight for
 the GRPO strategic-reasoning phase, plus the gating protocol that decides
 which one runs in the next pod session. This doc is the canonical comparison

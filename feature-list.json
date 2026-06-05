@@ -1,62 +1,119 @@
-[
-  {
-    "id": "F01",
-    "name": "Data schema & manifest",
-    "description": "Unified data manifest (src/data/manifest.py, JSONL) for tracking screenshot provenance, source, timestamps. Collection scripts write to data/manifest.jsonl.",
-    "passes": true
-  },
-  {
-    "id": "F02",
-    "name": "Demo data pipeline & viewer",
-    "description": "Parse pro demos with awpy into full-tick Parquet + metadata JSONs. Interactive demo viewer at /viewer with radar, vision cones, kill lines, timeline scrubbing. 4 demos parsed (Furia vs Vitality: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).",
-    "passes": true
-  },
-  {
-    "id": "F03",
-    "name": "Screenshot-demo synchronization",
-    "description": "Capture CS2 screenshots via demo playback (SendKeys automation) and pair with ground truth game state from Parquet. All 4 maps complete: Mirage (548 screenshots, 1504 labels), Inferno (1476/1476), Nuke (791/791), Overpass (1538/1538). Total: 4353 screenshots, 5309 labels.",
-    "passes": true
-  },
-  {
-    "id": "F04",
-    "name": "SFT training — visual grounding",
-    "description": "SFT on Qwen3.6-35B-A3B MoE to teach the model to read the HUD correctly. Input: screenshot. Target: structured game_state JSON matching demo ground truth. LoRA r=4 α=8 on vision + language layers, 1 epoch. Retrained on Qwen 3.6 (2026-05-14, 980 steps, train_loss 0.02335, ~2h44m on H200); merged 66GB model at /workspace/outputs/sft/final_model/merged_16bit — per-field eval vs baselines still pending (F07). Prior Qwen 3.5 SFT: 67.3% field accuracy (vs 50% Opus, 50% base Qwen), perfect on health/armor/money/round_phase.",
-    "passes": true
-  },
-  {
-    "id": "F05",
-    "name": "GRPO dataset from demos",
-    "description": "Convert demo snapshots into decision training format. Each sample: game state snapshot → pro behavioral features (d_move, d_obj, u_type, e_timing, δ_engage from next Δ ticks) + round_won + player_contribution (φ: damage, survival, objective). Ground truth schema defined in D013.",
-    "passes": false
-  },
-  {
-    "id": "F05a",
-    "name": "Data sparsity diagnostic",
-    "description": "Pre-training diagnostic that measures state bucket coverage across the dataset (D023). Computes hierarchical bucketing (Level 0-2) over game states, reports contrastive pair availability, within-bucket behavioral variance, and simulated R_outcome within-group variance. Results at 4 demos: L0 96.2% coverage (23/30 buckets), L1 27.0% (89/2167). L0 marginal, L1 not viable. Script: scripts/sparsity_diagnostic.py.",
-    "passes": true
-  },
-  {
-    "id": "F05b",
-    "name": "Small-scale GRPO smoke test — B-site post-plants",
-    "description": "End-to-end GRPO pipeline test on a small slice: B-site post-plant rounds across all 4 demos (36 rounds, ~200-400 planning frames). Manual GRPO loop (bypasses TRL multimodal bug #5120). Base Qwen3.5-35B-A3B + LoRA r=4, G=4, 20 steps on 1x H100. Results: format pass 25%→75%, mean reward 0.008→0.321, grad norms stable (37-67), loss converging. Rewards differentiate, gradients flow, loop runs end-to-end.",
-    "passes": true
-  },
-  {
-    "id": "F05c",
-    "name": "RECALL — Retrieval-based advantage estimation",
-    "description": "kNN retrieval over tactical game state embeddings to compute counterfactual outcome rewards during GRPO training. Encode states as ~19-dim vectors, index in FAISS, retrieve K=32 neighbors, compute advantage A(s,a) = Q̂(s,a) - V̂(s). Wired into GRPO trainer via --reward-mode recall (R_percept 0.20 + R_RECALL 0.80). Tested: 2013 samples indexed, 20% non-zero advantage signal. Implementation: src/training/recall.py + grpo_trainer.py build_recall_index().",
-    "passes": true
-  },
-  {
-    "id": "F06",
-    "name": "GRPO training — strategic reasoning",
-    "description": "GRPO on demo-derived decision data (D024 architecture). Multiplicative format gate + 2 reward signals: R_percept (α≈0.20, merged field accuracy) + R_strategy (1-α≈0.80, RECALL kNN advantage or simplified outcome baseline). KL regularization (λ=0.02). Sparsity diagnostic (F05a, D023) must run first to quantify reward signal quality at current data scale. Depends on F05c (RECALL).",
-    "passes": false
-  },
-  {
-    "id": "F07",
-    "name": "Evaluation & analysis",
-    "description": "Per-field accuracy, decision quality, consistency scores across models. Compare SFT-only vs SFT+GRPO. Write up findings.",
-    "passes": false
+{
+  "phase": "world-model (next-state prediction)",
+  "note": "PIVOT (2026-06): the project moved from a VLM 'See, Then Think' pipeline to a next-state-prediction world model. World-model features are the active roadmap; all are passes=false (nothing trained yet). The 'superseded' block preserves the parked VLM/encoder/commentary work and its real findings. Harness rule unchanged: work one feature at a time, verify before flipping passes=true.",
+  "features": [
+    {
+      "id": "W00",
+      "name": "World-model state tensors ready",
+      "description": "597-d feature_schema_v2 tensors built and on disk. parse_demos.py parses .dem -> per-tick parquet (awpy); build_tick_sequences.py assembles round-scoped 597-d frames at 8 Hz (125 ms). State = 10 players x 56 per-player + 37 global. Output: data/processed/tick_sequences/{train,val}.pt (69 train / 12 val demos; 1471 + 262 rounds; 81 of 85 local demos parsed). Round-scoped: no attention across round resets; economy/score/round# carried as features.",
+      "passes": true
+    },
+    {
+      "id": "W01",
+      "name": "Train world model — next-state prediction",
+      "description": "Causal spatiotemporal transformer over game-state frames, trained state->state (NO text), like LM pretraining over game states. Round = a document (no cross-round attention). Distributional prediction head (discretize or GMM) to avoid mode-averaging blur. Default near-term predict a single future frame; horizon swept in W02. Borrows MLMove feature recipe (per-player tokens, derived visibility) but engineers ONLY L1/See perception primitives — the model LEARNS tactics (L2), no hand-engineered tactical labels.",
+      "passes": false
+    },
+    {
+      "id": "W02",
+      "name": "Horizon sweep",
+      "description": "Predict a future frame and sweep the prediction horizon 125 ms -> 2 s. k=+1 frame approximates MLMove-style positional inertia; strategic signal expected to emerge at longer horizons. Characterize the inertia->strategy transition across horizons.",
+      "passes": false
+    },
+    {
+      "id": "W03",
+      "name": "Probe-transfer evaluation",
+      "description": "Judge the world model by PROBE TRANSFER, not prediction loss. Freeze the latent, train lightweight value/event probes on it, measure those. A lower prediction loss that doesn't move the probes is not progress. This is the primary success metric for W01/W02.",
+      "passes": false
+    },
+    {
+      "id": "W04",
+      "name": "Events from prediction surprise",
+      "description": "Derive event boundaries from prediction surprise (high model error / low likelihood frames). Subsumes the parked change-point work — surprise is the semantic boundary the change-point losses failed to find. Evaluate against ground-truth kill/plant/defuse/round-end events.",
+      "passes": false
+    },
+    {
+      "id": "W05",
+      "name": "Value / policy heads on the latent",
+      "description": "MuZero-style value and policy heads attached to the frozen/finetuned world-model latent. Value = round-win probability; policy = next-action distribution. Builds on W01/W03.",
+      "passes": false
+    },
+    {
+      "id": "W06",
+      "name": "Phase 2 — language bridge into the latent",
+      "description": "Bridge a frozen LLM (Qwen 3.6/3.7, 35B-A3B MoE) into world-model latents. Start Flamingo-style: resampler -> read tokens + gated cross-attention; LoRA the LLM since the state latent is far OOD. Graduate to Mixture-of-Transformers (MoT). Training stages: templated grounding -> contrastive commentary -> GRPO reasoning rewarded by checking verbalized predictions vs actual futures. DISCIPLINE: ablate the latent — if removing it doesn't hurt the language head, it's circular.",
+      "passes": false
+    }
+  ],
+  "superseded": {
+    "note": "Parked VLM 'See, Then Think' line of work. Scripts moved to scripts/_archive/; commentary work parked in the chimera-demo-pipeline repo. KEY LEARNINGS preserved here — they drove the pivot. 'passes' reflects the state reached before the pivot, not current priority.",
+    "key_learnings": [
+      "Round encoder SATURATES at ~16 demos (negative slope beyond): outcome supervision (~1 bit/round) is information-starved.",
+      "Change-point losses find STATISTICAL, not SEMANTIC, boundaries — wrong objective for 'events'.",
+      "Claude-generated captions are CIRCULAR: they only paraphrase the structured features fed to them (discriminative-check gap only +0.008 over the structured ceiling).",
+      "Commentary grounding: global VOD<->demo alignment locks at 4.6 sigma (kills<->caster-name cross-correlation) but per-event anchoring is only ~25% (auto-caption ASR name-recall is the ceiling). Parked to phase 2."
+    ],
+    "features": [
+      {
+        "id": "F01",
+        "name": "Data schema & manifest",
+        "description": "Unified data manifest (src/data/manifest.py, JSONL) for tracking screenshot provenance, source, timestamps. Collection scripts write to data/manifest.jsonl.",
+        "passes": true
+      },
+      {
+        "id": "F02",
+        "name": "Demo data pipeline & viewer",
+        "description": "Parse pro demos with awpy into full-tick Parquet + metadata JSONs. Interactive demo viewer (cs2-demo-viewer) with radar, vision cones, kill lines, timeline scrubbing — KEPT and repurposed for visualizing world-model rollouts. 4 demos parsed in original scope (Furia vs Vitality: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).",
+        "passes": true
+      },
+      {
+        "id": "F03",
+        "name": "Screenshot-demo synchronization",
+        "description": "PARKED. Capture CS2 screenshots via demo playback (SendKeys automation) and pair with ground truth game state from Parquet. All 4 maps complete: Mirage (548/1504), Inferno (1476/1476), Nuke (791/791), Overpass (1538/1538). Total: 4353 screenshots, 5309 labels.",
+        "passes": true
+      },
+      {
+        "id": "F04",
+        "name": "SFT training — visual grounding",
+        "description": "PARKED. SFT on Qwen 35B-A3B MoE to read the HUD: screenshot -> structured game_state JSON. LoRA r=4 a=8 on vision + language layers. Prior Qwen 3.5 SFT: 67.3% field accuracy (vs 50% Opus, 50% base Qwen), perfect on health/armor/money/round_phase.",
+        "passes": true
+      },
+      {
+        "id": "F05",
+        "name": "GRPO dataset from demos",
+        "description": "SUPERSEDED. Convert demo snapshots into decision training format (game state -> pro behavioral features + round_won + player_contribution phi). Never completed before pivot.",
+        "passes": false
+      },
+      {
+        "id": "F05a",
+        "name": "Data sparsity diagnostic",
+        "description": "PARKED. Pre-training diagnostic measuring state bucket coverage (D023). At 4 demos: L0 96.2% coverage (23/30 buckets), L1 27.0% (89/2167). L0 marginal, L1 not viable. Foreshadowed the outcome-supervision information-starvation finding that drove the pivot.",
+        "passes": true
+      },
+      {
+        "id": "F05b",
+        "name": "Small-scale GRPO smoke test",
+        "description": "PARKED. End-to-end GRPO pipeline test on B-site post-plants. Manual GRPO loop (bypasses TRL multimodal bug #5120). 20 steps: format pass 25%->75%, mean reward 0.008->0.321, grads stable. Proved the loop runs; not pursued further after pivot.",
+        "passes": true
+      },
+      {
+        "id": "F05c",
+        "name": "RECALL — retrieval-based advantage estimation",
+        "description": "SUPERSEDED. kNN retrieval over tactical state embeddings to compute counterfactual outcome rewards during GRPO. 2013 samples indexed, 20% non-zero advantage signal. src/training/recall.py. Superseded by MuZero-style value heads on the world-model latent (W05).",
+        "passes": true
+      },
+      {
+        "id": "F06",
+        "name": "GRPO training — strategic reasoning",
+        "description": "SUPERSEDED. Full GRPO run on demo-derived decision data (D024 architecture). Never completed (last attempt: 40/50 steps, GPU crash, checkpoint-25 saved). Replaced by the world-model approach; strategic reasoning now comes from W05 + W06.",
+        "passes": false
+      },
+      {
+        "id": "F07",
+        "name": "Evaluation & analysis (VLM)",
+        "description": "SUPERSEDED. Per-field accuracy / decision quality / consistency across VLM models. Replaced by world-model probe-transfer evaluation (W03).",
+        "passes": false
+      }
+    ]
   }
-]
+}

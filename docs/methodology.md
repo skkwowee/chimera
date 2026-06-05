@@ -1,5 +1,34 @@
 # Measurement Methodology — Evaluating GRPO Strategy Rewards & State Abstractions
 
+> **Status note (2026-06): the discipline survives the pivot; the object
+> under test changes.** chimera has pivoted to a **next-state-prediction
+> world model** (`docs/world-model-design.md`). The five axes below were
+> written to evaluate GRPO strategy rewards and the round-encoder state
+> abstraction; they now apply, essentially unchanged, to the
+> **world-model latent**:
+> - **Axis 1 (σ_s)** and **axis 2 (probe battery)** are the **acceptance
+>   gates for the world model** — we judge it by **probe transfer, not by
+>   prediction loss**. Next-frame NLL is a training-health metric, not a
+>   gate; a model that minimizes prediction loss by predicting inertia
+>   can still fail probe transfer. Run the same probes
+>   (`probe_outcome` ≥ 0.65, `probe_action` ≥ 0.45, `probe_next` R² ≥
+>   0.50) on the world-model latent. The decisive test vs the saturated
+>   round encoder (`docs/learning-curve-finding.md`): does dense
+>   next-state pretraining push probe accuracy *above* the saturation
+>   ceiling at fixed data.
+> - **Axis 5 (encoder disagreement)** carries over as a latent tiebreaker.
+> - **Axes 3–4 (pseudo-gold AUC, in-training passer-spread)** were GRPO
+>   strategy-reward tests. They move to **phase 2** (the language bridge);
+>   the phase-2 reasoning reward — *verbalized prediction vs actual
+>   future* — is grounded in the demo's real future, so the Goodhart
+>   surface differs from the old judge/RECALL rewards. The new
+>   language-side discipline is **ABLATE the latent**: every language
+>   result must be re-run with the world-model latent zeroed/shuffled to
+>   prove the latent is load-bearing.
+>
+> Everything below is preserved as the canonical statement of the gates;
+> the F08v4 history that motivated them is real and unchanged.
+
 ## Why this document exists
 
 In F08v4 + F08v4_resumed (100 GRPO steps, ~6 hours of pod time, ~$25 spent) we

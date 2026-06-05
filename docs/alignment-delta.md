@@ -1,5 +1,18 @@
 # Alignment Delta — Adopting the Three-Level Perception/Reasoning Hierarchy
 
+> **SUPERSEDED (2026-06).** This is the migration inventory for adopting
+> the three-level hierarchy *with a round encoder at Level 2 and GRPO
+> advice rewards at Level 3*. That Level-2 round encoder saturated
+> (`docs/learning-curve-finding.md`) and chimera pivoted to a
+> **next-state-prediction world model** (`docs/world-model-design.md`).
+> The level *vocabulary* (L1 See / L2 Situate / L3 Think) survives, but
+> the specifics below — event-encoder scripts, RECALL/judge/BT-head
+> Level-3 scorers, the `--level2-encoder` plumbing — are tied to the
+> parked direction. The new central design doc is
+> `docs/world-model-design.md`; treat the section-by-section change list
+> below as historical planning for the superseded encoder line, not a
+> live migration plan.
+
 Status: planning document. NOTHING below has been applied. Inventory of what
 changes if chimera reframes from "two-phase training (SFT → GRPO)" to a
 three-level hierarchy (See → Situate → Think). Companion docs (drafted in

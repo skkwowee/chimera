@@ -1,5 +1,26 @@
 # Round Encoder Design (Level 2)
 
+> **STATUS: SUPERSEDED (2026-06).** This design is parked. The round
+> encoder **saturated at ~16 demos** (`docs/learning-curve-finding.md`):
+> outcome supervision is ~1 bit/round and info-starved, and the
+> change-point / event objectives found *statistical*, not *semantic*,
+> boundaries. chimera has pivoted to a **next-state-prediction world
+> model** (`docs/world-model-design.md`), where a dense distributional
+> next-state objective replaces the sparse SSL heads, and **events now
+> fall out of prediction surprise** rather than a dedicated change-point
+> loss.
+>
+> This document is kept as **recorded history**: the design below, and
+> especially the saturation finding it produced, constrain the new
+> design space. **The architecture is being reused** — the v4 causal
+> transformer + RoPE backbone is the backbone of the world model
+> (`docs/world-model-design.md` §11). What changes is the objective and
+> the scoping discipline (explicit round-as-document, no cross-reset
+> attention), not the network.
+>
+> Read the rest of this doc as the prior Level-2 spec, not the current
+> plan.
+
 This document specifies chimera's Level 2 perception layer — the "Situate"
 step in the See → Situate → Think hierarchy. Architectural parent:
 `docs/three-level-architecture.md`. Evaluation gates: `docs/methodology.md`

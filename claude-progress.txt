@@ -1,11 +1,87 @@
 # Chimera — Session Progress
 
-## Project
+# ============================================================================
+# CURRENT PHASE: world model (next-state prediction)   [pivot 2026-06]
+# ============================================================================
+# READ THIS BLOCK FIRST. Everything below the "ARCHIVE" line is the prior VLM
+# history, kept for reference. The project has PIVOTED.
+
+## What chimera is now
+A next-state-prediction WORLD MODEL for CS2: a causal spatiotemporal
+transformer over game-state frames, trained state -> state (NO text), like LM
+pretraining but over game states. Value, events, and (phase 2) language are
+heads/bridges on the learned latent.
+
+## Why we pivoted (REAL findings from the VLM line — do not lose these)
+- Round encoder SATURATES at ~16 demos (negative slope beyond). Outcome
+  supervision is ~1 bit/round — information-starved.
+- Change-point losses find STATISTICAL, not SEMANTIC, boundaries — wrong
+  objective for "events".
+- Claude captions are CIRCULAR: only paraphrase the structured features fed in
+  (discriminative-check gap only +0.008 over the structured ceiling).
+- Commentary grounding: global VOD<->demo alignment locks at 4.6 sigma
+  (kills<->caster-name xcorr) but per-event anchoring only ~25% (auto-caption
+  ASR name-recall ceiling). PARKED to phase 2.
+The pattern: every signal was sparse/downstream/circular. Next-frame
+prediction is dense, self-supervised, grounded in real dynamics. That's the bet.
+
+## Current state (data IS ready; no world model trained yet)
+- State = feature_schema_v2: 597-d/frame (10 players x 56 + 37 global), 8 Hz
+  (125 ms), ROUND-SCOPED (round = a document; no cross-round attention;
+  economy/score/round# carried as features).
+- 85 local demos (~37 GB) in data/demos/; 81 parsed to per-tick parquet.
+- Tensors built: data/processed/tick_sequences/{train,val}.pt
+  (69 train / 12 val demos; 1471 + 262 rounds).
+- Data path: scripts/parse_demos.py (.dem -> parquet) then
+  scripts/build_tick_sequences.py (parquet -> .pt).
+- Demos ingested by separate repo chimera-demo-pipeline (HLTV -> .dem -> HF,
+  zero local storage).
+
+## Cleanup just done (2026-06)
+- 18 superseded scripts moved to scripts/_archive/ (round-encoder,
+  change-point, probes, caption generation).
+- Commentary-grounding work parked (lives in chimera-demo-pipeline repo).
+- cs2-demo-viewer KEPT — repurposed for visualizing world-model rollouts.
+
+## Roadmap / next steps (see feature-list.json: W00-W06)
+- [x] W00 — state tensors ready (597-d feature_schema_v2 .pt files built)
+- [ ] W01 — TRAIN THE WORLD MODEL: causal spatiotemporal transformer,
+            next-state prediction, round-scoped attention, distributional
+            head (discretize/GMM) to avoid mode-averaging blur. Engineer ONLY
+            L1/See perception primitives (visibility, geometry, MLMove-style
+            per-player tokens); let the model LEARN tactics (L2). No
+            hand-engineered tactical labels.
+- [ ] W02 — HORIZON SWEEP 125 ms -> 2 s. k=+1 ~ MLMove inertia; strategic
+            signal at longer horizons.
+- [ ] W03 — PROBE TRANSFER eval (freeze latent, train value/event probes).
+            THIS is the metric, NOT prediction loss.
+- [ ] W04 — EVENTS FROM SURPRISE (subsumes the change-point work).
+- [ ] W05 — VALUE/POLICY heads on the latent (MuZero-style).
+- [ ] W06 — PHASE 2 language bridge: frozen Qwen 3.6/3.7 35B-A3B MoE,
+            Flamingo-style resampler + gated cross-attention (LoRA the LLM,
+            latent is far OOD) -> graduate to Mixture-of-Transformers. Stages:
+            templated grounding -> contrastive commentary -> GRPO reasoning
+            (reward = verbalized predictions checked vs actual futures).
+            DISCIPLINE: ablate the latent — if removing it doesn't hurt the
+            language head, it's circular.
+
+# Immediate next action: implement + train W01 (world model). Validate via W03
+# probe transfer, not prediction MSE.
+
+# ============================================================================
+# ===================  ARCHIVE — prior VLM history below  ====================
+# ============================================================================
+# The sections below predate the pivot. The two-stage VLM pipeline
+# (SFT vision -> GRPO reasoning, Qwen 35B-A3B MoE) is PARKED. Scripts are in
+# scripts/_archive/. Findings above (saturation / circular captions /
+# statistical change-points / 25% per-event anchoring) came out of this work.
+
+## Project (PARKED — prior VLM line)
 CS2 VLM research. Two-stage training: SFT (vision) → GRPO (reasoning) for Qwen3.5-35B-A3B MoE.
 - SFT: teach model to read the HUD — synchronize perceived game state with demo ground truth
 - GRPO: teach model strategic reasoning — decisions scored against pro play + round outcomes
 
-## Pipeline Status
+## Pipeline Status (PARKED — superseded by W00-W06 above)
 - [x] F01 — Data schema & manifest
 - [x] F02 — Demo data pipeline & viewer (4 demos, 83 rounds, 563 kills)
 - [x] F03 — Screenshot-demo synchronization (4 maps, 4353 screenshots, 5309 labels)

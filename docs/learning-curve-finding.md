@@ -1,5 +1,18 @@
 # Level-2 encoder learning curve: data is not the bottleneck
 
+> **Why this matters now (2026-06):** this saturation result is the
+> central evidence behind chimera's pivot to a world model
+> (`docs/world-model-design.md`). The encoder hit a ceiling at ~16 demos
+> because its acceptance target — `round_won`, ~1 bit/round — is
+> *information-starved*: there is almost nothing for more data to teach a
+> model whose objective is a single noisy bit. The pivot keeps this
+> finding intact and changes the *target*: dense next-state prediction
+> (hundreds of bits/frame, thousands of frames/round) instead of sparse
+> outcome supervision. The open question §"Different probe target" raised
+> below — that multi-class / forward targets might show non-saturation
+> where `round_won` saturated — is exactly what the world-model probe
+> battery is built to test.
+
 **Date:** 2026-05-16
 **Encoder:** v6 config (d_model=512, n_layers=4, ~13M params; per
 `docs/round-encoder-design.md`)
