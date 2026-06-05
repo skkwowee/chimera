@@ -100,32 +100,104 @@ class SinusoidalPositions(nn.Module):
         return x + self.pe[: x.shape[1]].unsqueeze(0)
 
 
-class WorldModel(nn.Module):
-    """Causal transformer over flat 597-d frames; predicts the residual to t+k."""
+class WorldModelFlat(nn.Module):
+    """Baseline: causal transformer treating the whole 597-d frame as ONE token."""
 
     def __init__(self, feature_dim, d_model=512, layers=6, heads=8, ff=2048, dropout=0.1):
         super().__init__()
         self.in_proj = nn.Linear(feature_dim, d_model)
         self.pos = SinusoidalPositions(d_model)
-        enc_layer = nn.TransformerEncoderLayer(
-            d_model, heads, ff, dropout, batch_first=True, norm_first=True)
-        self.encoder = nn.TransformerEncoder(enc_layer, layers)
+        enc = nn.TransformerEncoderLayer(d_model, heads, ff, dropout, batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(enc, layers)
         self.norm = nn.LayerNorm(d_model)
-        self.head = nn.Linear(d_model, feature_dim)   # predicts residual y - x
+        self.head = nn.Linear(d_model, feature_dim)
 
-    def forward(self, x):                              # x: [B, L, F]
+    def _run(self, x):
         L = x.shape[1]
         h = self.pos(self.in_proj(x))
-        mask = torch.triu(torch.ones(L, L, device=x.device, dtype=torch.bool), 1)
-        h = self.encoder(h, mask=mask)                # causal
-        return self.head(self.norm(h))                # [B, L, F]  predicted residual
-
-    def latent(self, x):
-        """The representation everything else (value/policy/language) attaches to."""
-        h = self.pos(self.in_proj(x))
-        L = x.shape[1]
         mask = torch.triu(torch.ones(L, L, device=x.device, dtype=torch.bool), 1)
         return self.norm(self.encoder(h, mask=mask))
+
+    def forward(self, x):
+        return self.head(self._run(x))                # [B,L,F] residual
+
+    def latent(self, x):
+        return self._run(x)
+
+
+# 597-d frame layout (feature_schema_v2): 10 players x 56, then 37 global (player-major).
+N_PLAYERS, PER_PLAYER_DIM, GLOBAL_DIM = 10, 56, 37
+PLAYER_BLOCK = N_PLAYERS * PER_PLAYER_DIM            # 560
+
+
+class WorldModelPlayers(nn.Module):
+    """MLMove-style FACTORED model: each player is its own token + a global token,
+    with attention over BOTH players (relational) and time (causal). Per-player
+    heads predict each player's own next-k residual; a global head the global part.
+
+    This is the per-player-TOKEN half of MLMove's feature engineering, on top of the
+    geometric per-player features already in the schema (x/y/z/yaw/...). The other
+    half -- the DERIVED VISIBILITY channel (who-can-see/shoot-whom, LOS through
+    smokes) -- needs a geometry recompute in build_tick_sequences and is the next
+    feature pass (see docs/world-model-design.md). Borrow perception, learn tactics.
+    """
+
+    def __init__(self, feature_dim, d_model=512, layers=6, heads=8, ff=2048, dropout=0.1):
+        super().__init__()
+        assert feature_dim == PLAYER_BLOCK + GLOBAL_DIM, feature_dim
+        self.d = d_model
+        self.player_proj = nn.Linear(PER_PLAYER_DIM, d_model)
+        self.global_proj = nn.Linear(GLOBAL_DIM, d_model)
+        self.slot_emb = nn.Embedding(N_PLAYERS + 1, d_model)   # 10 player slots + global
+        self.tpos = SinusoidalPositions(d_model)
+        enc = nn.TransformerEncoderLayer(d_model, heads, ff, dropout, batch_first=True, norm_first=True)
+        self.encoder = nn.TransformerEncoder(enc, layers)
+        self.norm = nn.LayerNorm(d_model)
+        self.player_head = nn.Linear(d_model, PER_PLAYER_DIM)
+        self.global_head = nn.Linear(d_model, GLOBAL_DIM)
+        self._mask_cache = {}
+
+    def _tokens(self, x):
+        B, L, _ = x.shape
+        players = x[..., :PLAYER_BLOCK].reshape(B, L, N_PLAYERS, PER_PLAYER_DIM)
+        glob = x[..., PLAYER_BLOCK:]
+        tok = torch.cat([self.player_proj(players),
+                         self.global_proj(glob).unsqueeze(2)], dim=2)   # [B,L,11,d]
+        slot = self.slot_emb(torch.arange(N_PLAYERS + 1, device=x.device))
+        tok = tok + slot.view(1, 1, N_PLAYERS + 1, self.d)
+        tpos = self.tpos(torch.zeros(1, L, self.d, device=x.device)).squeeze(0)  # [L,d]
+        tok = tok + tpos.view(1, L, 1, self.d)
+        return tok.reshape(B, L * (N_PLAYERS + 1), self.d), L
+
+    def _mask(self, L, device):
+        key = (L, str(device))
+        if key not in self._mask_cache:
+            P = N_PLAYERS + 1
+            t = torch.arange(L * P, device=device) // P
+            self._mask_cache[key] = t.unsqueeze(0) > t.unsqueeze(1)     # True=disallow future time
+        return self._mask_cache[key]
+
+    def _run(self, x):
+        seq, L = self._tokens(x)
+        return self.norm(self.encoder(seq, mask=self._mask(L, x.device))), L
+
+    def forward(self, x):
+        h, L = self._run(x)
+        B = x.shape[0]; P = N_PLAYERS + 1
+        h = h.reshape(B, L, P, self.d)
+        pres = self.player_head(h[:, :, :N_PLAYERS, :]).reshape(B, L, PLAYER_BLOCK)
+        gres = self.global_head(h[:, :, N_PLAYERS, :])
+        return torch.cat([pres, gres], dim=-1)                          # [B,L,597] residual
+
+    def latent(self, x):
+        h, L = self._run(x)
+        B = x.shape[0]; P = N_PLAYERS + 1
+        return h.reshape(B, L, P, self.d).mean(dim=2)                   # [B,L,d] per-time summary
+
+
+def build_model(arch, feature_dim, d_model, layers, heads):
+    return {"flat": WorldModelFlat, "player": WorldModelPlayers}[arch](
+        feature_dim, d_model, layers, heads)
 
 
 # -------------------------------------------------------------------- train/eval
@@ -153,6 +225,8 @@ def evaluate(model, loader, device, max_batches=50):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--arch", choices=["flat", "player"], default="player",
+                    help="player = MLMove-style per-player tokens + relational attention")
     ap.add_argument("--horizon", type=int, default=8, help="predict t+k, k in 8Hz steps (1=125ms,8=1s,16=2s)")
     ap.add_argument("--window", type=int, default=128, help="context length (frames)")
     ap.add_argument("--d-model", type=int, default=512)
@@ -196,10 +270,10 @@ def main():
     va_ld = DataLoader(va_ds, batch_size=args.batch, shuffle=False,
                        num_workers=0 if args.smoke else 2)
 
-    model = WorldModel(fdim, args.d_model, args.layers, args.heads).to(dev)
+    model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads).to(dev)
     model.horizon = args.horizon          # used by const-velocity baseline in eval
     n_params = sum(p.numel() for p in model.parameters())
-    print(f"model params: {n_params/1e6:.1f}M  device={dev}")
+    print(f"arch={args.arch}  model params: {n_params/1e6:.1f}M  device={dev}")
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     def lr_at(step):
