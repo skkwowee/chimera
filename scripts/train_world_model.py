@@ -62,11 +62,14 @@ class RoundWindows(Dataset):
     const-velocity baseline).
     """
 
-    def __init__(self, tensors, window: int, horizon: int, crops_per_round: int):
+    def __init__(self, tensors, metas, window: int, horizon: int, crops_per_round: int):
         self.window = window
         self.horizon = horizon
         need = window + horizon + 1
-        self.rounds = [t for t in tensors if t.shape[0] >= need]
+        keep = [(t, m) for t, m in zip(tensors, metas) if t.shape[0] >= need]
+        self.rounds = [t for t, _ in keep]
+        # value label: 1.0 if CT won the round, else 0.0 (P(CT win) target)
+        self.won = [1.0 if (m.get("winner") == "ct") else 0.0 for _, m in keep]
         self.crops_per_round = crops_per_round
         self.dropped = len(tensors) - len(self.rounds)
 
@@ -74,7 +77,8 @@ class RoundWindows(Dataset):
         return len(self.rounds) * self.crops_per_round
 
     def __getitem__(self, idx):
-        r = self.rounds[idx % len(self.rounds)]
+        ri = idx % len(self.rounds)
+        r = self.rounds[ri]
         L, k = self.window, self.horizon
         hi = r.shape[0] - (L + k)
         # start >= 1 so the const-velocity baseline can read crop[i-1] at i=0
@@ -82,7 +86,7 @@ class RoundWindows(Dataset):
         x = r[start : start + L]                     # [L, F]
         y = r[start + k : start + k + L]             # [L, F]  (frame t+k)
         x_prev = r[start - 1 : start - 1 + L]        # [L, F]  (for const-velocity)
-        return x, y, x_prev
+        return x, y, x_prev, torch.tensor(self.won[ri], dtype=torch.float32)
 
 
 # ----------------------------------------------------------------------- model
@@ -125,79 +129,97 @@ class WorldModelFlat(nn.Module):
         return self._run(x)
 
 
-# 597-d frame layout (feature_schema_v2): 10 players x 56, then 37 global (player-major).
-N_PLAYERS, PER_PLAYER_DIM, GLOBAL_DIM = 10, 56, 37
-PLAYER_BLOCK = N_PLAYERS * PER_PLAYER_DIM            # 560
+N_PLAYERS = 10   # frame is player-major: n_players x per_player_dim, then global
 
 
 class WorldModelPlayers(nn.Module):
     """MLMove-style FACTORED model: each player is its own token + a global token,
     with attention over BOTH players (relational) and time (causal). Per-player
     heads predict each player's own next-k residual; a global head the global part.
+    A VALUE head on the per-frame latent predicts P(CT wins) — co-trained with
+    next-state so the latent RETAINS outcome structure (the fix for the v2 value-
+    probe failure, where pure next-state compressed value away).
 
-    This is the per-player-TOKEN half of MLMove's feature engineering, on top of the
-    geometric per-player features already in the schema (x/y/z/yaw/...). The other
-    half -- the DERIVED VISIBILITY channel (who-can-see/shoot-whom, LOS through
-    smokes) -- needs a geometry recompute in build_tick_sequences and is the next
-    feature pass (see docs/world-model-design.md). Borrow perception, learn tactics.
+    per_player_dim is read from the data schema (v2=56, v3=65 with the derived
+    visibility/perception dims), so the same model handles either feature book.
     """
 
-    def __init__(self, feature_dim, d_model=512, layers=6, heads=8, ff=2048, dropout=0.1):
+    def __init__(self, feature_dim, d_model=512, layers=6, heads=8, ff=2048,
+                 dropout=0.1, per_player_dim=56, n_players=N_PLAYERS):
         super().__init__()
-        assert feature_dim == PLAYER_BLOCK + GLOBAL_DIM, feature_dim
+        self.n_players = n_players
+        self.ppd = per_player_dim
+        self.player_block = n_players * per_player_dim
+        self.global_dim = feature_dim - self.player_block
+        assert self.global_dim > 0, (feature_dim, self.player_block)
         self.d = d_model
-        self.player_proj = nn.Linear(PER_PLAYER_DIM, d_model)
-        self.global_proj = nn.Linear(GLOBAL_DIM, d_model)
-        self.slot_emb = nn.Embedding(N_PLAYERS + 1, d_model)   # 10 player slots + global
+        self.player_proj = nn.Linear(per_player_dim, d_model)
+        self.global_proj = nn.Linear(self.global_dim, d_model)
+        self.slot_emb = nn.Embedding(n_players + 1, d_model)   # player slots + global
         self.tpos = SinusoidalPositions(d_model)
         enc = nn.TransformerEncoderLayer(d_model, heads, ff, dropout, batch_first=True, norm_first=True)
         self.encoder = nn.TransformerEncoder(enc, layers)
         self.norm = nn.LayerNorm(d_model)
-        self.player_head = nn.Linear(d_model, PER_PLAYER_DIM)
-        self.global_head = nn.Linear(d_model, GLOBAL_DIM)
+        self.player_head = nn.Linear(d_model, per_player_dim)
+        self.global_head = nn.Linear(d_model, self.global_dim)
+        self.value_head = nn.Sequential(nn.Linear(d_model, d_model // 2), nn.GELU(),
+                                        nn.Linear(d_model // 2, 1))     # P(CT win) logit
         self._mask_cache = {}
 
     def _tokens(self, x):
         B, L, _ = x.shape
-        players = x[..., :PLAYER_BLOCK].reshape(B, L, N_PLAYERS, PER_PLAYER_DIM)
-        glob = x[..., PLAYER_BLOCK:]
+        P = self.n_players
+        players = x[..., :self.player_block].reshape(B, L, P, self.ppd)
+        glob = x[..., self.player_block:]
         tok = torch.cat([self.player_proj(players),
-                         self.global_proj(glob).unsqueeze(2)], dim=2)   # [B,L,11,d]
-        slot = self.slot_emb(torch.arange(N_PLAYERS + 1, device=x.device))
-        tok = tok + slot.view(1, 1, N_PLAYERS + 1, self.d)
-        tpos = self.tpos(torch.zeros(1, L, self.d, device=x.device)).squeeze(0)  # [L,d]
+                         self.global_proj(glob).unsqueeze(2)], dim=2)   # [B,L,P+1,d]
+        slot = self.slot_emb(torch.arange(P + 1, device=x.device))
+        tok = tok + slot.view(1, 1, P + 1, self.d)
+        tpos = self.tpos(torch.zeros(1, L, self.d, device=x.device)).squeeze(0)
         tok = tok + tpos.view(1, L, 1, self.d)
-        return tok.reshape(B, L * (N_PLAYERS + 1), self.d), L
+        return tok.reshape(B, L * (P + 1), self.d), L
 
     def _mask(self, L, device):
         key = (L, str(device))
         if key not in self._mask_cache:
-            P = N_PLAYERS + 1
+            P = self.n_players + 1
             t = torch.arange(L * P, device=device) // P
-            self._mask_cache[key] = t.unsqueeze(0) > t.unsqueeze(1)     # True=disallow future time
+            self._mask_cache[key] = t.unsqueeze(0) > t.unsqueeze(1)
         return self._mask_cache[key]
 
-    def _run(self, x):
+    def _grid(self, x):
+        """Run encoder, return contextualized tokens reshaped to [B,L,P+1,d]."""
         seq, L = self._tokens(x)
-        return self.norm(self.encoder(seq, mask=self._mask(L, x.device))), L
+        h = self.norm(self.encoder(seq, mask=self._mask(L, x.device)))
+        return h.reshape(x.shape[0], L, self.n_players + 1, self.d), L
 
     def forward(self, x):
-        h, L = self._run(x)
-        B = x.shape[0]; P = N_PLAYERS + 1
-        h = h.reshape(B, L, P, self.d)
-        pres = self.player_head(h[:, :, :N_PLAYERS, :]).reshape(B, L, PLAYER_BLOCK)
-        gres = self.global_head(h[:, :, N_PLAYERS, :])
-        return torch.cat([pres, gres], dim=-1)                          # [B,L,597] residual
+        h, L = self._grid(x)
+        P = self.n_players
+        pres = self.player_head(h[:, :, :P, :]).reshape(x.shape[0], L, self.player_block)
+        gres = self.global_head(h[:, :, P, :])
+        return torch.cat([pres, gres], dim=-1)                          # [B,L,F] residual
+
+    def heads(self, x):
+        """Multi-task forward: next-state residual + per-frame value logit."""
+        h, L = self._grid(x)
+        P = self.n_players
+        pres = self.player_head(h[:, :, :P, :]).reshape(x.shape[0], L, self.player_block)
+        gres = self.global_head(h[:, :, P, :])
+        residual = torch.cat([pres, gres], dim=-1)
+        value = self.value_head(h.mean(dim=2)).squeeze(-1)              # [B,L] P(CT win) logit
+        return {"residual": residual, "value": value}
 
     def latent(self, x):
-        h, L = self._run(x)
-        B = x.shape[0]; P = N_PLAYERS + 1
-        return h.reshape(B, L, P, self.d).mean(dim=2)                   # [B,L,d] per-time summary
+        h, L = self._grid(x)
+        return h.mean(dim=2)                                            # [B,L,d] per-frame summary
 
 
-def build_model(arch, feature_dim, d_model, layers, heads):
-    return {"flat": WorldModelFlat, "player": WorldModelPlayers}[arch](
-        feature_dim, d_model, layers, heads)
+def build_model(arch, feature_dim, d_model, layers, heads, per_player_dim=56):
+    if arch == "flat":
+        return WorldModelFlat(feature_dim, d_model, layers, heads)
+    return WorldModelPlayers(feature_dim, d_model, layers, heads,
+                             per_player_dim=per_player_dim)
 
 
 # -------------------------------------------------------------------- train/eval
@@ -205,22 +227,39 @@ def huber(pred, target):
     return F.smooth_l1_loss(pred, target, beta=1.0)
 
 
+def auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
+    """Rank-based AUC (Mann-Whitney)."""
+    order = torch.argsort(scores)
+    ranks = torch.empty_like(order, dtype=torch.float)
+    ranks[order] = torch.arange(1, len(scores) + 1, dtype=torch.float)
+    pos = labels > 0.5
+    npos = int(pos.sum().item()); nneg = len(labels) - npos
+    if npos == 0 or nneg == 0:
+        return float("nan")
+    return (ranks[pos].sum().item() - npos * (npos + 1) / 2) / (npos * nneg)
+
+
 @torch.no_grad()
 def evaluate(model, loader, device, max_batches=50):
     model.eval()
     m_loss = copy_loss = cv_loss = n = 0.0
-    for bi, (x, y, x_prev) in enumerate(loader):
+    vlog, vlab = [], []
+    for bi, (x, y, x_prev, won) in enumerate(loader):
         if bi >= max_batches:
             break
         x, y, x_prev = x.to(device), y.to(device), x_prev.to(device)
         true_res = y - x
-        pred_res = model(x)
+        out = model.heads(x) if hasattr(model, "heads") else {"residual": model(x)}
+        pred_res = out["residual"]
         m_loss += huber(pred_res, true_res).item()
-        copy_loss += huber(torch.zeros_like(true_res), true_res).item()     # predict no motion
-        cv_loss += huber(model.horizon * (x - x_prev), true_res).item()     # linear extrapolation
+        copy_loss += huber(torch.zeros_like(true_res), true_res).item()
+        cv_loss += huber(model.horizon * (x - x_prev), true_res).item()
         n += 1
+        if "value" in out:
+            vlog.append(out["value"][:, -1].float().cpu()); vlab.append(won)
     model.train()
-    return m_loss / n, copy_loss / n, cv_loss / n
+    v_auc = auc(torch.cat(vlog), torch.cat(vlab)) if vlog else float("nan")
+    return m_loss / n, copy_loss / n, cv_loss / n, v_auc
 
 
 def main():
@@ -238,8 +277,10 @@ def main():
     ap.add_argument("--warmup", type=int, default=500)
     ap.add_argument("--crops-per-round", type=int, default=32)
     ap.add_argument("--eval-every", type=int, default=500)
-    ap.add_argument("--train-pt", default=str(DATA_DIR / "train.pt"))
-    ap.add_argument("--val-pt", default=str(DATA_DIR / "val.pt"))
+    ap.add_argument("--value-weight", type=float, default=0.3,
+                    help="weight of the value (P CT-win) loss co-trained with next-state")
+    ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3.pt"))
+    ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3.pt"))
     ap.add_argument("--out", default="outputs/world_model")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--smoke", action="store_true", help="tiny CPU sanity run on val.pt")
@@ -259,18 +300,20 @@ def main():
     val_blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
     fdim = train_blob["feature_dim"]
     assert fdim == val_blob["feature_dim"]
+    ppd = train_blob.get("per_player_dim", 56)
 
-    tr_ds = RoundWindows(train_blob["tensors"], args.window, args.horizon, args.crops_per_round)
-    va_ds = RoundWindows(val_blob["tensors"], args.window, args.horizon, args.crops_per_round)
-    print(f"feature_dim={fdim}  horizon={args.horizon} ({args.horizon*125}ms)  "
+    tr_ds = RoundWindows(train_blob["tensors"], train_blob["metas"], args.window, args.horizon, args.crops_per_round)
+    va_ds = RoundWindows(val_blob["tensors"], val_blob["metas"], args.window, args.horizon, args.crops_per_round)
+    print(f"feature_dim={fdim} per_player={ppd}  horizon={args.horizon} ({args.horizon*125}ms)  "
           f"window={args.window}  train_rounds={len(tr_ds.rounds)} (dropped {tr_ds.dropped}) "
-          f"val_rounds={len(va_ds.rounds)}")
+          f"val_rounds={len(va_ds.rounds)}  value_weight={args.value_weight}")
     tr_ld = DataLoader(tr_ds, batch_size=args.batch, shuffle=True, drop_last=True,
                        num_workers=0 if args.smoke else 4)
     va_ld = DataLoader(va_ds, batch_size=args.batch, shuffle=False,
                        num_workers=0 if args.smoke else 2)
 
-    model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads).to(dev)
+    model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads,
+                        per_player_dim=ppd).to(dev)
     model.horizon = args.horizon          # used by const-velocity baseline in eval
     n_params = sum(p.numel() for p in model.parameters())
     print(f"arch={args.arch}  model params: {n_params/1e6:.1f}M  device={dev}")
@@ -285,23 +328,26 @@ def main():
     use_amp = dev.type == "cuda"
     scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
-    out = Path(args.out) / f"h{args.horizon}"
+    out = Path(args.out) / f"h{args.horizon}_mt"
     out.mkdir(parents=True, exist_ok=True)
-    best = float("inf")
+    best = float("-inf")          # maximize value AUC (the metric that matters)
     step = 0
     t0 = time.time()
     data_iter = iter(tr_ld)
     while step < args.steps:
         try:
-            x, y, _ = next(data_iter)
+            x, y, _, won = next(data_iter)
         except StopIteration:
             data_iter = iter(tr_ld)
-            x, y, _ = next(data_iter)
-        x, y = x.to(dev), y.to(dev)
+            x, y, _, won = next(data_iter)
+        x, y, won = x.to(dev), y.to(dev), won.to(dev)
         true_res = y - x
         with torch.autocast(device_type=dev.type, enabled=use_amp):
-            pred_res = model(x)
-            loss = huber(pred_res, true_res)
+            o = model.heads(x)
+            ns_loss = huber(o["residual"], true_res)
+            v_tgt = won.unsqueeze(1).expand_as(o["value"])
+            v_loss = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt)
+            loss = ns_loss + args.value_weight * v_loss
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
@@ -312,19 +358,21 @@ def main():
         step += 1
 
         if step % args.eval_every == 0 or step == args.steps:
-            m, c, cv = evaluate(model, va_ld, dev, max_batches=10 if args.smoke else 50)
-            skill = (cv - m) / cv * 100 if cv > 0 else 0.0   # % better than const-velocity
-            print(f"step {step:6d}  train {loss.item():.4f}  val {m:.4f}  "
-                  f"[copy {c:.4f}  const-vel {cv:.4f}]  skill-vs-CV {skill:+.1f}%  "
-                  f"lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
-            if m < best:
-                best = m
+            m, c, cv, vauc = evaluate(model, va_ld, dev, max_batches=10 if args.smoke else 50)
+            skill = (cv - m) / cv * 100 if cv > 0 else 0.0
+            print(f"step {step:6d}  ns {ns_loss.item():.4f} v {v_loss.item():.3f}  "
+                  f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
+                  f"VALUE_AUC {vauc:.3f}  lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
+            score = vauc if not math.isnan(vauc) else -m
+            if score > best:
+                best = score
                 torch.save({"model": model.state_dict(), "args": vars(args),
-                            "feature_dim": fdim, "val_loss": m, "step": step},
+                            "feature_dim": fdim, "per_player_dim": ppd,
+                            "val_ns": m, "value_auc": vauc, "step": step},
                            out / "best.pt")
-    print(f"done. best val {best:.4f} -> {out/'best.pt'}")
-    print("NOTE: low loss != understanding. The real test is probe transfer "
-          "(value/event probes on model.latent()) vs the old encoder -- separate harness.")
+    print(f"done. best value_AUC {best:.3f} -> {out/'best.pt'}")
+    print("GATE: this VALUE_AUC must beat the raw-feature / v2-latent baseline "
+          "(run scripts/value_probe.py) — that's the test the v2 latent FAILED.")
 
 
 if __name__ == "__main__":
