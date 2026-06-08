@@ -159,64 +159,65 @@ def main():
         idxs = idxs[:args.limit]
     print(f"{args.split}: {n} rounds, processing {len(idxs)} on {args.workers} workers")
 
+    import gc
     t0 = time.time()
-    results = {}
+    exp_dim = NP_ * (PPD + DERIVED) + (_BLOB["feature_dim"] - NP_ * PPD)   # 687
+
+    def merge_v3(t_np, d):
+        """[T,597] v2 frame + [T,90] derived -> [T,687] v3 (insert 9 dims/player)."""
+        T = t_np.shape[0]
+        pl = t_np[:, :NP_ * PPD].reshape(T, NP_, PPD)
+        dr = d.reshape(T, NP_, DERIVED)
+        merged = np.concatenate([pl, dr], axis=2).reshape(T, NP_ * (PPD + DERIVED))
+        return np.concatenate([merged, t_np[:, NP_ * PPD:]], axis=1).astype(np.float32)
+
     if args.workers == 1:
+        # LOW-MEMORY path: merge each round IN PLACE, freeing the v2 tensor as we go,
+        # so we never hold (full old blob + full new-tensor list) at once.
+        # Peak ~ blob (3.4->3.9GB as it grows) + ONE BVH (~1.5GB) ~= 5.5GB.
         for k, i in enumerate(idxs):
-            results.__setitem__(*_worker(i))
+            t = _BLOB["tensors"][i].numpy()
+            d = compute_derived(t, _get_vc(_MAPS[i]))
+            _BLOB["tensors"][i] = torch.from_numpy(merge_v3(t, d))   # replace v2 -> v3
+            del t, d
             if k % 50 == 0:
-                print(f"  {k}/{len(idxs)}  {time.time()-t0:.0f}s")
+                gc.collect()
+                print(f"  {k}/{len(idxs)}  {time.time()-t0:.0f}s", flush=True)
     else:
         import multiprocessing as mp
+        results = {}
         with mp.Pool(args.workers) as pool:
             for k, (i, d) in enumerate(pool.imap_unordered(_worker, idxs,
                                        chunksize=max(1, len(idxs)//(args.workers*4)))):
                 results[i] = d
                 if k % 100 == 0:
-                    print(f"  {k}/{len(idxs)}  {time.time()-t0:.0f}s")
-    print(f"computed derived in {time.time()-t0:.0f}s")
+                    print(f"  {k}/{len(idxs)}  {time.time()-t0:.0f}s", flush=True)
+        for i in idxs:                                  # merge in place, free as we go
+            _BLOB["tensors"][i] = torch.from_numpy(merge_v3(_BLOB["tensors"][i].numpy(), results[i]))
+            results[i] = None
+    print(f"computed derived in {time.time()-t0:.0f}s", flush=True)
 
-    # assemble v3 tensors (insert 9 dims into each player block)
-    new_tensors = []
-    for i in idxs:
-        t = _BLOB["tensors"][i].numpy()
-        d = results[i]                                  # [T, 90]
-        T = t.shape[0]
-        pl = t[:, :NP_*PPD].reshape(T, NP_, PPD)
-        dr = d.reshape(T, NP_, DERIVED)
-        merged = np.concatenate([pl, dr], axis=2).reshape(T, NP_*(PPD+DERIVED))
-        v3 = np.concatenate([merged, t[:, NP_*PPD:]], axis=1)  # + global
-        new_tensors.append(torch.from_numpy(v3.astype(np.float32)))
-
+    v3 = [_BLOB["tensors"][i] for i in idxs]            # the rounds we processed (v3 now)
     # shape + sanity asserts
-    exp_dim = NP_*(PPD+DERIVED) + (_BLOB["feature_dim"] - NP_*PPD)   # 650 + 37 = 687
-    assert new_tensors[0].shape[1] == exp_dim, (new_tensors[0].shape[1], exp_dim)
-    allcat = torch.cat([x for x in new_tensors[:200]], 0)
-    assert not torch.isnan(allcat).any(), "NaN in v3 features"
-    # report derived ranges (slice the player block first, then take the last 9 dims)
-    dcols = []
-    for x in new_tensors[:200]:
-        xx = x.numpy()[:, :NP_*(PPD+DERIVED)].reshape(-1, NP_, PPD+DERIVED)[:, :, PPD:]
-        dcols.append(xx.reshape(-1, DERIVED))
-    dc = np.concatenate(dcols, 0)
+    assert v3[0].shape[1] == exp_dim, (v3[0].shape[1], exp_dim)
+    assert not torch.isnan(torch.cat(v3[:200], 0)).any(), "NaN in v3 features"
+    dc = np.concatenate([x.numpy()[:, :NP_*(PPD+DERIVED)].reshape(-1, NP_, PPD+DERIVED)[:, :, PPD:]
+                         .reshape(-1, DERIVED) for x in v3[:200]], 0)
     names = ["d_enemy","d_mate","n_los","exposed","n_fov","n_aim","aim_err","d_bomb","t_since"]
-    print("derived feature ranges (min/mean/max), %exposed:")
+    print("derived feature ranges (min/mean/max):")
     for c, nm in enumerate(names):
         print(f"  {nm:9s} {dc[:,c].min():.3f} / {dc[:,c].mean():.3f} / {dc[:,c].max():.3f}")
-    print(f"  exposed rate (alive players): mean {dc[:,3].mean():.3f}")
+    print(f"  exposed rate: mean {dc[:,3].mean():.3f}")
 
     if args.limit:
         print("[limit mode] not saving."); return
     out = Path(args.data) / f"{args.split}_v3.pt"
-    blob = dict(_BLOB)
-    # reorder back to original index order
-    order = {i: k for k, i in enumerate(idxs)}
-    blob["tensors"] = [new_tensors[order[i]] for i in range(n)]
-    blob["feature_dim"] = new_tensors[0].shape[1]
-    blob["per_player_dim"] = PPD + DERIVED
-    blob["schema_version"] = "feature_schema_v3"
-    torch.save(blob, out)
-    print(f"saved {out}  feature_dim={blob['feature_dim']} per_player={PPD+DERIVED}")
+    # _BLOB["tensors"] is already v3, in original order (replaced in place)
+    _BLOB["feature_dim"] = exp_dim
+    _BLOB["per_player_dim"] = PPD + DERIVED
+    _BLOB["schema_version"] = "feature_schema_v3"
+    torch.save(_BLOB, out)
+    print(f"saved {out}  feature_dim={exp_dim} per_player={PPD+DERIVED}", flush=True)
 
 
 if __name__ == "__main__":
