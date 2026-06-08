@@ -240,7 +240,7 @@ def auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, max_batches=50):
+def evaluate(model, loader, device, pred_mask, max_batches=50):
     model.eval()
     m_loss = copy_loss = cv_loss = n = 0.0
     vlog, vlab = [], []
@@ -248,12 +248,12 @@ def evaluate(model, loader, device, max_batches=50):
         if bi >= max_batches:
             break
         x, y, x_prev = x.to(device), y.to(device), x_prev.to(device)
-        true_res = y - x
+        true_res = (y - x)[..., pred_mask]                       # predict RAW state only
         out = model.heads(x) if hasattr(model, "heads") else {"residual": model(x)}
-        pred_res = out["residual"]
+        pred_res = out["residual"][..., pred_mask]
         m_loss += huber(pred_res, true_res).item()
         copy_loss += huber(torch.zeros_like(true_res), true_res).item()
-        cv_loss += huber(model.horizon * (x - x_prev), true_res).item()
+        cv_loss += huber((model.horizon * (x - x_prev))[..., pred_mask], true_res).item()
         n += 1
         if "value" in out:
             vlog.append(out["value"][:, -1].float().cpu()); vlab.append(won)
@@ -315,6 +315,20 @@ def main():
     model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads,
                         per_player_dim=ppd).to(dev)
     model.horizon = args.horizon          # used by const-velocity baseline in eval
+
+    # Prediction target = RAW state dims only. The derived perception dims (v3:
+    # last 9 of each 65-dim player block) are INPUT-ONLY — they're a deterministic
+    # function of state, so forecasting them is redundant and wastes capacity on a
+    # hard, irrelevant target. Mask them out of the next-state loss.
+    RAW_PPD = 56
+    n_der = ppd - RAW_PPD
+    pred_mask = torch.ones(fdim, dtype=torch.bool)
+    if n_der > 0:
+        for p in range(N_PLAYERS):
+            pred_mask[p * ppd + RAW_PPD : (p + 1) * ppd] = False
+    pred_mask = pred_mask.to(dev)
+    print(f"next-state target: {int(pred_mask.sum())}/{fdim} dims predicted "
+          f"({n_der} derived/player are input-only perception)")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"arch={args.arch}  model params: {n_params/1e6:.1f}M  device={dev}")
 
@@ -344,7 +358,7 @@ def main():
         true_res = y - x
         with torch.autocast(device_type=dev.type, enabled=use_amp):
             o = model.heads(x)
-            ns_loss = huber(o["residual"], true_res)
+            ns_loss = huber(o["residual"][..., pred_mask], true_res[..., pred_mask])
             v_tgt = won.unsqueeze(1).expand_as(o["value"])
             v_loss = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt)
             loss = ns_loss + args.value_weight * v_loss
@@ -358,7 +372,7 @@ def main():
         step += 1
 
         if step % args.eval_every == 0 or step == args.steps:
-            m, c, cv, vauc = evaluate(model, va_ld, dev, max_batches=10 if args.smoke else 50)
+            m, c, cv, vauc = evaluate(model, va_ld, dev, pred_mask, max_batches=10 if args.smoke else 50)
             skill = (cv - m) / cv * 100 if cv > 0 else 0.0
             print(f"step {step:6d}  ns {ns_loss.item():.4f} v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
