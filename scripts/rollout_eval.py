@@ -65,11 +65,7 @@ def roll_step(model, buf, k, cv_residual, gap=1, want_value=False):
     (cur - prev)/gap — without the /gap the prior extrapolates k× too far and the
     rollout silently explodes.
     """
-    if want_value:
-        out = model.heads(buf)
-        res = out["residual"][:, -1, :]
-    else:
-        res = model(buf)[:, -1, :]
+    res = model.gen_residual(buf)[:, -1, :]   # dist decode when present, forward() otherwise
     pred = buf[0, -1] + res[0]
     if cv_residual:
         pred = pred + (k / gap) * (buf[0, -1] - buf[0, -2])
@@ -196,7 +192,7 @@ def main():
     ppd = ck["per_player_dim"]
     cv_residual = a.get("cv_residual", False)
     model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"],
-                        a["heads"], per_player_dim=ppd)
+                        a["heads"], per_player_dim=ppd, dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     print(f"ckpt step {ck.get('step')}  window={L}  horizon k={k} ({k*125}ms/step)  "
           f"per_player_dim={ppd}  cv_residual={cv_residual}")

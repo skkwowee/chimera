@@ -31,6 +31,28 @@
 # IN FLIGHT: IEM Cologne ingest (~40 matches, chimera-demo-pipeline, 7z 24.05
 # handles Rar5). NEXT: distributional head (classify-then-refine xy
 # displacement), then language bridge (hard start ~2026-06-16 regardless).
+#
+# VERDICT 4 (same day, dist head trained — outputs/wm_3map_dist/h8_mt/):
+#   97-class classify-then-refine xy head (--dist-head; decode via
+#   model.gen_residual, argmax or temperature sampling).
+#   - ARGMAX point decode does NOT fix single-step buckets (stationary 44u —
+#     the 13% class-misfire tail lands in 56-248u rings; turns ~ -22/-70%).
+#     Classifier is RIGHT 87% on stationary; CE plateaus ~2.05 nats =
+#     irreducible uncertainty about WHEN a still player moves. Point
+#     prediction on decision frames is partly UNWINNABLE (copy IS the stay
+#     mode; beating it needs the player's choice, not in the state).
+#   - COVERAGE is the real result (scripts/dist_coverage_eval.py, minADE-16):
+#       hard turn  42u vs copy 87u  (+52%) | reversal 38u vs 61u (+37%)
+#       straight   43u vs 144u     (+70%) | ALL 36u vs 86u      (+58%)
+#     medADE ~ argmax (healthy spread, not collapsed). The head KNOWS the
+#     option set even when it can't know the choice — exactly what GRPO
+#     "generate the group" needs (16 samples = a group).
+#   - Simulator metrics: rollout drift 487u@8s (= old 490u, stable);
+#     value-through-rollout AUC 0.865 FLAT through 8s (best yet).
+#   - Caveat: minADE-K is oracle-selected; fair baseline = best-of-{copy,CV,
+#     damped-CV} ensemble — model still wins on turns (38-42u vs 61-87u) but
+#     add a sampled-baseline column before publishing.
+# DIST CKPT IS NOW THE LEAD: same stability as old + sampling + best value.
 # ============================================================================
 
 # ============================================================================

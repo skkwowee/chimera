@@ -48,7 +48,7 @@ def main():
     ck = load_ckpt(args.ckpt)
     a = ck["args"]; L = a["window"]; k = a["horizon"]; ppd = ck.get("per_player_dim", 56)
     model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"], a["heads"],
-                        per_player_dim=ppd)
+                        per_player_dim=ppd, dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     cv_res = bool(a.get("cv_residual", False))
 
@@ -72,9 +72,8 @@ def main():
     for i in range(0, len(starts), B):
         chunk = starts[i:i+B]
         wins = torch.stack([r[t-L+1:t+1] for t in chunk]).to(args.device)   # [b,L,F]
-        out = model.heads(wins)
-        res = out["residual"][:, -1, :].cpu()                              # [b,F]
-        val = torch.sigmoid(out["value"][:, -1]).cpu()                     # [b]
+        res = model.gen_residual(wins)[:, -1, :].cpu()                     # [b,F] (dist decode)
+        val = torch.sigmoid(model.heads(wins)["value"][:, -1]).cpu()       # [b]
         for j, t in enumerate(chunk):
             cur = r[t]; fut = r[t+k]; prev = r[max(0, t-1)]
             pred = cur + res[j] + (k * (cur - prev) if cv_res else 0.0)
@@ -103,7 +102,7 @@ def main():
         buf = r[anchor-L+1:anchor+1].clone().unsqueeze(0).to(args.device)
         steps = []
         for s in range(1, args.rollout + 1):
-            res = model(buf)[:, -1, :]
+            res = model.gen_residual(buf)[:, -1, :]
             cvb = (k * (buf[0, -1] - buf[0, -2])) if cv_res else 0.0
             predf = (buf[0, -1] + res[0] + cvb).cpu()
             truef = r[anchor + s*k]

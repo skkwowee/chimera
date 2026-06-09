@@ -121,7 +121,7 @@ def main():
     ck = load_ckpt(args.ckpt)
     a = ck["args"]; L = a["window"]; k = a["horizon"]; ppd = ck.get("per_player_dim", 56)
     model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"], a["heads"],
-                        per_player_dim=ppd)
+                        per_player_dim=ppd, dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     keep = set(args.maps.split(","))
     cv_res = bool(a.get("cv_residual", False))
@@ -153,7 +153,7 @@ def main():
         for i in range(0, len(ts), args.batch):
             chunk = ts[i:i+args.batch]
             wins = torch.stack([r[t-L+1:t+1] for t in chunk]).to(args.device)   # [b,L,F]
-            res = model(wins)[:, -1, :].cpu()                                   # [b,F] residual
+            res = model.gen_residual(wins)[:, -1, :].cpu()                      # [b,F] residual
             for j, t in enumerate(chunk):
                 cur, prev, fut = r[t], r[t-1], r[t+k]
                 pred = cur + res[j] + (k * (cur - prev) if cv_res else 0.0)

@@ -44,7 +44,7 @@ def main():
     ck = load_ckpt(args.ckpt)
     a = ck["args"]; L = a["window"]; k = a["horizon"]; ppd = ck.get("per_player_dim", 56)
     model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"], a["heads"],
-                        per_player_dim=ppd)
+                        per_player_dim=ppd, dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     cv_res = bool(a.get("cv_residual", False))
     print(f"ckpt step {ck.get('step')}  window={L}  horizon k={k} ({k*125}ms)  per_player={ppd}  "
@@ -69,9 +69,8 @@ def main():
 
     # --- one-step generation ---
     win = r[t - L + 1:t + 1].unsqueeze(0).to(args.device)            # [1,L,F] ending at t
-    out = model.heads(win)
-    res = out["residual"][0, -1].cpu()                               # residual for newest frame
-    vlogit = out["value"][0, -1].item()
+    res = model.gen_residual(win)[0, -1].cpu()                       # residual (dist decode)
+    vlogit = model.heads(win)["value"][0, -1].item()
     cur = r[t]; true = r[t + k]
     pred = cur + res + (k * (cur - r[t-1]) if cv_res else 0.0)
     vp = 1 / (1 + math.exp(-vlogit))
@@ -111,7 +110,7 @@ def main():
         print(f"\nAUTOREGRESSIVE ROLLOUT (feed predictions back; {R} steps = {R*k*125}ms):")
         print(f"{'step':>4} {'t(ms)':>6} {'gen_pos_err':>12} {'const-vel':>10}  {'gen better':>10}")
         for step in range(1, R + 1):
-            res = model(buf)[:, -1, :]
+            res = model.gen_residual(buf)[:, -1, :]
             cvb = (k * (buf[0, -1] - buf[0, -2])) if cv_res else 0.0
             predf = buf[0, -1] + res[0] + cvb
             truef = r[t + step * k].to(args.device)

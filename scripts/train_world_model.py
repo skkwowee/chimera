@@ -23,11 +23,13 @@ Key design choices (and the traps they avoid):
     A low absolute loss means nothing; beating const-velocity is the real bar.
     (Final acceptance is probe transfer, not loss -- that's a separate harness.)
 
+Heads beyond the v1 Huber regression:
+  - --dist-head: DISTRIBUTIONAL player-xy displacement head (classify-then-refine,
+    97 classes = stationary + 6 magnitude rings x 16 directions, plus per-class xy
+    refine offset). Fixes regression mode-averaging: stationary jitter, hard-turn
+    means landing between modes, jitter feedback in closed-loop rollout. Decode via
+    model.gen_residual() (argmax or sampled class) — eval scripts use it everywhere.
 TODO (next iterations, intentionally not in v1):
-  - Distributional head (discretize / GMM) on the multimodal continuous dims to
-    avoid mode-averaging blur. v1 uses Huber regression as the runnable baseline.
-  - Per-player token factoring (relational attention a la MLMove) instead of a
-    flat 597-d frame. v1 treats the frame as one token.
   - Categorical-vs-continuous split head (one-hot dims want cross-entropy).
 
 Usage:
@@ -125,11 +127,46 @@ class WorldModelFlat(nn.Module):
     def forward(self, x):
         return self.head(self._run(x))                # [B,L,F] residual
 
+    def gen_residual(self, x, sample=False, temperature=1.0):
+        return self.forward(x)
+
     def latent(self, x):
         return self._run(x)
 
 
 N_PLAYERS = 10   # frame is player-major: n_players x per_player_dim, then global
+
+# ---- distributional displacement head (classify-then-refine over player xy) ----
+# Ring edges in GAME UNITS (xy norm = units/3000). Class 0 = stationary (<8u);
+# else ring (log-spaced magnitude) x 16 direction bins of 22.5deg.
+XY_NORM = 3000.0
+DIST_EDGES_U = [8.0, 24.0, 56.0, 120.0, 248.0, 512.0]
+DIST_RINGS, DIST_DIRS = 6, 16
+DIST_C = 1 + DIST_RINGS * DIST_DIRS                  # 97
+
+
+def dist_centers():
+    """[C, 2] class centers in NORMALIZED units. Ring magnitude = geometric mean
+    of its edges (open last ring: 700u). Direction bin d centered at d*22.5deg."""
+    mags = [math.sqrt(DIST_EDGES_U[r] * DIST_EDGES_U[r + 1]) for r in range(DIST_RINGS - 1)] + [700.0]
+    c = torch.zeros(DIST_C, 2)
+    for r, m in enumerate(mags):
+        for d in range(DIST_DIRS):
+            th = d * (2 * math.pi / DIST_DIRS)
+            c[1 + r * DIST_DIRS + d, 0] = m * math.cos(th) / XY_NORM
+            c[1 + r * DIST_DIRS + d, 1] = m * math.sin(th) / XY_NORM
+    return c
+
+
+def dist_class(d):
+    """d: [..., 2] normalized xy displacement -> class ids [...] (long)."""
+    mag = d.norm(dim=-1) * XY_NORM
+    ring = torch.bucketize(mag, torch.tensor(DIST_EDGES_U[1:], device=d.device))
+    ang = torch.atan2(d[..., 1], d[..., 0])
+    # round to nearest bin center so bin 0 spans [-11.25, +11.25)deg
+    dirb = torch.round(ang / (2 * math.pi / DIST_DIRS)).long() % DIST_DIRS
+    cls = 1 + ring * DIST_DIRS + dirb
+    return torch.where(mag < DIST_EDGES_U[0], torch.zeros_like(cls), cls)
 
 
 class WorldModelPlayers(nn.Module):
@@ -145,9 +182,10 @@ class WorldModelPlayers(nn.Module):
     """
 
     def __init__(self, feature_dim, d_model=512, layers=6, heads=8, ff=2048,
-                 dropout=0.1, per_player_dim=56, n_players=N_PLAYERS):
+                 dropout=0.1, per_player_dim=56, n_players=N_PLAYERS, dist=False):
         super().__init__()
         self.n_players = n_players
+        self.dist = dist
         self.ppd = per_player_dim
         self.player_block = n_players * per_player_dim
         self.global_dim = feature_dim - self.player_block
@@ -164,6 +202,9 @@ class WorldModelPlayers(nn.Module):
         self.global_head = nn.Linear(d_model, self.global_dim)
         self.value_head = nn.Sequential(nn.Linear(d_model, d_model // 2), nn.GELU(),
                                         nn.Linear(d_model // 2, 1))     # P(CT win) logit
+        if dist:
+            self.dist_head = nn.Linear(d_model, DIST_C * 3)  # C logits + C xy offsets
+            self.register_buffer("centers", dist_centers())  # [C, 2] normalized
         self._mask_cache = {}
 
     def _tokens(self, x):
@@ -201,25 +242,56 @@ class WorldModelPlayers(nn.Module):
         return torch.cat([pres, gres], dim=-1)                          # [B,L,F] residual
 
     def heads(self, x):
-        """Multi-task forward: next-state residual + per-frame value logit."""
+        """Multi-task forward: next-state residual + per-frame value logit
+        (+ dist logits/offsets over player xy displacement when enabled)."""
         h, L = self._grid(x)
         P = self.n_players
         pres = self.player_head(h[:, :, :P, :]).reshape(x.shape[0], L, self.player_block)
         gres = self.global_head(h[:, :, P, :])
         residual = torch.cat([pres, gres], dim=-1)
         value = self.value_head(h.mean(dim=2)).squeeze(-1)              # [B,L] P(CT win) logit
-        return {"residual": residual, "value": value}
+        out = {"residual": residual, "value": value}
+        if self.dist:
+            do = self.dist_head(h[:, :, :P, :])                         # [B,L,P,C*3]
+            out["dist_logits"] = do[..., :DIST_C]
+            out["dist_off"] = do[..., DIST_C:].reshape(*do.shape[:-1], DIST_C, 2)
+        return out
+
+    def gen_residual(self, x, sample=False, temperature=1.0):
+        """Decode-time residual: like forward(), but with the player xy dims
+        OVERWRITTEN by the distributional head (class center + refine offset).
+        Falls back to forward() when the dist head is absent, so callers can
+        use it unconditionally on any checkpoint."""
+        if not self.dist:
+            return self.forward(x)
+        h, L = self._grid(x)
+        P = self.n_players
+        pres = self.player_head(h[:, :, :P, :])                         # [B,L,P,ppd]
+        gres = self.global_head(h[:, :, P, :])
+        do = self.dist_head(h[:, :, :P, :])
+        logits = do[..., :DIST_C]
+        off = do[..., DIST_C:].reshape(*do.shape[:-1], DIST_C, 2)
+        if sample:
+            probs = F.softmax(logits / temperature, dim=-1)
+            cls = torch.multinomial(probs.reshape(-1, DIST_C), 1).reshape(logits.shape[:-1])
+        else:
+            cls = logits.argmax(dim=-1)                                 # [B,L,P]
+        off_c = off.gather(-2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
+        pres = pres.clone()
+        pres[..., 0:2] = self.centers[cls] + off_c
+        pres = pres.reshape(x.shape[0], L, self.player_block)
+        return torch.cat([pres, gres], dim=-1)                          # [B,L,F]
 
     def latent(self, x):
         h, L = self._grid(x)
         return h.mean(dim=2)                                            # [B,L,d] per-frame summary
 
 
-def build_model(arch, feature_dim, d_model, layers, heads, per_player_dim=56):
+def build_model(arch, feature_dim, d_model, layers, heads, per_player_dim=56, dist=False):
     if arch == "flat":
         return WorldModelFlat(feature_dim, d_model, layers, heads)
     return WorldModelPlayers(feature_dim, d_model, layers, heads,
-                             per_player_dim=per_player_dim)
+                             per_player_dim=per_player_dim, dist=dist)
 
 
 # -------------------------------------------------------------------- train/eval
@@ -249,9 +321,10 @@ def evaluate(model, loader, device, pred_mask, max_batches=50, cv_residual=False
             break
         x, y, x_prev = x.to(device), y.to(device), x_prev.to(device)
         true_res = (y - x)[..., pred_mask]                       # predict RAW state only
-        out = model.heads(x) if hasattr(model, "heads") else {"residual": model(x)}
+        out = model.heads(x) if hasattr(model, "heads") else {}
         cv_base = (model.horizon * (x - x_prev)) if cv_residual else 0.0
-        pred_res = (out["residual"] + cv_base)[..., pred_mask]
+        # decode path (dist head decodes class+offset for xy; plain forward otherwise)
+        pred_res = (model.gen_residual(x) + cv_base)[..., pred_mask]
         m_loss += huber(pred_res, true_res).item()
         copy_loss += huber(torch.zeros_like(true_res), true_res).item()
         cv_loss += huber((model.horizon * (x - x_prev))[..., pred_mask], true_res).item()
@@ -286,12 +359,17 @@ def main():
                     help="predict the CORRECTION over a const-velocity prior (pred = cv_base + head). "
                          "Head learns ~0 on straight frames, so easy-frame jitter dies and the "
                          "tactical correction shows through. See scripts/decision_eval.py.")
+    ap.add_argument("--dist-head", action="store_true",
+                    help="DISTRIBUTIONAL player-xy head: classify displacement into 97 classes "
+                         "(stationary + 6 rings x 16 dirs) + per-class refine offset. Fixes "
+                         "regression mode-averaging (stationary jitter, between-mode means).")
     ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3.pt"))
     ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3.pt"))
     ap.add_argument("--out", default="outputs/world_model")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--smoke", action="store_true", help="tiny CPU sanity run on val.pt")
     args = ap.parse_args()
+    assert not (args.dist_head and args.cv_residual), "--dist-head and --cv-residual are mutually exclusive"
 
     if args.smoke:
         args.d_model, args.layers, args.heads = 128, 2, 4
@@ -330,7 +408,7 @@ def main():
                        num_workers=0 if args.smoke else 2)
 
     model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads,
-                        per_player_dim=ppd).to(dev)
+                        per_player_dim=ppd, dist=args.dist_head).to(dev)
     model.horizon = args.horizon          # used by const-velocity baseline in eval
 
     # Prediction target = RAW state dims only. The derived perception dims (v3:
@@ -346,6 +424,13 @@ def main():
     pred_mask = pred_mask.to(dev)
     print(f"next-state target: {int(pred_mask.sum())}/{fdim} dims predicted "
           f"({n_der} derived/player are input-only perception)")
+    # --dist-head: player xy leaves the REGRESSION loss (classified instead);
+    # pred_mask (eval) keeps xy IN so printed skill stays comparable across runs.
+    reg_mask = pred_mask.clone()
+    xy_idx = torch.tensor([[p * ppd, p * ppd + 1] for p in range(N_PLAYERS)], device=dev)
+    if args.dist_head:
+        reg_mask[xy_idx.reshape(-1)] = False
+        print(f"dist head: {DIST_C} classes over player xy; regression dims now {int(reg_mask.sum())}")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"arch={args.arch}  model params: {n_params/1e6:.1f}M  device={dev}")
 
@@ -381,7 +466,18 @@ def main():
         with torch.autocast(device_type=dev.type, enabled=use_amp):
             o = model.heads(x)
             pred_res = o["residual"] + cv_base
-            ns_loss = huber(pred_res[..., pred_mask], true_res[..., pred_mask])
+            reg_loss = huber(pred_res[..., reg_mask], true_res[..., reg_mask])
+            if args.dist_head:
+                d_true = true_res[..., xy_idx]                           # [B,L,P,2]
+                cls = dist_class(d_true)                                 # [B,L,P]
+                ce_loss = F.cross_entropy(o["dist_logits"].reshape(-1, DIST_C).float(),
+                                          cls.reshape(-1))
+                off = o["dist_off"].gather(
+                    -2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
+                ref_loss = huber(off, d_true - model.centers[cls])
+                ns_loss = reg_loss + 0.1 * ce_loss + ref_loss
+            else:
+                ns_loss = reg_loss
             v_tgt = won.unsqueeze(1).expand_as(o["value"])
             v_loss = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt)
             loss = ns_loss + args.value_weight * v_loss
@@ -398,7 +494,9 @@ def main():
             m, c, cv, vauc = evaluate(model, va_ld, dev, pred_mask, max_batches=10 if args.smoke else 50,
                                       cv_residual=args.cv_residual)
             skill = (cv - m) / cv * 100 if cv > 0 else 0.0
-            print(f"step {step:6d}  ns {ns_loss.item():.4f} v {v_loss.item():.3f}  "
+            comp = (f"[reg {reg_loss.item():.4f} ce {ce_loss.item():.3f} ref {ref_loss.item():.4f}] "
+                    if args.dist_head else "")
+            print(f"step {step:6d}  ns {ns_loss.item():.4f} {comp}v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
                   f"VALUE_AUC {vauc:.3f}  lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
             meta = {"model": model.state_dict(), "args": vars(args),
