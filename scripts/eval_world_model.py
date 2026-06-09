@@ -29,17 +29,19 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from train_world_model import RoundWindows, build_model, N_PLAYERS, PER_PLAYER_DIM  # noqa
+from train_world_model import RoundWindows, build_model, N_PLAYERS  # noqa
 
 
-def group_indices():
-    pos, aim = [], []
+def group_indices(ppd, fdim):
+    """Predicted dims only: position / aim / other (v2 raw). Excludes the 9 derived
+    perception dims per player (input-only, not forecast) and keeps global in 'other'."""
+    pos, aim, other = [], [], []
     for p in range(N_PLAYERS):
-        b = p * PER_PLAYER_DIM
+        b = p * ppd
         pos += [b + 0, b + 1, b + 2]            # x, y, z
         aim += [b + 3, b + 4, b + 5, b + 6]     # sin/cos yaw, sin/cos pitch
-    all_idx = set(range(597))
-    other = sorted(all_idx - set(pos) - set(aim))
+        other += list(range(b + 7, b + 56))     # v2 'other' (hp/armor/weapon/util); EXCLUDE 56:ppd derived
+    other += list(range(N_PLAYERS * ppd, fdim))  # global block
     return {"position": pos, "aim": aim, "other": other}
 
 
@@ -64,20 +66,23 @@ def main():
         ck = torch.load(safe, map_location="cpu", weights_only=False)
     a = ck["args"]
     horizon = a["horizon"]
-    model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"], a["heads"])
+    ppd = ck.get("per_player_dim", 56)
+    model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"], a["heads"],
+                        per_player_dim=ppd)
     model.load_state_dict(ck["model"])
     model.to(args.device).eval()
     print(f"ckpt step {ck.get('step')}  arch={a['arch']}  horizon={horizon} "
-          f"({horizon*125}ms)  val_loss(agg)={ck.get('val_loss'):.4f}")
+          f"({horizon*125}ms)  per_player={ppd}  val_ns(agg)={ck.get('val_ns', float('nan')):.4f}  "
+          f"value_auc={ck.get('value_auc', float('nan')):.3f}")
 
     blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
-    ds = RoundWindows(blob["tensors"], a["window"], horizon, crops_per_round=16)
+    ds = RoundWindows(blob["tensors"], blob["metas"], a["window"], horizon, crops_per_round=16)
     ld = DataLoader(ds, batch_size=args.batch, shuffle=False)
-    groups = group_indices()
+    groups = group_indices(ppd, ck["feature_dim"])
 
     agg = {g: dict(model=0.0, copy=0.0, cv=0.0) for g in groups}
     n = 0
-    for bi, (x, y, x_prev) in enumerate(ld):
+    for bi, (x, y, x_prev, _) in enumerate(ld):
         if bi >= args.max_batches:
             break
         x, y, x_prev = x.to(args.device), y.to(args.device), x_prev.to(args.device)
