@@ -240,7 +240,7 @@ def auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, pred_mask, max_batches=50):
+def evaluate(model, loader, device, pred_mask, max_batches=50, cv_residual=False):
     model.eval()
     m_loss = copy_loss = cv_loss = n = 0.0
     vlog, vlab = [], []
@@ -250,7 +250,8 @@ def evaluate(model, loader, device, pred_mask, max_batches=50):
         x, y, x_prev = x.to(device), y.to(device), x_prev.to(device)
         true_res = (y - x)[..., pred_mask]                       # predict RAW state only
         out = model.heads(x) if hasattr(model, "heads") else {"residual": model(x)}
-        pred_res = out["residual"][..., pred_mask]
+        cv_base = (model.horizon * (x - x_prev)) if cv_residual else 0.0
+        pred_res = (out["residual"] + cv_base)[..., pred_mask]
         m_loss += huber(pred_res, true_res).item()
         copy_loss += huber(torch.zeros_like(true_res), true_res).item()
         cv_loss += huber((model.horizon * (x - x_prev))[..., pred_mask], true_res).item()
@@ -281,6 +282,10 @@ def main():
                     help="weight of the value (P CT-win) loss co-trained with next-state")
     ap.add_argument("--maps", default="",
                     help="comma-sep map_name filter, e.g. de_mirage,de_dust2,de_inferno (empty=all)")
+    ap.add_argument("--cv-residual", action="store_true",
+                    help="predict the CORRECTION over a const-velocity prior (pred = cv_base + head). "
+                         "Head learns ~0 on straight frames, so easy-frame jitter dies and the "
+                         "tactical correction shows through. See scripts/decision_eval.py.")
     ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3.pt"))
     ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3.pt"))
     ap.add_argument("--out", default="outputs/world_model")
@@ -363,15 +368,20 @@ def main():
     data_iter = iter(tr_ld)
     while step < args.steps:
         try:
-            x, y, _, won = next(data_iter)
+            x, y, x_prev, won = next(data_iter)
         except StopIteration:
             data_iter = iter(tr_ld)
-            x, y, _, won = next(data_iter)
-        x, y, won = x.to(dev), y.to(dev), won.to(dev)
+            x, y, x_prev, won = next(data_iter)
+        x, y, x_prev, won = x.to(dev), y.to(dev), x_prev.to(dev), won.to(dev)
         true_res = y - x
+        # cv_base = const-velocity residual; in --cv-residual the head learns the
+        # correction on top of it (pred_residual = cv_base + head), so straight
+        # frames cost ~0 and the head spends capacity only on tactics.
+        cv_base = (args.horizon * (x - x_prev)) if args.cv_residual else 0.0
         with torch.autocast(device_type=dev.type, enabled=use_amp):
             o = model.heads(x)
-            ns_loss = huber(o["residual"][..., pred_mask], true_res[..., pred_mask])
+            pred_res = o["residual"] + cv_base
+            ns_loss = huber(pred_res[..., pred_mask], true_res[..., pred_mask])
             v_tgt = won.unsqueeze(1).expand_as(o["value"])
             v_loss = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt)
             loss = ns_loss + args.value_weight * v_loss
@@ -385,7 +395,8 @@ def main():
         step += 1
 
         if step % args.eval_every == 0 or step == args.steps:
-            m, c, cv, vauc = evaluate(model, va_ld, dev, pred_mask, max_batches=10 if args.smoke else 50)
+            m, c, cv, vauc = evaluate(model, va_ld, dev, pred_mask, max_batches=10 if args.smoke else 50,
+                                      cv_residual=args.cv_residual)
             skill = (cv - m) / cv * 100 if cv > 0 else 0.0
             print(f"step {step:6d}  ns {ns_loss.item():.4f} v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "

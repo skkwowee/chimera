@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Chimera — World-Model Generation Viewer</title>
+<style>
+  :root { --bg:#0e0f13; --panel:#171922; --ink:#e6e8ef; --mut:#8a90a2;
+          --t:#e8b13a; --ct:#4ea3ff; --gen:#ff5db1; --cv:#46e0c0; --ok:#39d98a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .wrap { display:flex; gap:16px; padding:16px; align-items:flex-start; }
+  .stage { position:relative; }
+  canvas { background:#000; border-radius:8px; display:block; }
+  .side { width:300px; background:var(--panel); border-radius:10px; padding:14px 16px; }
+  h1 { font-size:15px; margin:0 0 4px; letter-spacing:.3px; }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .row { display:flex; justify-content:space-between; margin:6px 0; }
+  .k { color:var(--mut); }
+  .controls { display:flex; gap:8px; align-items:center; margin:14px 0 6px; }
+  button { background:#222634; color:var(--ink); border:1px solid #2c3142;
+           border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:#3a4156; background:#272c3c; }
+  button.on { background:var(--ct); color:#06121f; border-color:var(--ct); }
+  input[type=range] { width:100%; }
+  .legend > div { display:flex; align-items:center; gap:8px; margin:5px 0; font-size:12px; }
+  .dot { width:12px; height:12px; border-radius:50%; display:inline-block; }
+  .ring { width:12px; height:12px; border-radius:50%; border:2px solid var(--gen);
+          display:inline-block; }
+  .valbar { height:14px; border-radius:7px; margin-top:4px; overflow:hidden;
+            background:var(--t); display:flex; }
+  .valbar > i { background:var(--ct); display:block; height:100%; }
+  .toggles { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .err { color:var(--gen); }
+  .hint { color:var(--mut); font-size:11px; margin-top:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage">
+    <canvas id="cv" width="760" height="760"></canvas>
+  </div>
+  <div class="side">
+    <h1>World-Model Generation</h1>
+    <div class="sub" id="meta">loading…</div>
+
+    <div class="row"><span class="k">frame</span><span id="fnum">–</span></div>
+    <div class="row"><span class="k">mean gen err (alive)</span><span class="err" id="merr">–</span></div>
+    <div class="row"><span class="k">mean const-vel err</span><span style="color:var(--cv)" id="cverr">–</span></div>
+
+    <div class="k" style="margin-top:10px">value head — P(CT win)</div>
+    <div class="valbar"><i id="vb" style="width:50%"></i></div>
+    <div class="row" style="margin-top:2px"><span class="k" style="color:var(--t)">T</span>
+      <span id="vtxt">–</span><span class="k" style="color:var(--ct)">CT</span></div>
+
+    <div class="controls">
+      <button id="play">▶ play</button>
+      <button id="rollBtn">rollout</button>
+    </div>
+    <input id="scrub" type="range" min="0" max="0" value="0"/>
+
+    <div class="toggles">
+      <button id="tGen" class="on">gen +1s</button>
+      <button id="tCV" class="on">const-vel</button>
+      <button id="tFut" class="on">truth +1s</button>
+      <button id="tArrow" class="on">arrows</button>
+    </div>
+
+    <div class="legend" style="margin-top:14px">
+      <div><span class="dot" style="background:var(--t)"></span> T (now)</div>
+      <div><span class="dot" style="background:var(--ct)"></span> CT (now)</div>
+      <div><span class="ring"></span> generated +1s (model)</div>
+      <div><span style="display:inline-block;width:12px;height:12px;border:2px solid var(--cv)"></span> const-vel +1s (momentum)</div>
+      <div><span style="color:var(--mut)">✕</span> &nbsp;truth +1s (reality)</div>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const S = cv.width; // square canvas
+let D=null, img=null, fi=0, playing=false, rollMode=false;
+const show = {gen:true, cv:true, fut:true, arrow:true};
+
+function tx(x){ return (x - D.map_data.pos_x)/D.map_data.scale * (S/1024); }
+function ty(y){ return (D.map_data.pos_y - y)/D.map_data.scale * (S/1024); }
+const sideCol = s => s==='t' ? getCss('--t') : getCss('--ct');
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function drawBase(){
+  ctx.clearRect(0,0,S,S);
+  if(img) ctx.drawImage(img,0,0,S,S);
+  ctx.fillStyle='rgba(0,0,0,0.35)'; ctx.fillRect(0,0,S,S);
+}
+
+function drawFrame(){
+  drawBase();
+  const f = D.frames[fi];
+  document.getElementById('fnum').textContent = f.t;
+  // value bar
+  const v = f.value;
+  document.getElementById('vb').style.width = (v*100).toFixed(0)+'%';
+  document.getElementById('vtxt').textContent = (v*100).toFixed(0)+'% CT';
+  let errSum=0, cvSum=0, n=0;
+  for(const p of f.players){
+    if(!p.alive) continue;
+    const nx=tx(p.x), ny=ty(p.y);
+    // const-vel +1s (teal square)
+    if(show.cv){
+      const cx=tx(p.cvx), cy=ty(p.cvy);
+      ctx.strokeStyle=getCss('--cv'); ctx.lineWidth=2;
+      ctx.strokeRect(cx-5,cy-5,10,10);
+    }
+    // truth +1s
+    if(show.fut){
+      const fx=tx(p.fx), fy=ty(p.fy);
+      ctx.strokeStyle='rgba(180,186,200,0.8)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(fx-4,fy-4); ctx.lineTo(fx+4,fy+4);
+      ctx.moveTo(fx+4,fy-4); ctx.lineTo(fx-4,fy+4); ctx.stroke();
+    }
+    // arrow now -> gen
+    if(show.arrow && show.gen){
+      const gx=tx(p.gx), gy=ty(p.gy);
+      ctx.strokeStyle='rgba(255,93,177,0.55)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.moveTo(nx,ny); ctx.lineTo(gx,gy); ctx.stroke();
+    }
+    // generated +1s (ring)
+    if(show.gen){
+      const gx=tx(p.gx), gy=ty(p.gy);
+      ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(gx,gy,6,0,7); ctx.stroke();
+    }
+    // now (solid)
+    ctx.fillStyle=sideCol(p.side);
+    ctx.beginPath(); ctx.arc(nx,ny,6,0,7); ctx.fill();
+    ctx.fillStyle='#06121f'; ctx.font='9px monospace'; ctx.textAlign='center';
+    ctx.fillText(p.slot.replace(/[^0-9]/g,''), nx, ny+3);
+    errSum += p.err; cvSum += (p.cverr||0); n++;
+  }
+  document.getElementById('merr').textContent = n? (errSum/n).toFixed(0)+'u' : '–';
+  document.getElementById('cverr').textContent = n? (cvSum/n).toFixed(0)+'u' : '–';
+}
+
+function drawRollout(){
+  drawBase();
+  const ro = D.rollout;
+  document.getElementById('fnum').textContent = 'anchor '+ro.anchor;
+  document.getElementById('merr').textContent = '(drift trail)';
+  for(let p=0;p<10;p++){
+    const col = ro.sides[p]==='t'?getCss('--t'):getCss('--ct');
+    // truth trail
+    ctx.strokeStyle='rgba(180,186,200,0.7)'; ctx.lineWidth=2; ctx.beginPath();
+    ro.steps.forEach((s,i)=>{ const x=tx(s.truth[p][0]),y=ty(s.truth[p][1]);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+    // generated trail
+    ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.beginPath();
+    ro.steps.forEach((s,i)=>{ const x=tx(s.gen[p][0]),y=ty(s.gen[p][1]);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.setLineDash([]);
+    // endpoints
+    const lt=ro.steps[ro.steps.length-1];
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(tx(lt.truth[p][0]),ty(lt.truth[p][1]),4,0,7); ctx.fill();
+    ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(tx(lt.gen[p][0]),ty(lt.gen[p][1]),5,0,7); ctx.stroke();
+  }
+  document.getElementById('hint').textContent =
+    'dashed pink = generated rollout · solid grey = ground truth · '+ro.steps.length+
+    ' steps ('+ro.steps[ro.steps.length-1].t_ms+'ms). Watch generated trails diverge.';
+}
+
+function render(){ rollMode && D.rollout ? drawRollout() : drawFrame(); }
+
+function tick(){ if(!playing) return;
+  fi=(fi+1)%D.frames.length; document.getElementById('scrub').value=fi; drawFrame();
+  setTimeout(()=>requestAnimationFrame(tick), 80); }
+
+function bind(){
+  document.getElementById('play').onclick=e=>{
+    if(rollMode){rollMode=false;document.getElementById('rollBtn').classList.remove('on');}
+    playing=!playing; e.target.textContent=playing?'❚❚ pause':'▶ play';
+    e.target.classList.toggle('on',playing); if(playing) tick(); };
+  document.getElementById('scrub').oninput=e=>{ fi=+e.target.value;
+    if(rollMode){rollMode=false;document.getElementById('rollBtn').classList.remove('on');}
+    drawFrame(); };
+  document.getElementById('rollBtn').onclick=e=>{
+    if(!D.rollout) return; rollMode=!rollMode; playing=false;
+    document.getElementById('play').textContent='▶ play';
+    document.getElementById('play').classList.remove('on');
+    e.target.classList.toggle('on',rollMode); render(); };
+  const tg=(id,key)=>document.getElementById(id).onclick=e=>{
+    show[key]=!show[key]; e.target.classList.toggle('on',show[key]); render(); };
+  tg('tGen','gen'); tg('tCV','cv'); tg('tFut','fut'); tg('tArrow','arrow');
+}
+
+fetch('data/round.json').then(r=>r.json()).then(d=>{
+  D=d;
+  document.getElementById('meta').textContent =
+    `${d.meta.demo} · rnd ${d.meta.round_num} · ${d.map} · winner ${d.meta.winner} · `+
+    `horizon ${d.meta.horizon_ms}ms · ckpt ${d.meta.ckpt_step}`;
+  document.getElementById('scrub').max = d.frames.length-1;
+  document.getElementById('hint').textContent =
+    'Ring leads the dot by 1s = where the model thinks each player will be. '+
+    'If the ring lands on the ✕, the generation was right. Hit "rollout" for compounding drift.';
+  img=new Image(); img.onload=()=>{ bind(); fi=Math.floor(d.frames.length/2);
+    document.getElementById('scrub').value=fi; drawFrame(); };
+  img.onerror=()=>{ bind(); drawFrame(); }; img.src='data/'+d.radar;
+}).catch(e=>{ document.getElementById('meta').textContent='no data/round.json — run export_gen_viewer.py'; });
+</script>
+</body>
+</html>
