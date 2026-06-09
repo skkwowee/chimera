@@ -279,6 +279,8 @@ def main():
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--value-weight", type=float, default=0.3,
                     help="weight of the value (P CT-win) loss co-trained with next-state")
+    ap.add_argument("--maps", default="",
+                    help="comma-sep map_name filter, e.g. de_mirage,de_dust2,de_inferno (empty=all)")
     ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3.pt"))
     ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3.pt"))
     ap.add_argument("--out", default="outputs/world_model")
@@ -301,6 +303,16 @@ def main():
     fdim = train_blob["feature_dim"]
     assert fdim == val_blob["feature_dim"]
     ppd = train_blob.get("per_player_dim", 56)
+
+    if args.maps:
+        keep = set(args.maps.split(","))
+        def _filter(blob):
+            idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
+            blob["tensors"] = [blob["tensors"][i] for i in idx]
+            blob["metas"] = [blob["metas"][i] for i in idx]
+            return len(idx)
+        nt, nv = _filter(train_blob), _filter(val_blob)
+        print(f"map filter {sorted(keep)}: train {nt} rounds, val {nv} rounds")
 
     tr_ds = RoundWindows(train_blob["tensors"], train_blob["metas"], args.window, args.horizon, args.crops_per_round)
     va_ds = RoundWindows(val_blob["tensors"], val_blob["metas"], args.window, args.horizon, args.crops_per_round)
@@ -344,7 +356,8 @@ def main():
 
     out = Path(args.out) / f"h{args.horizon}_mt"
     out.mkdir(parents=True, exist_ok=True)
-    best = float("-inf")          # maximize value AUC (the metric that matters)
+    best_v, best_ns = float("-inf"), float("inf")   # value peaks early, position late ->
+                                                    # save BOTH (best.pt = value, best_ns.pt = next-state)
     step = 0
     t0 = time.time()
     data_iter = iter(tr_ld)
@@ -377,14 +390,14 @@ def main():
             print(f"step {step:6d}  ns {ns_loss.item():.4f} v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
                   f"VALUE_AUC {vauc:.3f}  lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
-            score = vauc if not math.isnan(vauc) else -m
-            if score > best:
-                best = score
-                torch.save({"model": model.state_dict(), "args": vars(args),
-                            "feature_dim": fdim, "per_player_dim": ppd,
-                            "val_ns": m, "value_auc": vauc, "step": step},
-                           out / "best.pt")
-    print(f"done. best value_AUC {best:.3f} -> {out/'best.pt'}")
+            meta = {"model": model.state_dict(), "args": vars(args),
+                    "feature_dim": fdim, "per_player_dim": ppd,
+                    "val_ns": m, "value_auc": vauc, "step": step}
+            if not math.isnan(vauc) and vauc > best_v:
+                best_v = vauc; torch.save(meta, out / "best.pt")           # best VALUE
+            if m < best_ns:
+                best_ns = m; torch.save(meta, out / "best_ns.pt")          # best NEXT-STATE
+    print(f"done. best value_AUC {best_v:.3f} (best.pt)  best val_ns {best_ns:.4f} (best_ns.pt)")
     print("GATE: this VALUE_AUC must beat the raw-feature / v2-latent baseline "
           "(run scripts/value_probe.py) — that's the test the v2 latent FAILED.")
 
