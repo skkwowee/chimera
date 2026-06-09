@@ -1,6 +1,39 @@
 # Chimera — Session Progress
 
 # ============================================================================
+# 2026-06-09: THREE VERDICTS from the hardened eval battery (council-driven)
+# ============================================================================
+# Instruments: scripts/decision_eval.py (REWRITTEN — old version's buckets were
+# keyed on const-vel's own error, a selection effect; both the -915% and the
+# +39/57% "tactics" numbers were partly artifacts). Buckets are now truth-
+# trajectory turn-angle; baselines now include smoothed-CV and damped-CV
+# (alpha=0.71, LS-fit on train). scripts/rollout_eval.py FIXED (ppd from ckpt,
+# cv_base with k/gap scaling in AR loop, --value-auc mode).
+#
+# VERDICT 1 — "learned tactics" claim is DEAD on both ckpts. On hard-turn /
+#   reversal buckets the best baseline is COPY (turning players end near where
+#   they started); neither model beats it (old: +2.8%/-14%, new: -29%/-98%).
+#   Stationary jitter survives in both (~28-32u vs copy 3u). Mode-averaging is
+#   the limit -> DISTRIBUTIONAL HEAD is mandatory (kill criterion fired).
+# VERDICT 2 — cv-residual (outputs/wm_3map_cv) is a NEGATIVE RESULT. Better
+#   single-step aggregate (-16% vs old -54%) but the momentum prior extrapolates
+#   into turns (worse there) and is UNSTABLE in closed loop: 8s rollout drift
+#   1235u vs old model's 490u (CV baseline 669u). Single-step gains != simulator
+#   gains. Do not build on it; keep for the paper as a negative result.
+# VERDICT 3 — GRPO GATE PASSES on the OLD model (outputs/wm_3map/h8_mt/best.pt,
+#   value AUC 0.856): value-through-rollout AUC FLAT 0.856->0.855 through 8s of
+#   imagined frames (cv-residual decays 0.844->0.805). Caveat: at depth 8 the
+#   96-frame window still holds 88 real frames (flat = "doesn't corrupt", not
+#   proven "informs"). "Generate the group" stays viable.
+#
+# PRODUCTION CKPT: outputs/wm_3map/h8_mt/ (old, plain residual). Per-map
+# decision numbers are QUARANTINED (dust2 val slice = ONE match, 18 rounds).
+# IN FLIGHT: IEM Cologne ingest (~40 matches, chimera-demo-pipeline, 7z 24.05
+# handles Rar5). NEXT: distributional head (classify-then-refine xy
+# displacement), then language bridge (hard start ~2026-06-16 regardless).
+# ============================================================================
+
+# ============================================================================
 # CURRENT PHASE: world model (next-state prediction)   [pivot 2026-06]
 # ============================================================================
 # READ THIS BLOCK FIRST. Everything below the "ARCHIVE" line is the prior VLM
