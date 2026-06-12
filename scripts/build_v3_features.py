@@ -22,6 +22,12 @@ Usage:
   validate: python scripts/build_v3_features.py --split val --limit 5 --workers 1
   full:     python scripts/build_v3_features.py --split val  --workers 12
             python scripts/build_v3_features.py --split train --workers 12
+
+Delta-bake + assemble (merged corpus, see merge_hf_tick_sequences.py): bake ONLY
+the rounds listed in v3_todo.json, copy every other round's 687-d tensor from
+existing v3 blobs, save the assembled result. WSL: keep --workers 1 (one BVH).
+  python scripts/build_v3_features.py --src .../train_v2m.pt --out .../train_v3m.pt \
+      --todo .../v3_todo.json --reuse .../train_v3.pt,.../val_v3.pt --workers 1
 """
 from __future__ import annotations
 import os
@@ -30,7 +36,7 @@ import os
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
            "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
     os.environ.setdefault(_v, "1")
-import argparse, math, time
+import argparse, json, math, re, time
 from pathlib import Path
 import numpy as np
 import torch
@@ -48,6 +54,16 @@ TRIS = "/home/soone/.awpy/tris"
 _BLOB = None
 _MAPS = None
 _VC = {}
+
+
+def norm_stem(s: str) -> str:
+    """Canonical team order (a-vs-b == b-vs-a); keep in sync with
+    merge_hf_tick_sequences.norm_stem — HF and old local pipelines disagree."""
+    m = re.match(r"^(.+?)-vs-(.+?)-(m\d+-.+)$", s)
+    if not m:
+        return s
+    t1, t2, rest = m.groups()
+    return "-vs-".join(sorted((t1, t2))) + "-" + rest
 
 
 def _get_vc(map_name):
@@ -140,28 +156,79 @@ def _worker(idx):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--split", choices=["train", "val"], required=True)
+    ap.add_argument("--split", choices=["train", "val"])
     ap.add_argument("--workers", type=int, default=4,
                     help="each worker holds ~1-1.5GB BVH; keep workers*1.5GB + blob < WSL RAM cap")
     ap.add_argument("--limit", type=int, default=0, help="process only N rounds (validation)")
     ap.add_argument("--data", default="data/processed/tick_sequences")
+    ap.add_argument("--src", help="explicit input v2 blob (overrides --split paths)")
+    ap.add_argument("--out", help="explicit output blob (required with --src)")
+    ap.add_argument("--todo", help="v3_todo.json: bake ONLY these rounds of the src blob")
+    ap.add_argument("--todo-split", choices=["train", "val"],
+                    help="key into --todo (default: inferred from --src filename)")
+    ap.add_argument("--reuse", default="",
+                    help="comma-sep existing v3 blobs; non-todo rounds copied from here")
     args = ap.parse_args()
+    assert args.src or args.split, "need --split or --src"
+    assert not args.src or args.out, "--src requires --out"
 
     global _BLOB, _MAPS
-    src = Path(args.data) / f"{args.split}.pt"
+    if args.src:
+        src, out = Path(args.src), Path(args.out)
+        split_key = args.todo_split or ("train" if "train" in src.name else "val")
+    else:
+        src, out = Path(args.data) / f"{args.split}.pt", Path(args.data) / f"{args.split}_v3.pt"
+        split_key = args.split
     print(f"loading {src} ...")
-    _BLOB = torch.load(src, map_location="cpu", weights_only=False)
+    try:    # mmap: source v2 tensors stay file-backed until replaced
+        _BLOB = torch.load(src, map_location="cpu", weights_only=False, mmap=True)
+    except Exception:
+        _BLOB = torch.load(src, map_location="cpu", weights_only=False)
     n = len(_BLOB["tensors"])
     _MAPS = [m.get("map_name", "de_dust2") for m in _BLOB["metas"]]
-    idxs = list(range(n))
+    if args.todo:
+        td = json.load(open(args.todo))[split_key]
+        for r in td:    # todo must have been built against THIS blob's ordering
+            m = _BLOB["metas"][r["index"]]
+            assert (m["demo_stem"], m["round_num"], m["first_tick"]) == \
+                   (r["demo_stem"], r["round_num"], r["first_tick"]), \
+                f"--todo[{split_key}] does not match {src} at index {r['index']}"
+        idxs = [r["index"] for r in td]
+    else:
+        idxs = list(range(n))
+    todo_all = set(idxs)                       # pre-limit: reuse must skip ALL todo rounds
     idxs.sort(key=lambda i: _MAPS[i])          # group by map for VC cache hits
     if args.limit:
         idxs = idxs[:args.limit]
-    print(f"{args.split}: {n} rounds, processing {len(idxs)} on {args.workers} workers")
+    print(f"{split_key}: {n} rounds, baking {len(idxs)} on {args.workers} workers")
 
     import gc
     t0 = time.time()
     exp_dim = NP_ * (PPD + DERIVED) + (_BLOB["feature_dim"] - NP_ * PPD)   # 687
+
+    if args.reuse:
+        # Fill every NON-todo round from existing v3 blobs (mmap-backed: ~0 RSS).
+        # 4-tuple key: demo_stem+round_num is NOT unique (stem collisions across matches).
+        need = {(norm_stem(m["demo_stem"]), m["round_num"], m["first_tick"], m["n_ticks"]): i
+                for i, m in enumerate(_BLOB["metas"]) if i not in todo_all}
+        for rp in args.reuse.split(","):
+            if not need:
+                break
+            rb = torch.load(rp, map_location="cpu", weights_only=False, mmap=True)
+            hit = 0
+            for j, m2 in enumerate(rb["metas"]):
+                i = need.pop((norm_stem(m2["demo_stem"]), m2["round_num"], m2["first_tick"], m2["n_ticks"]), None)
+                if i is None:
+                    continue
+                t = rb["tensors"][j]
+                assert t.shape == (_BLOB["tensors"][i].shape[0], exp_dim), \
+                    (m2["demo_stem"], m2["round_num"], tuple(t.shape))
+                _BLOB["tensors"][i] = t
+                hit += 1
+            print(f"  reused {hit} rounds from {rp}")
+            del rb
+            gc.collect()
+        assert not need, f"{len(need)} rounds neither in --todo nor --reuse: {list(need)[:3]}"
 
     def merge_v3(t_np, d):
         """[T,597] v2 frame + [T,90] derived -> [T,687] v3 (insert 9 dims/player)."""
@@ -198,25 +265,35 @@ def main():
     print(f"computed derived in {time.time()-t0:.0f}s", flush=True)
 
     v3 = [_BLOB["tensors"][i] for i in idxs]            # the rounds we processed (v3 now)
-    # shape + sanity asserts
-    assert v3[0].shape[1] == exp_dim, (v3[0].shape[1], exp_dim)
-    assert not torch.isnan(torch.cat(v3[:200], 0)).any(), "NaN in v3 features"
-    dc = np.concatenate([x.numpy()[:, :NP_*(PPD+DERIVED)].reshape(-1, NP_, PPD+DERIVED)[:, :, PPD:]
-                         .reshape(-1, DERIVED) for x in v3[:200]], 0)
-    names = ["d_enemy","d_mate","n_los","exposed","n_fov","n_aim","aim_err","d_bomb","t_since"]
-    print("derived feature ranges (min/mean/max):")
-    for c, nm in enumerate(names):
-        print(f"  {nm:9s} {dc[:,c].min():.3f} / {dc[:,c].mean():.3f} / {dc[:,c].max():.3f}")
-    print(f"  exposed rate: mean {dc[:,3].mean():.3f}")
+    if v3:
+        # shape + sanity asserts on the freshly baked rounds
+        assert v3[0].shape[1] == exp_dim, (v3[0].shape[1], exp_dim)
+        assert not torch.isnan(torch.cat(v3[:200], 0)).any(), "NaN in v3 features"
+        dc = np.concatenate([x.numpy()[:, :NP_*(PPD+DERIVED)].reshape(-1, NP_, PPD+DERIVED)[:, :, PPD:]
+                             .reshape(-1, DERIVED) for x in v3[:200]], 0)
+        names = ["d_enemy","d_mate","n_los","exposed","n_fov","n_aim","aim_err","d_bomb","t_since"]
+        print("derived feature ranges (min/mean/max):")
+        for c, nm in enumerate(names):
+            print(f"  {nm:9s} {dc[:,c].min():.3f} / {dc[:,c].mean():.3f} / {dc[:,c].max():.3f}")
+        print(f"  exposed rate: mean {dc[:,3].mean():.3f}")
 
     if args.limit:
         print("[limit mode] not saving."); return
-    out = Path(args.data) / f"{args.split}_v3.pt"
-    # _BLOB["tensors"] is already v3, in original order (replaced in place)
-    _BLOB["feature_dim"] = exp_dim
-    _BLOB["per_player_dim"] = PPD + DERIVED
-    _BLOB["schema_version"] = "feature_schema_v3"
-    torch.save(_BLOB, out)
+    if args.src:
+        # assembled output: clean schema (no event_*/summaries), all rounds must be 687-d
+        bad = [i for i, t in enumerate(_BLOB["tensors"]) if t.shape[1] != exp_dim]
+        assert not bad, f"{len(bad)} rounds not {exp_dim}-d after bake+reuse, e.g. idx {bad[:3]}"
+        save_blob = {"tensors": _BLOB["tensors"], "metas": _BLOB["metas"],
+                     "feature_dim": exp_dim, "per_player_dim": PPD + DERIVED,
+                     "downsample": _BLOB["downsample"],
+                     "schema_version": "feature_schema_v3"}
+    else:
+        # legacy path: mutate the loaded blob in place (keeps event_* keys as before)
+        _BLOB["feature_dim"] = exp_dim
+        _BLOB["per_player_dim"] = PPD + DERIVED
+        _BLOB["schema_version"] = "feature_schema_v3"
+        save_blob = _BLOB
+    torch.save(save_blob, out)
     print(f"saved {out}  feature_dim={exp_dim} per_player={PPD+DERIVED}", flush=True)
 
 
