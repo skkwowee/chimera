@@ -26,11 +26,17 @@ class ClaudeVLMInference:
 
     Mirrors the Qwen3VLInference interface for side-by-side comparison.
     API key is read from ANTHROPIC_API_KEY env var (Anthropic SDK default).
+
+    Fable 5 notes: thinking is always on (never pass a `thinking` param —
+    explicit disabled is a 400), sampling params (temperature/top_p/top_k)
+    are rejected, and its tokenizer counts ~30% more tokens than Opus-tier —
+    re-baseline max_tokens/cost against `count_tokens(model="claude-fable-5")`
+    rather than reusing Opus-era numbers.
     """
 
     def __init__(
         self,
-        model: str = "claude-opus-4-6",
+        model: str = "claude-fable-5",
         max_tokens: int = 1024,
     ):
         self.model: str = model
@@ -88,6 +94,15 @@ class ClaudeVLMInference:
             )
         except Exception as e:
             raise RuntimeError(f"Claude API call failed: {e}") from e
+
+        # Fable 5 safety classifiers can decline with HTTP 200 + stop_reason
+        # "refusal" and an EMPTY content array — check before indexing content.
+        if response.stop_reason == "refusal":
+            detail = getattr(response, "stop_details", None)
+            category = getattr(detail, "category", None) if detail else None
+            raise RuntimeError(
+                f"Claude refused the request (category={category}) for {image_path.name}"
+            )
 
         block = response.content[0]
         assert isinstance(block, TextBlock)

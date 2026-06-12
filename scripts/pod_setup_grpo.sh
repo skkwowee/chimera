@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pod bootstrap for GRPO training with Qwen3.5-35B-A3B MoE.
+# Pod bootstrap for GRPO training with Qwen3.6-35B-A3B MoE.
 #
 # Why this exists: the previous run took 14h for 40 steps because torch's CUDA
 # build did not match the pod's CUDA runtime. causal-conv1d and flash-linear-attention
