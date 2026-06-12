@@ -53,6 +53,32 @@
 #     damped-CV} ensemble — model still wins on turns (38-42u vs 61-87u) but
 #     add a sampled-baseline column before publishing.
 # DIST CKPT IS NOW THE LEAD: same stability as old + sampling + best value.
+#
+# 2026-06-12 — three measurements + bias-audit council:
+# - FACING SHORTCUT CONFIRMED (+27.2pp): on facing-vs-momentum conflict frames
+#   (40% of moving frames) TRUTH follows momentum 65/35, MODEL follows facing
+#   62/38. Cause: yaw is a direct input (dims 3-6), velocity has NO input dims.
+#   scripts/facing_bias_check.py (--corrupt-yaw shuffle = causal test, queued).
+# - SURPRISE-DETECTS-KILLS FALSIFIED as measured: AUC 0.519; nats ELEVATED ~4s
+#   pre-kill, DROP after (kill resolves uncertainty). BUT metric was alive-count
+#   confounded (summed NLL); fixed to per-alive-mean — recompute pending.
+#   Adaptive clock: FROZEN (not dead) until corrected AUC; needs death-head for
+#   kill events regardless. scripts/event_boundary_check.py.
+# - GEO-GATED DECODE: scripts/geo_gate.py (BVH grammar-masking of wall-
+#   infeasible classes) drift 464u vs 487u @8s, wall-clipping impossible.
+#   Veto-rate logging added (council requirement). gen_residual now freezes
+#   input-only derived dims (untrained-noise rollout leak fixed).
+# - COUNCIL VERDICT (full: workflows output wf_02d59470-aa2): "No over-indexing
+#   on the model side; partially on measurement; one confirmed exception (the
+#   yaw/velocity input asymmetry)." Killed: duration counters (probe latent
+#   instead). Blocked: wall rays (until veto-rate data at 2.5x). Ablation queue:
+#   (1) v2+co-train control [deconfounds v3's headline win], (2) surprise
+#   recompute, (3) CE weight sweep {0.3,1.0} [tests "2-nat irreducible" claim],
+#   (4) yaw-shuffle then yaw-dropout, (5) live perception re-derivation in
+#   rollouts, (6) k-means codebook centers. LINE IN THE SAND: "Engineer only
+#   what the model architecturally cannot see; never what it merely fails to
+#   compute." DATA: all 70 matches tick-sequenced on HF; merge script (match-
+#   level split) being written; merge+bake v3-schema-unchanged, then retrain.
 # ============================================================================
 
 # ============================================================================

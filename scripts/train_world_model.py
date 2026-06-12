@@ -135,6 +135,9 @@ class WorldModelFlat(nn.Module):
 
 
 N_PLAYERS = 10   # frame is player-major: n_players x per_player_dim, then global
+RAW_PPD = 56     # raw per-player dims; dims [RAW_PPD:ppd] are derived perception
+                 # (input-only: masked out of every loss, so head outputs there
+                 # are UNTRAINED — decode must zero them or rollouts feed noise)
 
 # ---- distributional displacement head (classify-then-refine over player xy) ----
 # Ring edges in GAME UNITS (xy norm = units/3000). Class 0 = stationary (<8u);
@@ -263,7 +266,12 @@ class WorldModelPlayers(nn.Module):
         Falls back to forward() when the dist head is absent, so callers can
         use it unconditionally on any checkpoint."""
         if not self.dist:
-            return self.forward(x)
+            res = self.forward(x)
+            if self.ppd > RAW_PPD:                       # freeze input-only derived dims
+                B, L_, _ = res.shape
+                res = res.clone()
+                res[..., :self.player_block].reshape(B, L_, self.n_players, self.ppd)[..., RAW_PPD:] = 0
+            return res
         h, L = self._grid(x)
         P = self.n_players
         pres = self.player_head(h[:, :, :P, :])                         # [B,L,P,ppd]
@@ -279,6 +287,8 @@ class WorldModelPlayers(nn.Module):
         off_c = off.gather(-2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
         pres = pres.clone()
         pres[..., 0:2] = self.centers[cls] + off_c
+        if self.ppd > RAW_PPD:                           # freeze input-only derived dims
+            pres[..., RAW_PPD:] = 0
         pres = pres.reshape(x.shape[0], L, self.player_block)
         return torch.cat([pres, gres], dim=-1)                          # [B,L,F]
 

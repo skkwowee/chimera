@@ -53,7 +53,7 @@ def load_ckpt(path):
         return torch.load(safe, map_location="cpu", weights_only=False)
 
 
-def roll_step(model, buf, k, cv_residual, gap=1, want_value=False):
+def roll_step(model, buf, k, cv_residual, gap=1, want_value=False, gate=None):
     """One AR step: predict the next frame at +k from buf and slide the window.
 
     Returns (new_buf, pred_frame, value_logit_on_new_buf or None). For cv_residual
@@ -65,8 +65,11 @@ def roll_step(model, buf, k, cv_residual, gap=1, want_value=False):
     (cur - prev)/gap — without the /gap the prior extrapolates k× too far and the
     rollout silently explodes.
     """
-    res = model.gen_residual(buf)[:, -1, :]   # dist decode when present, forward() otherwise
-    pred = buf[0, -1] + res[0]
+    if gate is not None:                      # geometry-gated decode (wall-feasible classes)
+        pred = buf[0, -1] + gate.gated_residual(model, buf)
+    else:
+        res = model.gen_residual(buf)[:, -1, :]   # dist decode when present, forward() otherwise
+        pred = buf[0, -1] + res[0]
     if cv_residual:
         pred = pred + (k / gap) * (buf[0, -1] - buf[0, -2])
     buf = torch.cat([buf[:, 1:, :], pred.view(1, 1, -1)], dim=1)
@@ -76,25 +79,36 @@ def roll_step(model, buf, k, cv_residual, gap=1, want_value=False):
 
 
 @torch.no_grad()
-def drift_eval(model, rounds, L, k, cv_residual, args, pos_idx):
+def drift_eval(model, blob, L, k, cv_residual, args, pos_idx):
     """Position-drift table: model rollout vs const-velocity, per rollout step."""
     R = args.steps
     need = L + R * k + 1
-    keep = [t for t in rounds if t.shape[0] >= need]
+    keep = [(t, m) for t, m in zip(blob["tensors"], blob["metas"]) if t.shape[0] >= need]
+    gate, gate_map = None, None
+    if args.geo:
+        from geo_gate import GeoGate  # noqa
+        keep.sort(key=lambda tm: tm[1].get("map_name", ""))   # one BVH load per map
+        print("geometry-gated decode: ON (.tri BVH, wall-infeasible classes masked)")
     m_err = torch.zeros(R); cv_err = torch.zeros(R)
     m_xy = torch.zeros(R); cv_xy = torch.zeros(R)
     cnt = 0
     # deterministic spread of start points across rounds
-    for ri, r in enumerate(keep):
+    for ri, (r, meta) in enumerate(keep):
         if cnt >= args.n:
             break
+        if args.geo and meta.get("map_name") != gate_map:
+            if gate is not None:
+                print("  " + gate.stats())
+            gate_map = meta.get("map_name")
+            gate = GeoGate(gate_map)
         start = (ri * 37) % (r.shape[0] - need) + 1
         real = r[start:start + L + R * k].to(args.device)   # [L+R*k, F]
         buf = real[:L].clone().unsqueeze(0)                  # [1, L, F]
         last = real[L - 1]                                   # last real frame
         vel = real[L - 1] - real[L - 2]                      # last real per-tick velocity
         for step in range(1, R + 1):
-            buf, pred, _ = roll_step(model, buf, k, cv_residual, gap=1 if step == 1 else k)
+            buf, pred, _ = roll_step(model, buf, k, cv_residual,
+                                     gap=1 if step == 1 else k, gate=gate)
             true = real[L - 1 + step * k]
             cv = last + (step * k) * vel                      # const-velocity extrapolation
             m_err[step - 1] += F.l1_loss(pred[pos_idx], true[pos_idx]).item()
@@ -109,6 +123,8 @@ def drift_eval(model, rounds, L, k, cv_residual, args, pos_idx):
                                 * XY_SCALE).norm(dim=1).mean().item()
         cnt += 1
 
+    if gate is not None:
+        print("  " + gate.stats())
     m_err /= cnt; cv_err /= cnt; m_xy /= cnt; cv_xy /= cnt
     print(f"\nposition L1 error over {cnt} rollouts (normalized coords; lower=better);"
           f"\nxy(u) = mean per-player xy euclidean error in game units (all 10 players):\n")
@@ -182,6 +198,9 @@ def main():
                     help="value-through-rollout mode: AUC of value logit vs winner per depth")
     ap.add_argument("--depths", default="0,1,2,4,8",
                     help="comma-sep rollout depths for --value-auc (0 = real window)")
+    ap.add_argument("--geo", action="store_true",
+                    help="geometry-gated decode: mask wall-infeasible displacement "
+                         "classes via the .tri BVH (dist ckpts, drift mode)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
     if args.value_auc and args.n == 400:
@@ -206,7 +225,7 @@ def main():
         print(f"rollout {args.steps} steps = {args.steps*k*125}ms")
         pos_idx = torch.tensor([p * ppd + d for p in range(N_PLAYERS) for d in (0, 1, 2)],
                                device=args.device)
-        drift_eval(model, blob["tensors"], L, k, cv_residual, args, pos_idx)
+        drift_eval(model, blob, L, k, cv_residual, args, pos_idx)
 
 
 if __name__ == "__main__":

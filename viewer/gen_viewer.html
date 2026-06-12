@@ -5,7 +5,8 @@
 <title>Chimera — World-Model Generation Viewer</title>
 <style>
   :root { --bg:#0e0f13; --panel:#171922; --ink:#e6e8ef; --mut:#8a90a2;
-          --t:#e8b13a; --ct:#4ea3ff; --gen:#ff5db1; --cv:#46e0c0; --ok:#39d98a; }
+          --t:#e8b13a; --ct:#4ea3ff; --gen:#ff5db1; --cv:#46e0c0; --ok:#39d98a;
+          --surp:#ff9d3a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -28,7 +29,7 @@
   .ring { width:12px; height:12px; border-radius:50%; border:2px solid var(--gen);
           display:inline-block; }
   .valbar { height:14px; border-radius:7px; margin-top:4px; overflow:hidden;
-            background:var(--t); display:flex; }
+            background:var(--t); display:flex; justify-content:flex-end; }
   .valbar > i { background:var(--ct); display:block; height:100%; }
   .toggles { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .err { color:var(--gen); }
@@ -39,6 +40,7 @@
 <div class="wrap">
   <div class="stage">
     <canvas id="cv" width="760" height="760"></canvas>
+    <canvas id="spark" width="760" height="74" style="margin-top:8px;cursor:crosshair"></canvas>
   </div>
   <div class="side">
     <h1>World-Model Generation</h1>
@@ -47,6 +49,7 @@
     <div class="row"><span class="k">frame</span><span id="fnum">–</span></div>
     <div class="row"><span class="k">mean gen err (alive)</span><span class="err" id="merr">–</span></div>
     <div class="row"><span class="k">mean const-vel err</span><span style="color:var(--cv)" id="cverr">–</span></div>
+    <div class="row"><span class="k">surprise</span><span style="color:var(--surp)" id="surp">–</span></div>
 
     <div class="k" style="margin-top:10px">value head — P(CT win)</div>
     <div class="valbar"><i id="vb" style="width:50%"></i></div>
@@ -72,6 +75,7 @@
       <div><span class="ring"></span> generated +1s (model)</div>
       <div><span style="display:inline-block;width:12px;height:12px;border:2px solid var(--cv)"></span> const-vel +1s (momentum)</div>
       <div><span style="color:var(--mut)">✕</span> &nbsp;truth +1s (reality)</div>
+      <div><span class="dot" style="background:radial-gradient(rgba(255,157,58,.9),rgba(255,157,58,0))"></span> surprise halo (per-player nats)</div>
     </div>
     <div class="hint" id="hint"></div>
   </div>
@@ -103,6 +107,15 @@ function drawFrame(){
   document.getElementById('vb').style.width = (v*100).toFixed(0)+'%';
   document.getElementById('vtxt').textContent = (v*100).toFixed(0)+'% CT';
   let errSum=0, cvSum=0, n=0;
+  // surprise halos first (under everything): radius/alpha scale with per-player nats
+  for(const p of f.players){
+    if(!p.alive || !(p.nats > 2)) continue;
+    const nx=tx(p.x), ny=ty(p.y);
+    const g = ctx.createRadialGradient(nx,ny,3, nx,ny, 10 + p.nats*1.6);
+    g.addColorStop(0, 'rgba(255,157,58,'+Math.min(0.85, p.nats/8)+')');
+    g.addColorStop(1, 'rgba(255,157,58,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(nx,ny, 10 + p.nats*1.6, 0, 7); ctx.fill();
+  }
   for(const p of f.players){
     if(!p.alive) continue;
     const nx=tx(p.x), ny=ty(p.y);
@@ -140,6 +153,12 @@ function drawFrame(){
   }
   document.getElementById('merr').textContent = n? (errSum/n).toFixed(0)+'u' : '–';
   document.getElementById('cverr').textContent = n? (cvSum/n).toFixed(0)+'u' : '–';
+  // surprise readout: total nats + the player the model is most surprised by
+  let topP=null;
+  for(const p of f.players) if(p.alive && (!topP || p.nats>topP.nats)) topP=p;
+  document.getElementById('surp').textContent =
+    (f.surp||0).toFixed(1)+' nats' + (topP && topP.nats>2 ? '  ('+topP.slot+' '+topP.nats.toFixed(1)+')' : '');
+  drawSpark();
 }
 
 function drawRollout(){
@@ -167,6 +186,41 @@ function drawRollout(){
     'dashed pink = generated rollout · solid grey = ground truth · '+ro.steps.length+
     ' steps ('+ro.steps[ro.steps.length-1].t_ms+'ms). Watch generated trails diverge.';
 }
+
+const spark = document.getElementById('spark'), sctx = spark.getContext('2d');
+function drawSpark(){
+  const W=spark.width, H=spark.height, N=D.frames.length;
+  const mx = Math.max(...D.frames.map(f=>f.surp||0), 1);
+  sctx.clearRect(0,0,W,H);
+  sctx.fillStyle='#171922'; sctx.fillRect(0,0,W,H);
+  // median line (the "compressible half" boundary)
+  const sorted=[...D.frames].map(f=>f.surp||0).sort((a,b)=>a-b);
+  const med=sorted[Math.floor(N/2)], my=H-6-(med/mx)*(H-14);
+  sctx.strokeStyle='rgba(138,144,162,0.35)'; sctx.setLineDash([3,3]);
+  sctx.beginPath(); sctx.moveTo(0,my); sctx.lineTo(W,my); sctx.stroke(); sctx.setLineDash([]);
+  // surprise area
+  sctx.beginPath(); sctx.moveTo(0,H-6);
+  for(let i=0;i<N;i++) sctx.lineTo(i/(N-1)*W, H-6-((D.frames[i].surp||0)/mx)*(H-14));
+  sctx.lineTo(W,H-6); sctx.closePath();
+  sctx.fillStyle='rgba(255,157,58,0.35)'; sctx.fill();
+  sctx.strokeStyle='#ff9d3a'; sctx.lineWidth=1.2; sctx.beginPath();
+  for(let i=0;i<N;i++){ const x=i/(N-1)*W, y=H-6-((D.frames[i].surp||0)/mx)*(H-14);
+    i?sctx.lineTo(x,y):sctx.moveTo(x,y); } sctx.stroke();
+  // playhead
+  const px=fi/(N-1)*W;
+  sctx.strokeStyle='#e6e8ef'; sctx.lineWidth=1.5;
+  sctx.beginPath(); sctx.moveTo(px,2); sctx.lineTo(px,H-2); sctx.stroke();
+  sctx.fillStyle='#8a90a2'; sctx.font='10px monospace'; sctx.textAlign='left';
+  sctx.fillText('surprise (nats) — click to seek · dashed = median', 6, 11);
+}
+spark.addEventListener('click', e=>{
+  const r=spark.getBoundingClientRect();
+  fi=Math.max(0, Math.min(D.frames.length-1,
+      Math.round((e.clientX-r.left)/r.width*(D.frames.length-1))));
+  document.getElementById('scrub').value=fi;
+  if(rollMode){rollMode=false;document.getElementById('rollBtn').classList.remove('on');}
+  drawFrame();
+});
 
 function render(){ rollMode && D.rollout ? drawRollout() : drawFrame(); }
 

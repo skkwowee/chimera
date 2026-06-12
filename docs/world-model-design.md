@@ -1,12 +1,20 @@
 # World Model Design — Next-State Prediction over CS2 Game State
 
-**Status: PLANNED / STARTING.** This is the new central design doc for
-chimera. Nothing in the world-model line is trained yet. The data
-substrate exists (see §9); the model, the horizon sweep, the probe
-battery wiring, and the language bridge are forward work. No metrics in
-this doc are measured — measured findings live in
-`docs/learning-curve-finding.md` (the saturation result that motivates
-this pivot) and in `docs/methodology.md` (the probe / σ_s gates we keep).
+**Status: BUILT & MEASURED (world-model phase); language bridge is
+forward work.** Trained 2026-06: per-player-token transformer (19.2M),
+v3 features (687-d), multi-task next-state + value, distributional xy
+head (97 classes, classify-then-refine). The measured verdict ledger
+lives in `claude-progress.txt` — it supersedes any number or plan in
+this doc. Known doc-drift corrected after the 2026-06-12 bias audit:
+(a) §2 below claims per-player velocity dims — FALSE, the schema has
+view angle but no velocity (this exact asymmetry produced the measured
++27.2pp facing shortcut); (b) §1's "no outcome label in the training
+objective" no longer holds — a value head (P(CT win), weight 0.3) is
+deliberately co-trained, a revision forced by the v2 value-transfer
+failure. Sections below are design-time text kept for the record.
+Original measured-findings pointers: `docs/learning-curve-finding.md`
+(the saturation result that motivated this pivot) and
+`docs/methodology.md` (the probe / σ_s gates we keep).
 
 ## 0. Why we pivoted
 

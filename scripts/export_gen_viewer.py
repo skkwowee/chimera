@@ -17,9 +17,10 @@ from __future__ import annotations
 import argparse, json, math, shutil, sys, tempfile
 from pathlib import Path
 import torch
+import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from train_world_model import build_model, N_PLAYERS  # noqa
+from train_world_model import build_model, dist_class, N_PLAYERS  # noqa
 from awpy.data.map_data import MAP_DATA
 
 MAPS = ["de_ancient","de_dust2","de_inferno","de_mirage","de_nuke","de_overpass","de_train"]
@@ -37,6 +38,9 @@ def load_ckpt(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", default="outputs/wm_3map/h8_mt/best_ns.pt")
+    ap.add_argument("--value-ckpt", default=None,
+                    help="separate ckpt for the value head (use best.pt — value AUC peaks "
+                         "early and the late-step best_ns value head is overfit/saturated)")
     ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3.pt")
     ap.add_argument("--round", type=int, default=None, help="round index (default: first usable)")
     ap.add_argument("--anchor", type=int, default=None, help="rollout anchor frame (default: mid)")
@@ -51,6 +55,16 @@ def main():
                         per_player_dim=ppd, dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     cv_res = bool(a.get("cv_residual", False))
+
+    vmodel = model
+    if args.value_ckpt:
+        vck = load_ckpt(args.value_ckpt); va = vck["args"]
+        vmodel = build_model(va["arch"], vck["feature_dim"], va["d_model"], va["layers"],
+                             va["heads"], per_player_dim=vck.get("per_player_dim", 56),
+                             dist=va.get("dist_head", False))
+        vmodel.load_state_dict(vck["model"]); vmodel.to(args.device).eval()
+        print(f"value head from {args.value_ckpt} (step {vck.get('step')}, "
+              f"value_auc {vck.get('value_auc', float('nan')):.3f})")
 
     blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
     ridx = args.round if args.round is not None else \
@@ -68,15 +82,27 @@ def main():
     # ---- per-frame single-step generation (batched) ----
     starts = list(range(L - 1, T - k))        # anchor t with full window + a future
     frames_json = []
+    xy_idx = torch.tensor([[p*ppd, p*ppd+1] for p in range(N_PLAYERS)])
+    alive_idx = torch.tensor([p*ppd+13 for p in range(N_PLAYERS)])
     B = 128
     for i in range(0, len(starts), B):
         chunk = starts[i:i+B]
         wins = torch.stack([r[t-L+1:t+1] for t in chunk]).to(args.device)   # [b,L,F]
+        out = model.heads(wins)
         res = model.gen_residual(wins)[:, -1, :].cpu()                     # [b,F] (dist decode)
-        val = torch.sigmoid(model.heads(wins)["value"][:, -1]).cpu()       # [b]
+        vout = out if vmodel is model else vmodel.heads(wins)
+        val = torch.sigmoid(vout["value"][:, -1]).cpu()                    # [b]
+        # surprise = NLL of the true displacement class (dist ckpts only)
+        logp = (F.log_softmax(out["dist_logits"][:, -1].float(), -1).cpu()
+                if "dist_logits" in out else None)
         for j, t in enumerate(chunk):
             cur = r[t]; fut = r[t+k]; prev = r[max(0, t-1)]
             pred = cur + res[j] + (k * (cur - prev) if cv_res else 0.0)
+            nll = None
+            if logp is not None:
+                tc = dist_class((fut - cur)[xy_idx])                      # true class [P]
+                nll = -logp[j].gather(1, tc.unsqueeze(1)).squeeze(1)
+                nll[cur[alive_idx] <= 0.5] = 0.0
             players = []
             for p in range(N_PLAYERS):
                 alive = float(cur[p*ppd+13]) > 0.5
@@ -92,8 +118,11 @@ def main():
                     "cvx": round(cvx), "cvy": round(cvy),
                     "err": round(math.dist((gx, gy), (fx, fy))),
                     "cverr": round(math.dist((cvx, cvy), (fx, fy))),
+                    "nats": round(float(nll[p]), 1) if nll is not None else 0.0,
                 })
-            frames_json.append({"t": int(t), "value": round(float(val[j]), 3), "players": players})
+            frames_json.append({"t": int(t), "value": round(float(val[j]), 3),
+                                "surp": round(float(nll.sum()), 1) if nll is not None else 0.0,
+                                "players": players})
 
     # ---- autoregressive rollout trail from an anchor ----
     anchor = args.anchor if args.anchor is not None else max(L - 1, min(T - args.rollout*k - 1, T // 2))
