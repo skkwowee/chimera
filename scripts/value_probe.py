@@ -115,7 +115,8 @@ def main():
         ck = torch.load(safe, map_location="cpu", weights_only=False)
     a = ck["args"]; window = a["window"]
     model = build_model(a["arch"], ck["feature_dim"], a["d_model"], a["layers"], a["heads"],
-                        per_player_dim=ck.get("per_player_dim", 56))
+                        per_player_dim=ck.get("per_player_dim", 56),
+                        dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     print(f"ckpt step {ck.get('step')}  arch={a['arch']}  latent_dim={a['d_model']}")
 
