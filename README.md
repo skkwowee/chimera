@@ -4,7 +4,17 @@
 
 Chimera learns Counter-Strike 2 by predicting the future. A causal spatiotemporal transformer is trained over sequences of engine-accurate game-state frames — state → state, no text — exactly like language-model pretraining, but over game states instead of tokens. The hypothesis is that a model forced to predict where ten players, the bomb, and the economy will be a fraction of a second to a few seconds from now must internalize the game's tactics, geometry, and causality. Value functions, event detection, and (in a later phase) natural-language reasoning are then built as heads and bridges on top of the learned latent.
 
-> **Status (2026-06):** the world model is the project's forward direction and is **just starting** — the 597-d state tensors are built and the cleanup is done, but no world model has been trained yet. The prior VLM line of work ("See, Then Think") is **superseded and parked**; its real findings are preserved below because they are what motivated the pivot. Nothing in the world-model sections describes completed training or measured results.
+> **Status (2026-06):** Phase 1 (world model) is **trained and measured** — a
+> per-player-token transformer with a distributional displacement head and a
+> co-trained value head, on v3 features (687-d), now retrained on a ~2.8×
+> merged corpus (3-map). Phase 2 (language bridge to Qwen3.6-35B) is the next
+> build; Phase 3 (GRPO via world-model rollouts) reuses existing infra. The
+> prior VLM line ("See, Then Think") is **superseded and parked**.
+>
+> **→ Read [`docs/decisions-ledger.md`](docs/decisions-ledger.md) first** — the
+> canonical record of what was tried, killed (visual SFT, naive VQ, cv-residual),
+> kept, the evaluation traps found, and the "Line in the Sand" for new features.
+> `claude-progress.txt` tracks run state; the ledger tracks rationale.
 
 ## Why the pivot — what the VLM line taught us
 

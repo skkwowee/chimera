@@ -1,5 +1,9 @@
 # Chimera — Session Progress
 
+# >>> WHY decisions were made (killed/kept/eval-traps/the Line in the Sand):
+# >>> see docs/decisions-ledger.md — the canonical rationale. THIS file tracks
+# >>> run STATE; that file tracks WHY. Add killed/refined ideas there, not here.
+
 # ============================================================================
 # 2026-06-09: THREE VERDICTS from the hardened eval battery (council-driven)
 # ============================================================================
