@@ -86,6 +86,60 @@
 # ============================================================================
 
 # ============================================================================
+# 2026-06-14: NLA RECONSTRUCTION OBJECTIVE added to the bridge design
+# ============================================================================
+# WHAT: closed the latent->text bridge into a Natural-Language Autoencoder by
+#   adding a TEXT-ONLY DECODER (reconstructor) that rebuilds the frozen world-
+#   model latent from Qwen's GENERATED reasoning text. The existing bridge
+#   (latent -> resampler -> soft tokens -> Qwen) is the ENCODER half; the new
+#   decoder is the DECODER half. Target = the pooled-512 vector z=h.mean(dim=2)
+#   that value_head actually reads (grid is [B,L,11,512], slots identity-fixed
+#   so no Hungarian matching). Loss = (1-cos) + 0.1*MSE on standardized z.
+#   HARD FIREWALL: the decoder consumes the decoded answer STRING re-tokenized
+#   fresh ONLY -- zero tensor path from latent/soft-tokens/residual-stream, or
+#   reconstruction is trivial cheating (enforced by assertion + unit tests;
+#   shuffled/empty text must score at the latent-mean floor).
+# WHY: two things the bridge was missing.
+#   (A) FAITHFULNESS METRIC, stronger than ablate-the-latent: reconstruct z
+#       from Qwen's generated text and measure fidelity (cosine / variance-
+#       explained vs shuffled-text, latent-mean, and ablated-bridge controls,
+#       plus value-head-agreement + readability guard). Gives a NUMBER for "is
+#       Qwen faithfully rendering the latent or hallucinating past it" -- the
+#       embellishment risk ablate alone is blind to. Ablate and recon are
+#       COMPLEMENTARY (ablate = latent is USED; recon = text PRESERVES it);
+#       recon replaces nothing.
+#   (B) LABEL-FREE training/bootstrap signal: trained on reconstruction
+#       fidelity, NO answer key -- sidesteps "where do correct descriptions
+#       come from / is the teacher LLM stable on raw ticks" (it isn't; that's
+#       why the world model exists).
+# HONEST CAVEATS (do not lose): recon-faithful != good tactical reasoning (NLA
+#   optimizes info-preservation, can yield faithful-but-stilted text) -- so it
+#   COMPLEMENTS, never replaces, templated grounding (format/vocab) and GRPO
+#   (reasoning quality, value-through-rollout stays sole quality signal).
+#   Capacity is open: bounded text vs 512-d (x11) latent -- target the
+#   decision-relevant subspace, not the raw vector.
+# WIRING (resolved): reported metric is ALWAYS a SEPARATE decoder trained on
+#   FROZEN held-out verbalizer outputs (joint training -> private cipher, the
+#   documented NLA failure + our circularity scar). Milestone lambda=0 (pure
+#   eval). Optional small annealed aux regularizer only after ablate passes.
+#   In GRPO recon is a CONSTRAINT-FILTER (zero the advantage of group
+#   completions below a recon threshold before group-norm), NOT a summed
+#   reward; eval-only fallback if it starves the group.
+# FIRST MILESTONE revised: Step 0 is a LOCAL (4090, no pod) capacity kill-test
+#   -- train only the decoder on cached templated text -> target, sweep text
+#   budget {32,64,128,256} x target {pooled-512,+rollout,value+rollout+PCA};
+#   can kill NLA before any QLoRA spend. Green light = TWO numbers:
+#   latent-on > latent-off (grounding exists) AND recon(real) > recon(shuffled/
+#   ablated) above floor with value-agreement+readability (grounding faithful).
+# DESIGN DOC is canonical: see docs/bridge-design.md (new NLA piece in the
+#   architecture/eval/milestone sections). Paper hook in paper/PIVOT_NOTES.md
+#   (contribution bullet + Faithfulness eval subsection + Related Work cite of
+#   Anthropic's Natural Language Autoencoders). Code symbols this targets:
+#   scripts/train_world_model.py WorldModelPlayers._grid ([B,L,11,512]),
+#   value_head(h.mean(dim=2)), slot_emb (identity-fixed slots).
+# ============================================================================
+
+# ============================================================================
 # CURRENT PHASE: world model (next-state prediction)   [pivot 2026-06]
 # ============================================================================
 # READ THIS BLOCK FIRST. Everything below the "ARCHIVE" line is the prior VLM

@@ -121,6 +121,41 @@ killed idea below is a thing that violated that bet or failed its own test.
   (per-alive-mean, corrected) — cleared the council's ~0.65 gate.
 - **Lesson:** see §3 — the metric, not the idea, was broken.
 
+### NLA reconstruction objective (text-only decoder → faithfulness leg)
+- **What:** close the latent→text bridge into a Natural-Language Autoencoder
+  (Anthropic NLA: the bottleneck is *text*). The bridge is the encoder
+  (latent→reasoning text); ADD a **text-only decoder** that reconstructs the
+  frozen world-model latent — headline target the pooled-512 `z = h.mean(dim=2)`,
+  the exact vector `value_head` reads — from Qwen's *generated* text. Decoder reads
+  the re-tokenized output STRING only (firewall: zero tensor path from the latent /
+  soft tokens, enforced by assertion + unit test). Reconstruction fidelity
+  (cosine/variance-explained vs the true latent) is the metric.
+- **Verdict:** ADOPTED — **as a metric first** (separate, frozen-verbalizer,
+  held-out decoder; `λ=0` for the milestone). Aux/RL legs (small annealed λ
+  regularizer; Track-2 REINFORCE) are gated behind milestone success. In GRPO it is
+  a **constraint-filter** (zero the advantage of completions below τ before
+  group-norm), NOT a summed reward — value-through-rollout stays the sole quality
+  signal.
+- **Evidence (design-stage, gates defined):** it supplies the faithfulness leg
+  **ablate-the-latent alone could not** — ablate proves the latent is USED, recon
+  proves the OUTPUT TEXT *faithfully renders* it vs hallucinating past it; the two
+  are orthogonal and both ship. Green light is now TWO numbers: `latent-on >
+  latent-off` AND `recon(real text) > recon(shuffled / ablated-bridge text)` above
+  the latent-mean capacity floor, with value-head-agreement and readability intact.
+  A cheap LOCAL capacity kill-test (text-budget × target sweep on cached latents,
+  no pod) can falsify it before any QLoRA spend.
+- **Lesson:** it is a **label-free** training/eval signal — reward = "does the text
+  preserve enough to rebuild the latent," **no answer key** — so it sidesteps the
+  "where do correct descriptions come from / is the teacher LLM stable enough to
+  read raw ticks" problem (LLMs are bad at tick-state — that is WHY the world model
+  exists; the NLA loop needs no teacher). Caveats it must carry: recon-faithful ≠
+  good reasoning (it certifies info-preservation only — GRPO owns reasoning quality,
+  templated grounding owns format/vocab); never report fidelity bare (pair with
+  value-head-agreement + readability or it can be gamed by steganographic gibberish);
+  reconstruct the **pre-augmentation** raw latent (not the appended value/rollout
+  channels) and weight toward predictive channels, or it inherits the circularity it
+  was built to detect.
+
 ---
 
 ## 3. EVALUATION LESSONS (the methodology scars)
@@ -189,6 +224,9 @@ create behavioral shortcuts in world models.*
   language to *create* understanding from captioning → circular. Bridge SFT only
   *translates* a latent that already understands (Phase 1 baked it). Same word,
   opposite job. Don't conflate them.
+- **The bridge is the encoder half of a Natural Language Autoencoder; adding the
+  decoder half (text → reconstruct the latent) closes the faithfulness loop.** (§2
+  NLA entry.)
 - **CS2-from-demos is state-modeling, not perception.** The parser hands us
   complete privileged state for free. Perception = solved; understanding =
   learned by next-state; language = bridge; reasoning = GRPO.

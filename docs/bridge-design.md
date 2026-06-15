@@ -16,7 +16,15 @@ WORLD MODEL (frozen) ──latent──► RESAMPLER ──soft tokens──► 
    d_model=512                   (trainable)                  (base frozen,
    per-frame: 11 tokens                                        LoRA + new xattn
    (10 players + global)                                       trainable)
+
+   z_hat <- RECONSTRUCTOR (reverse-Perceiver) <- re-embed TEXT ONLY <- generated text
+   recon-fidelity vs z=h.mean(dim=2): round-trip faithfulness (firewall: text-only)
 ```
+
+The bridge is the **encoder half of a Natural-Language Autoencoder** (latent→text);
+§2b adds the **decoder half** (text→latent) whose reconstruction fidelity is a
+label-free *faithfulness* metric — does the generated text render the latent, or
+hallucinate past it? NLA antecedent: Anthropic, *Natural Language Autoencoders*.
 
 ---
 
@@ -76,12 +84,76 @@ Three trainable pieces; **the world model and the Qwen base are frozen.**
      base self-attention untouched (tanh-gate inits at 0 → identity at start).
      Stronger conditioning, keeps text context clean. More params, more plumbing.
 
-**Trainable params:** featurizer + resampler (~tens of M) + QLoRA adapters
-(~0.1–1% of 35B). Everything else frozen.
+**Trainable params (the verbalizer / encoder half):** featurizer + resampler
+(~tens of M) + QLoRA adapters (~0.1–1% of 35B). Everything else frozen. The
+**reconstructor (decoder half)** is a separate module trained separately — see §2b.
 
 ---
 
-## 3. The decisive eval — ablate-the-latent (eval #1, before anything else)
+## 2b. The reconstructor (decoder half — the NLA bottleneck-is-text)
+
+The bridge above is only the *encoder* of a Natural-Language Autoencoder: latent →
+text. Closing the loop means adding a **text-only decoder** `R` that reconstructs
+the frozen world-model latent from Qwen's *generated* reasoning. Reconstruction
+fidelity then answers the question ablate-the-latent cannot: not "does the bridge
+*use* the latent" but "does the output text *faithfully render* it, or embellish
+past it?" (the Qwen-embellishment risk the bridge was missing).
+
+**What it reconstructs (the target `z`).** The **pooled-512 latent**
+`z = h.mean(dim=2) ∈ R^512` — the *exact* vector `value_head` consumes in
+`scripts/train_world_model.py` (`self.value_head(h.mean(dim=2))`). It is provably
+value-bearing, low enough dimension to be text-expressible (sidesteps the capacity
+risk), and answers the load-bearing question: did the text preserve what determines
+the model's read? Targets are **fixed per-dim standardized** (mean/std frozen over
+the train set) so MSE isn't dominated by a few high-variance dims. Slots are
+identity-fixed by `slot_emb` (slot k is always player k, index 10 global), so
+per-token reconstruction needs **no Hungarian matching**.
+
+**The text-only firewall (non-negotiable).** `R` consumes **only the decoded
+answer string**, re-tokenized in a fresh context — no soft-token prefix, no prompt,
+no KV-cache that ever saw the soft tokens:
+
+```
+Qwen generates answer text y  -> detach + decode to STRING -> re-tokenize fresh
+   -> re-embed via frozen text encoder (run ONLY on the generated string, never
+      the residual stream that saw soft tokens)
+   -> reverse-Perceiver (2–4 layers, M_r learned queries cross-attend to H_y)
+   -> MLP head -> z_hat in R^512
+```
+
+The reverse-Perceiver is a **separate module — do NOT tie weights with the forward
+resampler** (reuse-in-reverse leaks latent-side structure). **Hard rule, enforced
+in code:** `R` takes `y_ids` only; **zero tensor path** from latent / soft tokens /
+the Qwen residual stream that saw soft tokens may reach `R`'s input. Enforce with
+`stop_gradient` + an assertion + a unit test: `recon_from_shuffled_text` and
+`recon_from_empty_text` must score at the **latent-mean floor**. If they don't, the
+firewall is broken and every fidelity number is a lie.
+
+**Loss.** `L_recon = (1 − cos(z_hat, z)) + β·MSE(z_hat, z)`, β ≈ 0.1. Cosine is the
+headline metric (scale-invariant, matches how downstream heads use direction); MSE
+is secondary, on standardized targets.
+
+**Target fallback ladder** (only if the chosen target fails the capacity probe,
+§7 Step 0): (1) **[default]** pooled-512 `z`; (2) **decision-relevant projection** —
+top-k PCA of `h` over channels the value+dist heads actually use (head-Jacobian);
+(3) **head outputs directly** — value logit, per-player top-1 dist class ∈ {0..96},
+rollout value mean/spread at +2s/+4s (low-dim, certainly text-expressible, and
+arguably the *most* meaningful target). **Stretch:** full `[11,512]` per-token grid
+(target token k = `h[:,:,k,:]`, no matching) — only after pooled-512 shows a clean
+latent-on ≫ latent-off gap.
+
+**Trained as an evaluator first, always separate.** The **reported faithfulness
+number always comes from a separate decoder trained on frozen, held-out verbalizer
+outputs** — no gradient to Qwen / resampler / LoRA. A jointly-trained decoder
+co-adapts with the verbalizer into a private cipher (high fidelity, unreadable text)
+— the documented NLA failure mode and this project's own circularity scar. The clean
+number requires the verbalizer frozen when the decoder is trained. (Optional aux/RL
+uses of recon — as a small annealed regularizer in 2a, or a constraint-filter in
+GRPO — are in §5; they never source the reported metric.)
+
+---
+
+## 3. The decisive eval — ablate-the-latent (eval #1) AND recon-fidelity (eval #2)
 
 Run identical SFT/inference with the soft tokens **zeroed** (and separately
 **shuffled** across examples). Report the delta on a held-out reasoning eval
@@ -94,6 +166,47 @@ Run identical SFT/inference with the soft tokens **zeroed** (and separately
 
 This is the council's "implement ablate-the-latent FIRST" requirement. It is the
 single test that distinguishes this bridge from the Era-1 failure.
+
+### eval #2 — recon-fidelity (the missing faithfulness leg)
+
+Ablate and recon are **orthogonal and complementary — recon subsumes nothing.** A
+bridge can *pass* ablate (it uses the latent) yet *fail* recon (it uses it but Qwen
+embellishes detail not in the latent); ablate alone is blind to exactly that
+embellishment. **Keep both.**
+
+| Eval | Question | Role |
+|---|---|---|
+| **Ablate-the-latent** (#1) | Does the bridge **use** the latent at all? | **FIRST GATE** — the Era-1 circularity tripwire. |
+| **Recon-fidelity** (#2) | Is the latent **faithfully rendered** in the text, or hallucinated past? | **SECOND GATE** — the missing faithfulness leg. |
+
+**Eval order for a green light:**
+1. **Ablate passes** — grounding exists (latent-on ≫ latent-off on value-agreement).
+2. **Recon-fidelity above floor AND beats controls** — grounding is faithful.
+3. **Value-agreement / reasoning quality** — grounding is useful.
+
+**Mandatory anti-gaming controls** (report fidelity ONLY against these, never bare):
+- **(a) Shuffled-text control** — decode a *different* example's text; fidelity must
+  collapse to the floor (else the decoder rode a prior/mean, not the text).
+- **(b) Ablated-bridge control** — text generated with soft tokens zeroed must
+  reconstruct *worse*. The delta `recon(latent-on text) − recon(latent-off text)`
+  is **the single strongest honesty number**: it shows the text carries
+  *latent-specific* information, not prompt patterns.
+- **(c) Latent-mean baseline** — predicting the corpus-mean `z` sets the floor.
+  Report fidelity as **fraction-of-variance-explained over that floor**, not raw
+  cosine (raw cosine on a low-rank post-LayerNorm manifold is deceptively high).
+- **(d) Empty/scrambled-text invariant** — must score at the floor (firewall audit).
+
+**The faithfulness-gibberish guard (mandatory).** Recon-fidelity must **never** be
+reported or used as a gate *alone* — it can be satisfied by latent-encoding
+gibberish (a steganographic degenerate code). Always pair it with:
+- a **value-head-agreement** number — feed `z_hat` through the **frozen `value_head`**
+  and compare `P(CT win)` to the true value (per-example, un-fakeable by a
+  mean-predictor); and
+- a **readability/perplexity guard** (base-Qwen perplexity, or a human readability
+  check on the generated text).
+
+A passing faithfulness claim requires **fidelity-above-controls AND value-agreement
+AND readability.** Recon alone is not allowed to carry a grounding claim.
 
 ---
 
@@ -143,6 +256,25 @@ understanding is already in the frozen latent, and (b) the target text encodes t
 *predictive* outputs, which are not computable from the current frame — so the
 soft tokens are load-bearing by construction, and ablate-the-latent verifies it.
 
+**NLA complements this decision — it does not replace it.** Reconstruction-faithful
+text is *not* the same as good tactical reasoning text: NLA optimizes
+information-preservation and can yield faithful-but-stilted prose. So templated
+grounding still owns format/vocab, and GRPO still owns reasoning quality; the recon
+objective only certifies faithfulness. Two optional, hedged uses of recon as a
+*training signal* (never the reported metric, which is always a separate decoder):
+- **Phase 2a-0 (optional warm-start, not milestone-critical):** label-free recon
+  pretrain of featurizer+resampler+QLoRA against the decoder. Listed for
+  completeness; the milestone does **not** depend on it.
+- **Phase 2a aux (optional, only after ablate passes):** `L = CE_template + λ·L_recon`,
+  λ small (0.05–0.1), annealed down, **decoder frozen** during this (no collusion).
+  Recon then acts as a regularizer keeping Qwen on-latent while it learns
+  format/vocab. λ is an **unvalidated hyperparameter — measure fluency before/after.**
+  Gradients reach the verbalizer only via Qwen's **teacher-forced** hidden states for
+  the answer span (no sampling op on the forced path → differentiable, straight-
+  through). The literal REINFORCE NLA loop (reward = −L_recon on freely generated
+  text) is **research-stretch, gated behind milestone success**, always with the
+  GRPO KL-to-SFT anchor and a fluency guard.
+
 **Phase 2b (fluency, optional) — mix in B and/or C.** Once the channel is wired
 and grounded, enrich with prediction-conditioned Claude reasoning (C — Claude
 shown the value/rollouts, never raw-features-only) and whatever aligned commentary
@@ -154,6 +286,16 @@ Reasoning is made *good* by GRPO: group = sampled world-model rollouts, reward =
 value-through-rollout (gate passed, flat ~0.82 through 8s) + perception grounding.
 No human reasoning labels in the RL loop. **This is why we don't over-invest in
 2a/2b text quality** — the bridge SFT teaches the mapping; GRPO teaches the reasoning.
+
+**Recon in GRPO is a CONSTRAINT, not a summed reward.** Do **not** add `λ·recon` to
+the GRPO reward — that lets the policy trade reasoning for info-density (stilted
+text) and double-counts grounding already in value-through-rollout. Instead:
+**hard-floor / zero the advantage** of any of the G=16 group completions whose
+recon-fidelity < threshold τ, *before* group-normalizing. Faithfulness becomes a
+**feasibility constraint**; value-through-rollout stays the **sole quality signal**
+that shapes ranking. τ = 25th percentile of the SFT-passing recon distribution.
+**Documented fallback:** if the constraint starves the group (zero-variance-advantage
+collapse), drop to **recon-as-eval-only.**
 
 ---
 
@@ -174,21 +316,65 @@ No human reasoning labels in the RL loop. **This is why we don't over-invest in
   agreement between stated assessment and the value head is the cheapest honest
   one) before GRPO has a reward to optimize.
 
+### NLA-specific kill-criteria (report as a negative result, do not quietly drop)
+1. **Capacity floor failure.** If even value+rollout (or top-PCA) cannot be
+   reconstructed above the latent-mean floor from ≤256 tokens (§7 Step-0 sweep), the
+   metric has no dynamic range — NLA degrades to a value/rollout-only probe, or is
+   reported as a negative result. Learned **before any pod spend.**
+2. **Firewall failure.** If shuffled/empty-text recon does not collapse to the floor,
+   the metric is meaningless — fix or abandon.
+3. **Steganographic degenerate code.** If recon-as-reward (Track-2 / aux λ) drives
+   readability/perplexity down (fidelity up, prose down), that variant **does not
+   ship** — recon stays metric-only.
+4. **No latent-specific signal.** If `recon(real) ≈ recon(shuffled/ablated)`, the text
+   carries no latent-specific information — same stop-and-fix as a failed ablate.
+
+### NLA honest caveats
+- **Recon-faithful ≠ good reasoning.** NLA certifies *information preservation only*;
+  reasoning quality is GRPO's job, format/vocab is templated grounding's job.
+- **Capacity is real.** A bounded text sequence cannot losslessly carry
+  `11×512 = 5632` dims — and should not. Measure on the **decision-relevant
+  subspace**, not the raw vector.
+- **Double-counting guard.** The bridge is fed value+rollout *channels* (§1); the
+  recon target must be the **world-model latent itself (pre-augmentation,
+  `z=h.mean`)**, not the appended channels — else "faithfulness" only measures
+  whether the text echoes the channels. Report raw-latent vs appended-channel
+  contributions separately.
+- **Static-derivable confound.** Weight the recon target toward predictive/foresight
+  channels over static-derivable ones (Line-in-the-Sand discipline), or recon
+  inherits the circularity it was meant to detect.
+
 ---
 
 ## 7. First concrete milestone (smallest thing that tests the thesis)
 
+0. **(NEW) LOCAL capacity kill-test — no pod.** Precompute single-moment
+   `(h_[1,11,512], z=h.mean over slots, value, 1-step rollout summary, templated
+   text)` from `wm_3map_dist_v3m`. Train **only the decoder** on **templated text →
+   target**, and run the **capacity sweep**: text-budget ∈ {32, 64, 128, 256} tokens
+   × target ∈ {pooled-512, +rollout, value+rollout+top-PCA}. Plot fidelity vs budget.
+   **This can kill the NLA idea before QLoRA if text provably can't carry the signal**
+   — and establishes the in-principle ceiling (oracle decoder on templated text, which
+   by construction encodes value/surprise/rollout) against which Qwen's free-form text
+   is later scored. No Qwen, no world-model forward at train time (latents cached) —
+   pure local.
 1. Single-moment only. Latent = one frame's 11 tokens + value + a 1-step rollout
-   summary. Resampler M=32 → soft prefix. QLoRA on Qwen3.6-35B-A3B.
+   summary. Resampler M=32 → soft prefix. QLoRA on Qwen3.6-35B-A3B. Aux `λ·L_recon`
+   optional (default λ=0 for the milestone).
 2. SFT set: ~20–50k templated-from-predictive-heads pairs, generated locally from
    `wm_3map_dist_v3m`, on the 3 maps.
-3. Train on one pod; **run ablate-the-latent immediately.**
-4. Success = latent-on beats latent-off on value-agreement by a clear margin.
-   That single number says the bridge grounds in the world model — the green light
-   for Phase 2b/3. Failure = fix grounding (more predictive content, gated xattn)
-   before spending another pod-hour.
+3. Train on one pod; **run BOTH gates** — ablate-the-latent (latent-on vs off on
+   value-agreement) AND recon-fidelity (reconstruct `z` from Qwen's *generated* text,
+   vs shuffled-text and ablated-bridge controls, above the capacity floor, with
+   value-head-agreement + readability).
+4. **Green light = TWO numbers** (was one): `latent-on > latent-off` (grounding
+   exists) **AND** `recon(real text) > recon(shuffled/ablated text)` above the
+   capacity floor, with value-head-agreement and readability intact (grounding is
+   faithful). Failure = fix grounding (more predictive content, gated xattn) before
+   spending another pod-hour.
 
-Build order: featurizer+resampler+soft-prompt wiring (local CPU smoke on a tiny
-LLM stub) → latent precompute + templated SFT-set generator → pod QLoRA run →
-ablate-the-latent. Keep the world model and SFT-set generation on the 4090;
-reserve the pod for the QLoRA train only.
+Build order: **Step-0 local decoder capacity sweep (cached latents, no Qwen)** →
+featurizer+resampler+soft-prompt wiring (local CPU smoke on a tiny LLM stub) →
+latent precompute + templated SFT-set generator → pod QLoRA run → ablate-the-latent
+**+ recon-fidelity (separate held-out decoder)**. Keep the world model, SFT-set
+generation, and the Step-0 capacity sweep on the 4090; reserve the pod for QLoRA only.

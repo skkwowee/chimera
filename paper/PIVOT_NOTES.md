@@ -296,3 +296,230 @@ labeled as such. Items 9–12 gate any language/grounding claims.
 | TRL multimodal-bug + manual-loop note | SALVAGE (methods note) |
 | Architecture figure (Fig 1) | SUPERSEDED (depicts old pipeline) |
 | World model + language bridge | NEW (no results yet — see §4) |
+| NLA round-trip faithfulness objective (text-only decoder) | NEW (proposal — see §5; metric-first, no results yet) |
+
+---
+
+## 5. PROPOSAL — Bridge as a Natural-Language Autoencoder (NLA round-trip faithfulness)
+
+**Status:** Proposal only. No `.tex`/`.bib` files were touched by this section either (see
+§5.6 for the reason `main.tex` was deliberately left alone and the drop-in LaTeX the human
+can place once the world-model paper exists). No results fabricated; every numeric claim
+remains TODO and gated by §4 + the kill-tests below.
+
+This extends the language-bridge plan (§3 item 7) with a single new piece: a **text-only
+decoder** that reconstructs the frozen world-model latent from Qwen's *generated* reasoning,
+turning the latent→text bridge into a **Natural-Language Autoencoder (NLA)** — an autoencoder
+whose bottleneck is text. The bridge we already designed is the *encoder* half (latent→text);
+this adds the *decoder* half (text→latent). The decoder is built and reported as a
+**faithfulness metric first**; using it as a training signal is a hedged, gated follow-on.
+
+### 5.1 The contribution claim (headline bullet for the world-model paper)
+
+> **A round-trip faithfulness objective and metric for grounded reasoning.** We close the
+> latent→text bridge into a Natural-Language Autoencoder by training a **text-only decoder**
+> that reconstructs the frozen world-model latent from Qwen's generated reasoning.
+> Reconstruction fidelity (cosine / variance-explained to the true latent, scored against
+> shuffled-text, latent-mean, and ablated-bridge controls) is a **direct, label-free
+> measure** of whether the language faithfully renders the model's understanding rather than
+> hallucinating past it.
+
+**Conservative phrasing (required, to match the project's honesty discipline):** high
+reconstruction fidelity is *necessary evidence* of grounding; report it **alongside, not in
+place of**, value/event agreement. **Do not** claim "provably grounded" — the result is
+empirical and upper-bounded by decoder capacity.
+
+### 5.2 Why this is worth adding — what it buys over the existing plan
+
+The existing plan (§3 item 7, §4 item 12) gates grounding on **ablate-the-latent**: zero/shuffle
+the soft tokens and show latent-on beats latent-off. That proves the bridge *uses* the latent.
+It is **blind to embellishment**: a bridge can pass ablate (uses the latent) yet have Qwen add
+fluent tactical detail that is *not in the latent* (the Qwen-embellishment risk already flagged
+in the bridge design). Reconstruction answers the orthogonal question — *is the latent faithfully
+rendered in the text, or hallucinated past?* — with a number. The two are **complementary; recon
+subsumes nothing**:
+
+| Eval | Question | Role |
+|---|---|---|
+| **Ablate-the-latent** | Does the text *use* the latent at all? (necessary) | **First gate** (the Era-1 circularity tripwire; unchanged). |
+| **Recon-fidelity** | Is the latent *faithfully rendered*, or embellished past? (sufficiency) | **Second gate** (the missing faithfulness leg). |
+
+Second, it is a **label-free** signal: training the decoder needs no answer key, sidestepping
+the "where do correct descriptions come from / is a teacher LLM stable enough to read raw
+ticks?" problem — the very problem the world model exists to solve, so the NLA loop must not
+re-introduce a tick-reading teacher.
+
+### 5.3 Method framing (for the Methods section of the world-model paper)
+
+New subsection, slots into the Language Bridge section (§3 item 7): *"Round-trip grounding: a
+Natural-Language Autoencoder over the latent."*
+
+- **Target.** The decoder reconstructs the **pooled-512 latent** `z = h.mean(dim=2) ∈ R^512` —
+  exactly the vector the trained world model's `value_head` consumes (verified in
+  `scripts/train_world_model.py`: `_grid(x)` returns `h` of shape `[B,L,11,512]`, post-LayerNorm,
+  and `value_head(h.mean(dim=2))`). It is provably value-bearing and low-enough-dim to be
+  text-expressible. Targets are standardized per-dim (fixed train-set mean/std) before the loss.
+  Fallback ladder if capacity fails (§5.5): (2) top-k PCA of the head-Jacobian subspace, then
+  (3) head outputs directly (value logit, per-player top-1 displacement class, rollout
+  value mean/spread). Full `[11,512]` grid is a stretch only after pooled-512 shows a clean gap
+  (slots are identity-fixed by `slot_emb`, so per-token reconstruction needs no matching).
+- **The text-only firewall (non-negotiable).** The decoder consumes **only the decoded answer
+  string**, detached and re-tokenized in a fresh context (no soft-token prefix, no prompt, no
+  KV-cache that ever saw the soft tokens), re-embedded by frozen Qwen, then a separate
+  reverse-Perceiver (own learned queries, **weights not tied** to the forward resampler) →
+  MLP → `ẑ`. There must be zero tensor path from the latent / soft tokens to the decoder's
+  input. Enforced by `stop_gradient` + an assertion + a unit test: `recon_from_shuffled_text`
+  and `recon_from_empty_text` must score at the latent-mean floor; if not, the firewall is
+  broken and every fidelity number is invalid.
+- **Loss.** `L_recon = (1 − cos(ẑ, z)) + β·MSE(ẑ, z)`, β ≈ 0.1; cosine is the headline (scale-
+  invariant, matches how downstream heads read direction), MSE secondary on standardized targets.
+- **Reported metric is ALWAYS a separate, frozen-verbalizer, held-out decoder** — trained on
+  frozen bridge outputs with no gradient to Qwen/resampler/LoRA. A *jointly*-trained decoder
+  co-adapts with the verbalizer into a private cipher (high fidelity, unreadable text — the
+  documented NLA failure mode and this project's own circularity scar). Joint use is allowed
+  only as a small, annealed (λ≈0.05–0.1), decoder-frozen *auxiliary regularizer* after ablate
+  passes, never as the primary objective; the literal REINFORCE NLA loop is research-stretch,
+  KL-anchored, gated behind milestone success.
+- **In GRPO: a constraint, not a summed reward.** Do not add `λ·recon` to the GRPO reward
+  (that lets the policy trade reasoning for info-density → stilted text, and double-counts
+  grounding already in value-through-rollout). Instead **zero the advantage** of any group
+  completion whose recon-fidelity < τ (≈25th percentile of the SFT-passing distribution) before
+  group-normalizing — faithfulness as a *feasibility constraint*, value-through-rollout the sole
+  quality signal. Eval-only fallback if the constraint starves the group.
+
+### 5.4 Eval framing (for the Evaluation section of the world-model paper)
+
+Promote ablate-the-latent + recon-fidelity into one **"Faithfulness"** subsection. Green light
+requires **two numbers, not one** (replaces the single ablate gate in §4 item 12):
+
+> `latent-on > latent-off` (grounding exists) **AND** `recon(real text) > recon(shuffled/ablated
+> text)` above the capacity floor, with value-head-agreement and readability intact (grounding
+> is faithful).
+
+**Mandatory anti-gaming controls — report fidelity ONLY against these, never bare:**
+(a) **shuffled-text** (decode a different example's text → must collapse to floor);
+(b) **ablated-bridge** (text generated with soft tokens zeroed → must reconstruct worse; the
+delta `recon(latent-on) − recon(latent-off)` is the single strongest honesty number — it shows
+the text carries *latent-specific* information, not prompt patterns);
+(c) **latent-mean baseline** (report fidelity as **fraction-of-variance-explained over this
+floor**, not raw cosine — raw cosine on a low-rank post-LayerNorm manifold is deceptively high);
+(d) **empty/scrambled-text invariant** (firewall audit, must hit floor).
+
+**Faithfulness-gibberish guard (mandatory).** Recon-fidelity is never reported or gated *alone*
+— it can be satisfied by latent-encoding steganographic gibberish. Always pair with: a
+**value-head-agreement** number (feed `ẑ` through the frozen `value_head`, compare P(CT win) to
+truth) **and** a **readability/perplexity guard** (base-Qwen perplexity or human check). A
+passing faithfulness claim requires fidelity-above-controls **AND** value-agreement **AND**
+readability.
+
+### 5.5 First milestone & the cheap LOCAL kill-test (anti-fabrication, add to §4)
+
+Front-load a **local capacity kill-test before any pod spend**:
+- **Step 0 (local, 4090, no pod):** cache `(h, z=h.mean, value, 1-step rollout summary,
+  templated text)` from `wm_3map_dist_v3m`; train *only the decoder* on **templated text →
+  target** across a sweep: text-budget ∈ {32,64,128,256} tokens × target ∈ {pooled-512,
+  +rollout, value+rollout+top-PCA}. Plot fidelity vs budget. **This can kill the NLA idea
+  before QLoRA if text provably can't carry the signal** (no Qwen / no world-model forward at
+  train time — latents cached).
+- **Step 1 (pod):** QLoRA on ~20–50k templated-from-predictive-heads pairs (aux λ default 0).
+- **Step 2:** run **both** gates (ablate + recon, with all §5.4 controls).
+
+**Add to the §4 checklist:** item 12 (ablate-the-latent) is **necessary but not sufficient**;
+a new **item 12b — recon-fidelity above the capacity floor and above shuffled/ablated controls,
+with value-agreement + readability** — gates any *faithful*-grounding claim. New kill-criteria
+(report as negative results, do not quietly drop): capacity-floor failure (≤256 tokens can't
+beat the latent-mean floor even for value+rollout); firewall failure (shuffled/empty doesn't
+collapse to floor); steganographic degenerate code (recon-as-reward drives perplexity down);
+no-latent-specific-signal (`recon(real) ≈ recon(shuffled/ablated)`).
+
+**Honest caveats (must appear in docs + paper):** recon-faithful ≠ good reasoning (NLA certifies
+information preservation only; reasoning quality is GRPO's job); capacity is real (don't chase
+full `11×512=5632`-dim reconstruction — measure the decision-relevant subspace); double-counting
+guard (target the world-model latent `z=h.mean`, *not* the value/rollout channels appended to the
+bridge input, else "faithfulness" only measures whether the text echoes the channels); static-
+derivable confound (weight the target toward predictive/foresight channels per the Line-in-the-
+Sand discipline, or recon inherits the circularity it was meant to detect).
+
+### 5.6 Where it slots into the paper — and why `main.tex` was NOT touched
+
+This objective belongs to the **world-model paper** (the new document recommended in §2 Option c
+and outlined in §3), specifically:
+1. **Methods** — new subsection inside the Language Bridge section (§3 item 7): the NLA round-trip,
+   the text-only firewall, the recon-as-constraint design.
+2. **Evaluation** — a unified **"Faithfulness"** subsection: *ablate proves the latent is USED;
+   reconstruction proves the OUTPUT TEXT preserves it.*
+3. **Related Work** — cite Anthropic **Natural Language Autoencoders** as the direct antecedent
+   (`@misc{anthropic2025nla}` below; `alonso2024diamond` already in `references.bib`). Position
+   novelty: NLA interpreted *LLM activations*; we apply the round-trip principle to a **harder
+   bottleneck** — a frozen multi-agent spatiotemporal game-state latent — and use the decoder
+   primarily as a **faithfulness metric for a reasoning system**. Differentiate from CoT-
+   faithfulness (perturbs the trace) and probing (reads the latent directly): reconstruction is
+   the only one that scores the **generated text's** information content end-to-end.
+4. **Capacity-as-a-result figure:** the recon-cosine-vs-token-budget curve and the per-channel
+   reconstruction profile (value/event recoverable from text vs. fine spatial jitter not) are
+   themselves a contribution characterizing natural-language-as-a-channel; establish the
+   in-principle ceiling with an oracle decoder trained on the templated text.
+
+**Why `main.tex` was deliberately left untouched.** `main.tex` is firmly VLM-era and contains no
+safe insertion point: the title ("See, Then Think: Two-Phase VLM Training"), abstract, intro, and
+*every* Method subsection are about HUD-SFT + RECALL; its "Phase 2" is **VLM-GRPO**, not the
+world-model language bridge (which does not appear anywhere in the document). There is no
+approach/methods/future-work section discussing *this* bridge to extend. Adding an NLA subsection
+there would orphan it next to a discarded thesis and risk implying VLM-era results. Per §2 (Option
+c), `main.tex` is preserved as the source for the standalone RECALL paper; the NLA objective lives
+here until the world-model paper exists. The drop-in LaTeX below is ready for the human to place
+into that new document.
+
+### 5.7 Drop-in LaTeX (for the world-model paper — NOT for `main.tex`)
+
+```latex
+% ===== Methods: inside the Language Bridge section =====
+\subsection{Round-Trip Grounding: a Natural-Language Autoencoder over the Latent}
+\label{sec:nla}
+The language bridge maps the frozen world-model latent to reasoning text; viewed as the
+\emph{encoder} half of a Natural-Language Autoencoder~\cite{anthropic2025nla}, it is
+incomplete without a \emph{decoder} that reconstructs the latent from text. We add a
+\textbf{text-only decoder} $R$ that, given \emph{only} the model's generated answer string
+$y$ (detached, re-tokenized in a fresh context, re-embedded by the frozen language model),
+predicts $\hat{z} = R(y)$, where the target $z = \bar{h} \in \mathbb{R}^{512}$ is the
+slot-pooled world-model latent that the value head consumes. The decoder is a separate
+reverse-Perceiver (its queries untied from the forward resampler) followed by an MLP, trained
+to minimize $\mathcal{L}_{\text{recon}} = \bigl(1 - \cos(\hat{z}, z)\bigr) + \beta\,\lVert
+\hat{z} - z\rVert_2^2$ on standardized targets. A firewall is enforced in code: there is no
+tensor path from the latent or soft tokens to $R$'s input, audited by the invariant that
+shuffled- and empty-text reconstruction collapses to the latent-mean floor. We report
+reconstruction fidelity from a \emph{separate, frozen-verbalizer} decoder trained on held-out
+bridge outputs; in GRPO it acts as a feasibility \emph{constraint} (zeroing the advantage of
+completions below a fidelity threshold) rather than a summed reward, leaving value-through-
+rollout as the sole quality signal.
+
+% ===== Evaluation: Faithfulness subsection =====
+\subsection{Faithfulness: Does the Text Render the Latent?}
+\label{sec:faithfulness}
+We separate two questions. \emph{Ablate-the-latent} (zero/shuffle the soft tokens) tests
+whether the text \emph{uses} the latent. \emph{Reconstruction fidelity} tests whether the
+generated text \emph{faithfully renders} it: we reconstruct $z$ from the model's own output
+and report variance-explained over a latent-mean floor, against (a)~a shuffled-text control,
+(b)~an ablated-bridge control --- the delta $\text{recon}(\text{latent-on}) -
+\text{recon}(\text{latent-off})$ isolates latent-specific information --- and (c)~the latent-
+mean baseline. To rule out steganographic codes, we additionally require value-head agreement
+($\hat{z}$ pushed through the frozen value head must match $P(\text{win})$) and a readability/
+perplexity guard. High fidelity is necessary evidence of grounding, reported \emph{alongside},
+not in place of, value and event agreement; we do not claim provable grounding, as the metric
+is upper-bounded by decoder capacity.
+```
+
+```bibtex
+@misc{anthropic2025nla,
+  title  = {Natural Language Autoencoders},
+  author = {Anthropic},
+  year   = {2025},
+  note   = {Anthropic interpretability research; round-trip activation--text reconstruction
+            trained on reconstruction fidelity. PLACEHOLDER — fill exact authors/venue/URL
+            before submission.}
+}
+```
+
+> **Citation caveat:** confirm the exact authors, title, year, and URL of the Anthropic
+> Natural Language Autoencoders work before submission; the entry above is a placeholder
+> scaffold, not a verified bibliographic record.

@@ -51,7 +51,9 @@ Bridge a **frozen LLM** (Qwen 3.6 / 3.7, 35B-A3B MoE) into the world-model laten
 
 Training stages: templated grounding → contrastive commentary → **GRPO reasoning** rewarded by checking the model's *verbalized* predictions against the *actual* futures in the demo.
 
-**Discipline — ablate the latent.** If removing the world-model latent doesn't hurt the language head, the language head is being circular (paraphrasing inputs, as the captions were). The ablation is the test that keeps us honest.
+**The bridge is the encoder half of a Natural-Language Autoencoder.** The latent→text bridge is closed into an NLA by adding a **text-only decoder** that reconstructs the frozen world-model latent (the pooled-512 vector the value head reads) from Qwen's *generated* reasoning. The decoder consumes only the re-tokenized answer string — never the latent, soft tokens, or residual stream — so reconstruction can't cheat. **Reconstruction fidelity is a label-free *faithfulness* metric:** it answers, with a number (cosine / variance-explained vs shuffled-text, latent-mean, and ablated-bridge controls), whether the language faithfully renders the model's understanding or hallucinates past it — the faithfulness leg ablation alone is blind to. It is also a label-free training signal (no answer key, no teacher LLM reading raw ticks). It **complements, never replaces** templated grounding (format/vocab) and GRPO (reasoning quality); recon-faithful text is not the same as good tactical reasoning. See [`docs/bridge-design.md`](docs/bridge-design.md) for the full design.
+
+**Discipline — ablate the latent, then check faithfulness.** If removing the world-model latent doesn't hurt the language head, the language head is being circular (paraphrasing inputs, as the captions were). Ablation is the **first gate** (the latent is *used*); reconstruction fidelity is the **second gate** (the output text *preserves* it). Both keep us honest.
 
 ## Roadmap (world model)
 
@@ -63,7 +65,7 @@ Each step reads defined inputs, writes defined outputs, and validates itself. Th
 - [ ] **Probe transfer eval.** Freeze the latent; train value/event probes on it; this — not prediction loss — is the model's score.
 - [ ] **Events from surprise.** Derive event boundaries from prediction surprise; compare against ground-truth kill/plant/defuse events.
 - [ ] **Value/policy heads.** MuZero-style heads on the latent.
-- [ ] **Phase 2 — language bridge.** Flamingo-style resampler + gated cross-attention into a LoRA'd Qwen MoE; ablate the latent.
+- [ ] **Phase 2 — language bridge.** Flamingo-style resampler + gated cross-attention into a LoRA'd Qwen MoE; ablate the latent. The bridge is the **encoder half of a Natural-Language Autoencoder** — a text-only decoder reconstructs the latent from the generated text as a label-free faithfulness metric (the second gate after ablation).
 
 ## Prior / superseded method — "See, Then Think" VLM (parked)
 
