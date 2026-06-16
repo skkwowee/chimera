@@ -348,16 +348,21 @@ collapse), drop to **recon-as-eval-only.**
 
 ## 7. First concrete milestone (smallest thing that tests the thesis)
 
-0. **(NEW) LOCAL capacity kill-test — no pod.** Precompute single-moment
-   `(h_[1,11,512], z=h.mean over slots, value, 1-step rollout summary, templated
-   text)` from `wm_3map_dist_v3m`. Train **only the decoder** on **templated text →
-   target**, and run the **capacity sweep**: text-budget ∈ {32, 64, 128, 256} tokens
-   × target ∈ {pooled-512, +rollout, value+rollout+top-PCA}. Plot fidelity vs budget.
-   **This can kill the NLA idea before QLoRA if text provably can't carry the signal**
-   — and establishes the in-principle ceiling (oracle decoder on templated text, which
-   by construction encodes value/surprise/rollout) against which Qwen's free-form text
-   is later scored. No Qwen, no world-model forward at train time (latents cached) —
-   pure local.
+0. **(NEW) LOCAL capacity kill-test — no pod.** `scripts/nla_capacity_probe.py`.
+   **RESULT (2026-06-14, `wm_3map_dist_v3m`, 13,928 val frames): GO.** The pooled-512
+   target is trivially carryable — `z` is extremely low-rank (95% of variance in
+   **6 dims**, 99% in 17; value-AUC **fully preserved by the top ~8** PCA components),
+   and verbalizable content (value logit + per-player predicted movement) reconstructs
+   it at **R²=0.92** (shuffled-content floor −0.93, latent-mean floor 0). So the
+   information is provably THERE — the NLA decoder is not capacity-blocked.
+   **Important caveat the probe surfaced:** pooled-512 is *so* low-rank it's a **lossy,
+   too-easy target** — a faithfulness gate on it would be weak. The richer, harder, more
+   meaningful target is the **per-token `[11,512]` grid** (the per-player structure
+   pooling discards); make that the real recon target, with pooled-512 as the floor.
+   This probe is a ceiling only (no Qwen text, no text-encoder-quality) — the real metric
+   (recon from Qwen *generated* text) waits for the bridge. Remaining sweep to run when
+   building the decoder: text-budget ∈ {32,64,128,256} tokens × target ∈ {pooled-512,
+   per-token grid, value+rollout} with the oracle/templated-text decoder.
 1. Single-moment only. Latent = one frame's 11 tokens + value + a 1-step rollout
    summary. Resampler M=32 → soft prefix. QLoRA on Qwen3.6-35B-A3B. Aux `λ·L_recon`
    optional (default λ=0 for the milestone).

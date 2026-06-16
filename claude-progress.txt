@@ -86,6 +86,20 @@
 # ============================================================================
 
 # ============================================================================
+# 2026-06-14: NLA Step-0 CAPACITY PROBE = GO (scripts/nla_capacity_probe.py)
+# ============================================================================
+# Ran the local, no-pod capacity ceiling before building the decoder.
+# wm_3map_dist_v3m, 13,928 val frames:
+#   - pooled-512 z is EXTREMELY low-rank: 95% var in 6 dims, value-AUC fully
+#     preserved by top ~8 PCA components.
+#   - verbalizable content (value + per-player predicted movement) reconstructs
+#     z at R^2=0.92 (shuffled floor -0.93, mean floor 0) -> info is THERE.
+#   VERDICT: GO -- NLA decoder is not capacity-blocked.
+#   CAVEAT: pooled-512 is so low-rank it's a LOSSY/too-easy target; make the
+#     per-token [11,512] grid the real recon target (pooled-512 as floor).
+#   Ceiling only (no Qwen text) -- real metric waits for the bridge build.
+#
+# ============================================================================
 # 2026-06-14: NLA RECONSTRUCTION OBJECTIVE added to the bridge design
 # ============================================================================
 # WHAT: closed the latent->text bridge into a Natural-Language Autoencoder by
