@@ -78,14 +78,18 @@ reach for H200/B200 if a run actually needs >80 GB. The FP8 Qwen repo variant
 | Done / stepping away | `stop-pod` → `get-pod` | **verify `desiredStatus == EXITED`** |
 | Tear down for good | `delete-pod` | irreversible; volume survives separately |
 
-## Toolchain — `pod_setup_grpo.sh` (⚠ currently MISSING from the repo)
+## Toolchain — `pod_setup_grpo.sh` (recovered)
 
-`bridge-design.md` §4 and the decisions ledger reference `scripts/pod_setup_grpo.sh`
-for CUDA/kernel matching, but it is **not in the repo**. Before any GRPO pod spend,
-recover or rewrite it. It must pin:
-- torch / CUDA versions matched to the pod image (causal-conv1d / Mamba kernels go
-  10–100× slow on a mismatch — the documented gotcha),
+`pod_setup_grpo.sh` (repo root) bootstraps the pod for bridge QLoRA SFT and GRPO.
+Its discipline encodes the "14h-for-40-steps" lesson:
+- **never reinstall torch** — the image ships a torch matched to its CUDA driver;
+  pin every other dep against it,
+- a **CUDA-consistency check** (driver vs torch-compiled CUDA) that bails on mismatch,
+- a **bitsandbytes 4-bit timing health check** — fails loud if the kernel is slow
+  *before* a long run burns pod-hours,
 - `demoparser2 >= 0.41.3` (older crashes `EntityNotFound` on Major demos),
-- the Qwen3.6-35B-A3B + QLoRA deps.
+- the Qwen + QLoRA stack (transformers / peft / accelerate / bitsandbytes),
+- optional `PULL_SFT=1` to fetch the bridge SFT cache from HF (no world model
+  needed on the pod for SFT, §4).
 
-Until it exists, treat any pod GRPO run as blocked on toolchain reproducibility.
+Run: `bash pod_setup_grpo.sh` (optionally `QWEN_MODEL=<id> bash pod_setup_grpo.sh`).
