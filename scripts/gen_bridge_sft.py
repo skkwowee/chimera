@@ -228,12 +228,17 @@ def main():
         # alive per slot from the last frame (per-player dim 13, build_v3_features.py)
         players_last = x[:, -1, :model.player_block].reshape(x.shape[0], model.n_players, model.ppd)
         alive = (players_last[..., 13] > 0.5)                      # [B,10] bool
-        roll = rollout_value(model, x, steps=REC4, record={REC2, REC4}, n_samples=args.rollout_samples)
-        v2 = torch.sigmoid(roll[REC2]) * 100.0                     # [B,K]
-        v4 = torch.sigmoid(roll[REC4]) * 100.0
+        if args.rollout_samples > 0:
+            roll = rollout_value(model, x, steps=REC4, record={REC2, REC4}, n_samples=args.rollout_samples)
+            v2 = torch.sigmoid(roll[REC2]) * 100.0                 # [B,K]
+            v4 = torch.sigmoid(roll[REC4]) * 100.0
+        else:                                                      # skip rollout (fast, e.g. val set)
+            vp = (torch.sigmoid(vlog) * 100.0).unsqueeze(1)        # [B,1]; trajectory note then never fires
+            v2 = v4 = vp
         for b, (ri, t, won, mp) in enumerate(batch):
             pct = _pct(vlog[b].item())
-            fut2, fut4, sp4 = v2[b].mean().item(), v4[b].mean().item(), v4[b].std().item()
+            fut2, fut4 = v2[b].mean().item(), v4[b].mean().item()
+            sp4 = v4[b].std().item() if v4.shape[1] > 1 else 0.0
             tgt = build_target(rng, pct, fut4, top[b].tolist(), alive[b].tolist())
             grids.append(grid[b].half().cpu()); chans.append(channels[b].half().cpu())
             vlogits.append(vlog[b].item()); wons.append(won)
