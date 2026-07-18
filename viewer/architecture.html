@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Chimera — Architecture</title>
+<style>
+  :root{
+    --bg:#f5f3ee; --panel:#fffdf9; --ink:#1f1c18; --mut:#6b655c; --line:#d9d2c5;
+    --wm:#c2683a;       /* world model / understanding */
+    --bridge:#3a76c2;   /* bridge / language */
+    --grpo:#3a9d6b;     /* rl / self-play */
+    --frozen:#9a9388;   /* frozen */
+    --accent:#b5462f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 28px 80px}
+  h1{font:600 30px/1.2 Georgia,"Times New Roman",serif;margin:0 0 6px}
+  .sub{color:var(--mut);font-size:15px;margin:0 0 4px}
+  .thesis{font:500 18px/1.5 Georgia,serif;margin:18px 0 28px;padding:14px 18px;
+          background:var(--panel);border-left:3px solid var(--accent);border-radius:0 8px 8px 0}
+  h2{font:600 13px/1 inherit;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);
+     margin:42px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .phase-tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;
+             padding:2px 8px;border-radius:20px;color:#fff;vertical-align:middle;margin-left:8px}
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:13px 15px;
+       flex:1;min-width:150px;position:relative}
+  .box .nm{font-weight:700;font-size:14px;margin-bottom:3px}
+  .box .meta{font-size:11.5px;color:var(--mut);font-family:ui-monospace,Menlo,monospace}
+  .box .desc{font-size:12.5px;margin-top:7px;color:#3a352e}
+  .box .why{font-size:11.5px;margin-top:7px;color:var(--accent);font-style:italic}
+  .arrow{display:flex;align-items:center;justify-content:center;color:var(--mut);
+         font-size:22px;padding:0 6px;flex:0 0 auto}
+  .tag{position:absolute;top:-9px;right:10px;font-size:10px;font-weight:700;letter-spacing:.05em;
+       padding:1px 7px;border-radius:10px}
+  .t-froz{background:#ece8df;color:var(--frozen);border:1px solid var(--line)}
+  .t-train{background:#e7eefb;color:var(--bridge);border:1px solid #c7d8f3}
+  .t-train-wm{background:#fbeae0;color:var(--wm);border:1px solid #f0d2c0}
+  .bar{height:4px;border-radius:3px;margin:-13px -15px 11px;border-radius:10px 10px 0 0}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+  .card h3{margin:0 0 2px;font-size:15px}
+  .card .role{font-size:11.5px;color:var(--mut);font-family:ui-monospace,monospace;margin-bottom:9px}
+  .card p{margin:6px 0;font-size:13px}
+  .kv{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--mut)}
+  .why2{color:var(--accent);font-style:italic;font-size:12.5px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--mut);margin:6px 0 0}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:13px;height:13px;border-radius:3px;display:inline-block}
+  .loop{background:#fbf6ee;border:1px dashed var(--line);border-radius:10px;padding:13px 16px;
+        margin-top:12px;font-size:13px}
+  .nums{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:6px}
+  .num{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 13px}
+  .num b{font:600 19px/1 Georgia,serif;display:block}
+  .num small{color:var(--mut);font-size:11.5px}
+  .foot{color:var(--mut);font-size:12px;margin-top:40px;border-top:1px solid var(--line);padding-top:14px}
+  code{font-family:ui-monospace,monospace;font-size:.9em;background:#ece8df;padding:1px 5px;border-radius:4px}
+  @media(max-width:680px){.arrow{transform:rotate(90deg);width:100%;padding:4px 0}.box{min-width:0}}
+  figure{margin:18px 0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 16px 10px}
+  figure svg{display:block;width:100%;height:auto}
+  figcap,figure figcaption{display:block;color:var(--mut);font-size:12.5px;margin-top:8px;text-align:center;font-style:italic}
+  .svgtxt{font:600 13px -apple-system,Helvetica,sans-serif;fill:var(--ink)}
+  .svgsm{font:500 11px ui-monospace,Menlo,monospace;fill:var(--mut)}
+  .svglbl{font:700 10px -apple-system,sans-serif;fill:#fff;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Chimera — How the System Reasons About Counter-Strike 2</h1>
+  <p class="sub">A world model learns the game by predicting it; a language bridge verbalizes that understanding; self-play sharpens the reasoning.</p>
+
+  <div class="thesis">
+    <b>One idea:</b> don't make a language model <i>see</i> the game — make a small model <i>predict</i> it,
+    then translate its understanding into words. Understanding and language are separate skills, handled by separate specialists.
+  </div>
+
+  <!-- ===== FIG 1: input / hidden / output ===== -->
+  <figure>
+    <svg viewBox="0 0 980 380" role="img" aria-label="input hidden output network">
+      <!-- region bands -->
+      <rect x="40" y="40" width="150" height="300" rx="12" fill="#fbeae0" stroke="#f0d2c0"/>
+      <rect x="220" y="40" width="330" height="300" rx="12" fill="#f3eee5" stroke="#e6ddcd"/>
+      <rect x="580" y="40" width="170" height="300" rx="12" fill="#fbeae0" stroke="#eab78f"/>
+      <rect x="780" y="40" width="160" height="300" rx="12" fill="#eaf1fb" stroke="#c7d8f3"/>
+      <!-- edges (faint mesh) -->
+      <g stroke="#c2683a" stroke-width="1" opacity="0.16">
+        <line x1="115" y1="100" x2="290" y2="90"/><line x1="115" y1="100" x2="290" y2="190"/><line x1="115" y1="100" x2="290" y2="290"/>
+        <line x1="115" y1="190" x2="290" y2="90"/><line x1="115" y1="190" x2="290" y2="190"/><line x1="115" y1="190" x2="290" y2="290"/>
+        <line x1="115" y1="280" x2="290" y2="90"/><line x1="115" y1="280" x2="290" y2="190"/><line x1="115" y1="280" x2="290" y2="290"/>
+      </g>
+      <g stroke="#9a9388" stroke-width="1" opacity="0.18">
+        <line x1="290" y1="90" x2="455" y2="90"/><line x1="290" y1="190" x2="455" y2="190"/><line x1="290" y1="290" x2="455" y2="290"/>
+        <line x1="290" y1="90" x2="455" y2="190"/><line x1="290" y1="290" x2="455" y2="190"/>
+      </g>
+      <g stroke="#c2683a" stroke-width="1" opacity="0.22">
+        <line x1="455" y1="90" x2="635" y2="120"/><line x1="455" y1="190" x2="635" y2="190"/><line x1="455" y1="290" x2="635" y2="260"/>
+        <line x1="455" y1="190" x2="635" y2="120"/><line x1="455" y1="190" x2="635" y2="260"/>
+      </g>
+      <g stroke="#3a76c2" stroke-width="1.2" opacity="0.32">
+        <line x1="635" y1="120" x2="820" y2="150"/><line x1="635" y1="190" x2="820" y2="150"/><line x1="635" y1="190" x2="820" y2="240"/><line x1="635" y1="260" x2="820" y2="240"/>
+      </g>
+      <!-- INPUT nodes -->
+      <g fill="#c2683a"><circle cx="115" cy="100" r="11"/><circle cx="115" cy="190" r="11"/><circle cx="115" cy="280" r="11"/></g>
+      <!-- HIDDEN nodes (2 cols) -->
+      <g fill="#bdb5a7"><circle cx="290" cy="90" r="11"/><circle cx="290" cy="190" r="11"/><circle cx="290" cy="290" r="11"/>
+         <circle cx="380" cy="90" r="11"/><circle cx="380" cy="190" r="11"/><circle cx="380" cy="290" r="11"/></g>
+      <g stroke="#9a9388" stroke-width="1" opacity="0.18">
+        <line x1="290" y1="90" x2="380" y2="190"/><line x1="290" y1="190" x2="380" y2="90"/><line x1="290" y1="190" x2="380" y2="290"/><line x1="290" y1="290" x2="380" y2="190"/>
+        <line x1="380" y1="90" x2="455" y2="90"/><line x1="380" y1="190" x2="455" y2="190"/><line x1="380" y1="290" x2="455" y2="290"/>
+      </g>
+      <!-- LATENT nodes (highlighted) -->
+      <g fill="#c2683a" stroke="#8a4422" stroke-width="2"><circle cx="455" cy="90" r="12"/><circle cx="455" cy="190" r="12"/><circle cx="455" cy="290" r="12"/></g>
+      <!-- OUTPUT (latent->heads) -->
+      <g fill="#bdb5a7"><circle cx="635" cy="120" r="11"/><circle cx="635" cy="190" r="11"/><circle cx="635" cy="260" r="11"/></g>
+      <!-- heads -->
+      <g fill="#3a76c2"><circle cx="820" cy="150" r="12"/><circle cx="820" cy="240" r="12"/></g>
+      <!-- region labels -->
+      <text x="115" y="362" text-anchor="middle" class="svgtxt" fill="#c2683a">INPUT</text>
+      <text x="115" y="28" text-anchor="middle" class="svgsm">687-d frame · 11 tokens</text>
+      <text x="385" y="362" text-anchor="middle" class="svgtxt" fill="#6b655c">HIDDEN LAYERS</text>
+      <text x="385" y="28" text-anchor="middle" class="svgsm">the transformer · 6 layers · 512-d</text>
+      <text x="665" y="362" text-anchor="middle" class="svgtxt" fill="#c2683a">LATENT → heads</text>
+      <text x="665" y="28" text-anchor="middle" class="svgsm">"the understanding"</text>
+      <text x="860" y="362" text-anchor="middle" class="svgtxt" fill="#3a76c2">OUTPUT</text>
+      <text x="900" y="150" class="svgsm" text-anchor="end">move dist.</text>
+      <text x="900" y="244" class="svgsm" text-anchor="end">P(CT win)</text>
+      <!-- the tap callout -->
+      <text x="455" y="328" text-anchor="middle" style="font:700 11px sans-serif;fill:#8a4422">▲ we tap THIS</text>
+    </svg>
+    <figcaption>Anatomy of the world model. A network maps <b>INPUT</b> (the game state) through <b>HIDDEN LAYERS</b>
+    (where it builds understanding) to an <b>OUTPUT</b> (predictions). For the bridge we don't take the output —
+    we tap the <b>hidden layer (the latent)</b>, because that carries the full understanding, not just one forecast.</figcaption>
+  </figure>
+
+  <!-- ===== FIG 2: subway pipeline ===== -->
+  <figure>
+    <svg viewBox="0 0 980 230" role="img" aria-label="pipeline overview">
+      <!-- main line -->
+      <line x1="70" y1="80" x2="910" y2="80" stroke="#d9d2c5" stroke-width="3"/>
+      <!-- nodes -->
+      <g>
+        <circle cx="80"  cy="80" r="9" fill="#9a9388"/><text x="80"  y="55" text-anchor="middle" class="svgsm">demos</text>
+        <circle cx="250" cy="80" r="13" fill="#c2683a"/><text x="250" y="50" text-anchor="middle" class="svgtxt" fill="#c2683a">World Model</text><text x="250" y="112" text-anchor="middle" class="svgsm">predict +1s</text>
+        <circle cx="420" cy="80" r="9" fill="#c2683a"/><text x="420" y="55" text-anchor="middle" class="svgsm">latent</text>
+        <circle cx="560" cy="80" r="13" fill="#3a76c2"/><text x="560" y="50" text-anchor="middle" class="svgtxt" fill="#3a76c2">Resampler</text><text x="560" y="112" text-anchor="middle" class="svgsm">→ 32 soft tokens</text>
+        <circle cx="720" cy="80" r="13" fill="#3a76c2"/><text x="720" y="50" text-anchor="middle" class="svgtxt" fill="#3a76c2">Qwen 35B</text><text x="720" y="112" text-anchor="middle" class="svgsm">frozen</text>
+        <circle cx="900" cy="80" r="9" fill="#3a76c2"/><text x="900" y="55" text-anchor="middle" class="svgsm">reasoning</text>
+      </g>
+      <!-- NLA loop-back -->
+      <path d="M900 92 C 900 175, 420 175, 420 92" fill="none" stroke="#b5462f" stroke-width="2" stroke-dasharray="5 4"/>
+      <polygon points="420,92 415,103 425,103" fill="#b5462f"/>
+      <text x="660" y="170" text-anchor="middle" style="font:600 11px sans-serif;fill:#b5462f">reconstruct latent from text = faithfulness (NLA)</text>
+      <!-- GRPO branch -->
+      <path d="M250 93 C 250 200, 470 200, 470 200" fill="none" stroke="#3a9d6b" stroke-width="2"/>
+      <rect x="470" y="186" width="240" height="30" rx="8" fill="#e7f4ee" stroke="#bfe3d1"/>
+      <text x="590" y="206" text-anchor="middle" style="font:600 11px sans-serif;fill:#2f7d54">GRPO: sample K rollouts → score → reward</text>
+    </svg>
+    <figcaption>The pipeline on one line: world model → latent → resampler → Qwen → reasoning, with the
+    dashed NLA loop (text rebuilds the latent = faithfulness) and the GRPO self-play branch.</figcaption>
+  </figure>
+
+  <!-- ============ PHASE 1 ============ -->
+  <h2>Phase 1 — The World Model <span class="phase-tag" style="background:var(--wm)">TRAINED ✓</span></h2>
+  <div class="flow">
+    <div class="box">
+      <div class="bar" style="background:var(--frozen)"></div>
+      <div class="nm">Demos → Tick State</div>
+      <div class="meta">687-d / frame · 8 Hz</div>
+      <div class="desc">Pro-match replays parsed to exact game state: 10 players × 65 features + 37 global, per 125 ms frame.</div>
+      <div class="why">why: demos give complete state for free — no perception needed.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--wm)"></div>
+      <span class="tag t-train-wm">trained</span>
+      <div class="nm">World Model</div>
+      <div class="meta">causal transformer · ~19M · d=512</div>
+      <div class="desc">Per-frame: 11 tokens (10 players + global). Attends across players (relational) &amp; time (causal). Objective: <b>predict the state ~1 s ahead.</b></div>
+      <div class="why">why predict, not caption: the future is a consequence — you must model dynamics, you can't paraphrase your way to it.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--wm)"></div>
+      <div class="nm">The Latent</div>
+      <div class="meta">11 × 512 per frame</div>
+      <div class="desc">The model's <b>understanding</b> of the moment — an internal vector, not human-readable. Everything else reads from this.</div>
+      <div class="why">judged by probe transfer, not loss.</div>
+    </div>
+  </div>
+
+  <div class="flow" style="margin-top:12px">
+    <div class="box" style="max-width:none">
+      <div class="bar" style="background:var(--wm)"></div>
+      <div class="nm">Heads on the latent</div>
+      <div class="desc">
+        <b>Distributional head</b> — predicts a <i>distribution</i> over 97 movement classes (not one point), so it captures "stay vs peek" instead of averaging into blur. <span class="kv">16 samples = a planning group.</span><br>
+        <b>Value head</b> — P(CT wins) from the latent. <span class="kv">survives 8 s of imagined rollout (AUC ≈ 0.82) → usable as an RL reward.</span>
+      </div>
+      <div class="why">why a distribution: a regression head mode-averages; the win is representing the <i>set</i> of plausible futures, which also gives the GRPO group.</div>
+    </div>
+  </div>
+
+  <!-- ===== FIG 3: regression vs distribution ===== -->
+  <figure>
+    <svg viewBox="0 0 980 250" role="img" aria-label="mode averaging vs distribution">
+      <!-- LEFT: regression -->
+      <text x="245" y="28" text-anchor="middle" class="svgtxt">A point predictor (regression)</text>
+      <circle cx="160" cy="150" r="10" fill="#1f1c18"/><text x="160" y="180" text-anchor="middle" class="svgsm">player</text>
+      <!-- two true options (ghost) -->
+      <circle cx="360" cy="80" r="8" fill="none" stroke="#9a9388" stroke-dasharray="3 3"/><text x="380" y="78" class="svgsm">peek</text>
+      <circle cx="360" cy="220" r="8" fill="none" stroke="#9a9388" stroke-dasharray="3 3"/><text x="380" y="224" class="svgsm">hold</text>
+      <!-- predicted = blurry midpoint -->
+      <line x1="170" y1="150" x2="345" y2="150" stroke="#b5462f" stroke-width="3"/>
+      <circle cx="355" cy="150" r="11" fill="#b5462f" opacity="0.5"/>
+      <text x="430" y="150" class="svgsm" fill="#b5462f">avg → matches neither ✗</text>
+      <!-- divider -->
+      <line x1="500" y1="30" x2="500" y2="230" stroke="#d9d2c5"/>
+      <!-- RIGHT: distribution -->
+      <text x="740" y="28" text-anchor="middle" class="svgtxt">A distribution (our head)</text>
+      <circle cx="600" cy="150" r="10" fill="#1f1c18"/>
+      <!-- fan of weighted arrows to the modes -->
+      <line x1="610" y1="150" x2="800" y2="80" stroke="#c2683a" stroke-width="5"/>
+      <line x1="610" y1="150" x2="800" y2="220" stroke="#c2683a" stroke-width="5"/>
+      <line x1="610" y1="150" x2="805" y2="150" stroke="#c2683a" stroke-width="1.5" opacity="0.4"/>
+      <circle cx="805" cy="80" r="10" fill="#c2683a"/><text x="825" y="78" class="svgsm">peek</text>
+      <circle cx="805" cy="220" r="10" fill="#c2683a"/><text x="825" y="224" class="svgsm">hold</text>
+      <text x="700" y="245" text-anchor="middle" class="svgsm" fill="#c2683a">mass ON the modes · sample one = a plan ✓</text>
+    </svg>
+    <figcaption>Why the head is <b>distributional</b>. Asked "peek or hold?", a regression head outputs the blurry
+    average (matches neither); a distribution puts probability <i>on</i> each option — and sampling it gives the
+    candidate futures GRPO needs (16 samples = a group).</figcaption>
+  </figure>
+
+  <!-- ============ PHASE 2 ============ -->
+  <h2>Phase 2 — The Language Bridge <span class="phase-tag" style="background:var(--bridge)">WIRED · TRAINING NEXT</span></h2>
+  <p class="sub" style="margin-bottom:14px">Two frozen specialists — the world model (understands) and Qwen (writes) — connected by a small trainable adapter. The bridge is <b>latent → language</b>.</p>
+  <div class="flow">
+    <div class="box">
+      <div class="bar" style="background:var(--wm)"></div>
+      <span class="tag t-froz">frozen</span>
+      <div class="nm">Latent</div>
+      <div class="meta">11 × 512</div>
+      <div class="desc">From Phase 1, frozen. + the head outputs (value, predicted rollout) appended as grounding.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--bridge)"></div>
+      <span class="tag t-train">trained</span>
+      <div class="nm">Resampler</div>
+      <div class="meta">32 learned queries · cross-attn</div>
+      <div class="desc">32 learned "questions" attend to the latent → <b>32 soft tokens</b> in Qwen's 4096-d space. Translates space (512→4096) &amp; count (→32).</div>
+      <div class="why">why not a bigger world-model head: this imports Qwen's pretrained <i>knowledge</i>, which capacity alone can't buy.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--frozen)"></div>
+      <span class="tag t-froz">frozen + QLoRA</span>
+      <div class="nm">Qwen 3.6 · 35B</div>
+      <div class="meta">soft-prompt + QLoRA</div>
+      <div class="desc">A fluent writer that knows language but not CS2. Reads the 32 soft tokens, writes tactical reasoning.</div>
+      <div class="why">why frozen: it already knows language — we rent it, never retrain it.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--bridge)"></div>
+      <div class="nm">Reasoning Text</div>
+      <div class="meta">natural language</div>
+      <div class="desc">"CT ~32% — T's are stacking apps for an A execute; rotate now."</div>
+    </div>
+  </div>
+
+  <!-- ===== FIG 4: resampler funnel ===== -->
+  <figure>
+    <svg viewBox="0 0 980 280" role="img" aria-label="resampler funnel">
+      <!-- left: latent tokens (variable count) -->
+      <text x="95" y="26" text-anchor="middle" class="svgtxt" fill="#c2683a">latent tokens</text>
+      <text x="95" y="262" text-anchor="middle" class="svgsm">11 (a moment) … 100s (a round)</text>
+      <g fill="#c2683a">
+        <rect x="70" y="50" width="50" height="20" rx="4"/><rect x="70" y="80" width="50" height="20" rx="4"/>
+        <rect x="70" y="110" width="50" height="20" rx="4"/><rect x="70" y="140" width="50" height="20" rx="4"/>
+        <rect x="70" y="170" width="50" height="20" rx="4"/><rect x="70" y="200" width="50" height="20" rx="4"/>
+      </g>
+      <text x="95" y="234" text-anchor="middle" class="svgsm">512-d each</text>
+      <!-- attention lines into queries -->
+      <g stroke="#3a76c2" stroke-width="1" opacity="0.25">
+        <line x1="120" y1="60" x2="430" y2="110"/><line x1="120" y1="90" x2="430" y2="110"/><line x1="120" y1="120" x2="430" y2="110"/>
+        <line x1="120" y1="60" x2="430" y2="150"/><line x1="120" y1="150" x2="430" y2="150"/><line x1="120" y1="210" x2="430" y2="150"/>
+        <line x1="120" y1="180" x2="430" y2="190"/><line x1="120" y1="210" x2="430" y2="190"/><line x1="120" y1="90" x2="430" y2="190"/>
+      </g>
+      <!-- queries -->
+      <text x="430" y="60" text-anchor="middle" class="svgtxt" fill="#3a76c2">32 learned queries</text>
+      <text x="430" y="78" text-anchor="middle" class="svgsm">fixed "questions"</text>
+      <g fill="#3a76c2"><circle cx="430" cy="110" r="11"/><circle cx="430" cy="150" r="11"/><circle cx="430" cy="190" r="11"/></g>
+      <text x="430" y="230" text-anchor="middle" class="svgsm">… ×32</text>
+      <!-- to soft tokens -->
+      <g stroke="#3a76c2" stroke-width="1.4" opacity="0.5">
+        <line x1="441" y1="110" x2="640" y2="120"/><line x1="441" y1="150" x2="640" y2="150"/><line x1="441" y1="190" x2="640" y2="180"/>
+      </g>
+      <!-- qwen block -->
+      <rect x="640" y="70" width="120" height="160" rx="10" fill="#3a76c2"/>
+      <text x="700" y="145" text-anchor="middle" class="svglbl" style="font-size:13px">Qwen</text>
+      <text x="700" y="165" text-anchor="middle" class="svglbl" style="font-size:11px;opacity:.85">4096-d</text>
+      <text x="700" y="252" text-anchor="middle" class="svgsm">32 soft tokens in →</text>
+      <text x="855" y="155" text-anchor="middle" class="svgtxt" fill="#3a76c2">reasoning</text>
+      <line x1="760" y1="150" x2="820" y2="150" stroke="#3a76c2" stroke-width="3"/>
+    </svg>
+    <figcaption>The <b>resampler</b>: 32 fixed "learned questions" attend to however many latent tokens come in
+    (11 or hundreds) and emit a constant <b>32 soft tokens</b>, lifted from 512-d into Qwen's 4096-d space.
+    It changes both the <i>count</i> (→32) and the <i>space</i> (512→4096).</figcaption>
+  </figure>
+
+  <div class="loop">
+    <b>↩ The faithfulness loop (NLA).</b> The bridge above is only the <i>encoder</i> half of a Natural-Language Autoencoder.
+    A <b>text-only decoder</b> (reverse-resampler) reads <i>only the generated text</i> and tries to rebuild the latent.
+    How well it reconstructs = a <b>label-free faithfulness score</b> — does the text truly render the model's understanding, or hallucinate past it?
+    <span class="why2"> Two gates: <b>ablate-the-latent</b> (is the latent used?) + <b>recon-fidelity</b> (is it preserved?).</span>
+  </div>
+
+  <!-- ===== FIG 5: NLA round-trip ===== -->
+  <figure>
+    <svg viewBox="0 0 980 230" role="img" aria-label="NLA round trip">
+      <!-- latent in -->
+      <circle cx="120" cy="115" r="26" fill="#c2683a"/><text x="120" y="120" text-anchor="middle" class="svglbl">latent</text>
+      <text x="120" y="172" text-anchor="middle" class="svgsm">the understanding</text>
+      <!-- encode arrow -->
+      <line x1="150" y1="115" x2="400" y2="115" stroke="#3a76c2" stroke-width="3"/><polygon points="400,115 388,109 388,121" fill="#3a76c2"/>
+      <text x="275" y="100" text-anchor="middle" class="svgsm" fill="#3a76c2">encode (bridge + Qwen)</text>
+      <!-- text -->
+      <rect x="410" y="85" width="160" height="60" rx="10" fill="#fffdf9" stroke="#3a76c2" stroke-width="2"/>
+      <text x="490" y="112" text-anchor="middle" class="svgtxt">"CT ~32%, T's</text>
+      <text x="490" y="132" text-anchor="middle" class="svgtxt">hitting A…"</text>
+      <text x="490" y="68" text-anchor="middle" class="svgsm" fill="#3a76c2">TEXT (the bottleneck)</text>
+      <!-- decode arrow -->
+      <line x1="580" y1="115" x2="800" y2="115" stroke="#b5462f" stroke-width="3"/><polygon points="800,115 788,109 788,121" fill="#b5462f"/>
+      <text x="690" y="100" text-anchor="middle" class="svgsm" fill="#b5462f">decode (text-only)</text>
+      <!-- reconstructed latent -->
+      <circle cx="835" cy="115" r="26" fill="none" stroke="#c2683a" stroke-width="3" stroke-dasharray="5 4"/><text x="835" y="120" text-anchor="middle" class="svgsm" fill="#c2683a">latent′</text>
+      <!-- compare -->
+      <text x="835" y="172" text-anchor="middle" class="svgsm">rebuilt from text alone</text>
+      <path d="M120 145 C 120 215, 835 215, 835 145" fill="none" stroke="#9a9388" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <text x="477" y="212" text-anchor="middle" style="font:700 12px sans-serif;fill:#b5462f">match? → faithfulness score (does the text really render the latent?)</text>
+    </svg>
+    <figcaption>The <b>NLA round-trip</b>. The bridge encodes latent→text; a separate <b>text-only decoder</b> tries to
+    rebuild the latent from the words alone. How close <code>latent′</code> is to <code>latent</code> is a label-free
+    <b>faithfulness</b> measure — it catches the model hallucinating past what it actually understands.</figcaption>
+  </figure>
+
+  <!-- ============ PHASE 3 ============ -->
+  <h2>Phase 3 — Self-Play Reasoning (GRPO) <span class="phase-tag" style="background:var(--grpo)">INFRA READY</span></h2>
+  <div class="flow">
+    <div class="box">
+      <div class="bar" style="background:var(--grpo)"></div>
+      <div class="nm">Generate the group</div>
+      <div class="desc">From a state, sample <b>K rollouts</b> from the world model (the distributional head makes this possible).</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--grpo)"></div>
+      <div class="nm">Score each</div>
+      <div class="desc">The <b>value head</b> rates every rollout. Faithfulness is a constraint, not a reward.</div>
+    </div>
+    <div class="arrow">→</div>
+    <div class="box">
+      <div class="bar" style="background:var(--grpo)"></div>
+      <div class="nm">Advantage &amp; update</div>
+      <div class="desc">Reasoning that leads to higher-value futures is reinforced. <b>No human labels in the loop.</b></div>
+      <div class="why">the world model is its own reward — reasoning is graded by outcomes it imagines.</div>
+    </div>
+  </div>
+
+  <!-- ============ LEGEND + NUMBERS ============ -->
+  <h2>The two specialists</h2>
+  <div class="cards">
+    <div class="card">
+      <h3 style="color:var(--wm)">World Model — the analyst</h3>
+      <div class="role">custom · ~19M params · built by us, from scratch</div>
+      <p>Thinks in 512-number latents. Deep CS2 understanding from predicting millions of frames. <b>Cannot speak a word of English.</b></p>
+      <p class="kv">input 687-d frame · hidden 512-d · 6 layers</p>
+    </div>
+    <div class="card">
+      <h3 style="color:var(--bridge)">Qwen 3.6 — the writer</h3>
+      <div class="role">pretrained · 35B (A3B MoE) · off-the-shelf</div>
+      <p>Fluent in language &amp; world knowledge from trillions of tokens. <b>Knows nothing about CS2.</b> Never reads raw ticks — only the bridge's soft tokens.</p>
+      <p class="kv">hidden ~4096-d · 1,800× bigger than the analyst</p>
+    </div>
+  </div>
+
+  <!-- ===== FIG 6: low-rank latent ===== -->
+  <figure>
+    <svg viewBox="0 0 980 230" role="img" aria-label="latent is low rank">
+      <!-- axes -->
+      <line x1="70" y1="180" x2="930" y2="180" stroke="#9a9388" stroke-width="1.5"/>
+      <line x1="70" y1="40" x2="70" y2="180" stroke="#9a9388" stroke-width="1.5"/>
+      <text x="500" y="212" text-anchor="middle" class="svgsm">latent dimension (of 512)</text>
+      <text x="30" y="115" text-anchor="middle" class="svgsm" transform="rotate(-90 30 115)">variance</text>
+      <!-- bars: steep drop -->
+      <g fill="#c2683a">
+        <rect x="90"  y="55"  width="22" height="125"/><rect x="118" y="95"  width="22" height="85"/>
+        <rect x="146" y="120" width="22" height="60"/><rect x="174" y="140" width="22" height="40"/>
+        <rect x="202" y="152" width="22" height="28"/><rect x="230" y="162" width="22" height="18"/>
+      </g>
+      <g fill="#cfc7b8">
+        <rect x="258" y="170" width="22" height="10"/><rect x="286" y="173" width="22" height="7"/>
+        <rect x="314" y="175" width="22" height="5"/><rect x="342" y="176" width="22" height="4"/>
+      </g>
+      <!-- the long flat tail -->
+      <rect x="370" y="178" width="555" height="2" fill="#cfc7b8"/>
+      <text x="650" y="172" text-anchor="middle" class="svgsm">…the other ~500 dimensions carry almost nothing</text>
+      <!-- 95% marker -->
+      <line x1="252" y1="40" x2="252" y2="180" stroke="#b5462f" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="262" y="52" class="svgsm" fill="#b5462f">95% of variance by dim ~6</text>
+    </svg>
+    <figcaption>The capacity probe finding: the latent is <b>extremely low-rank</b> — ~95% of its content lives in
+    about <b>6 of 512</b> dimensions, and the win-probability signal is fully preserved by the top ~8. The model
+    is data-limited, not capacity-limited (a bigger model wouldn't help; more data did).</figcaption>
+  </figure>
+
+  <h2>Key numbers</h2>
+  <div class="nums">
+    <div class="num"><b>687→512</b><small>frame → latent width</small></div>
+    <div class="num"><b>11 tok</b><small>per frame (10 players + global)</small></div>
+    <div class="num"><b>32</b><small>resampler soft tokens → Qwen</small></div>
+    <div class="num"><b>512 → 4096</b><small>latent → Qwen's space</small></div>
+    <div class="num"><b>~4,730</b><small>training rounds (3 maps)</small></div>
+    <div class="num"><b>R² 0.92</b><small>latent reconstructable from text (capacity probe)</small></div>
+  </div>
+
+  <h2>Legend</h2>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--wm)"></i> world model / understanding</span>
+    <span><i class="sw" style="background:var(--bridge)"></i> bridge / language (trained)</span>
+    <span><i class="sw" style="background:var(--frozen)"></i> frozen (not trained)</span>
+    <span><i class="sw" style="background:var(--grpo)"></i> self-play / RL</span>
+  </div>
+
+  <div class="foot">
+    Chimera · CS2 world-model reasoning. Phase 1 trained; Phase 2 bridge wired (NLA faithfulness loop), first SFT run next; Phase 3 infra ready.
+    Rationale &amp; killed ideas: <code>docs/decisions-ledger.md</code> · bridge design: <code>docs/bridge-design.md</code>.
+  </div>
+
+</div>
+</body>
+</html>
