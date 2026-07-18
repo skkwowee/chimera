@@ -24,6 +24,7 @@ Usage: python scripts/value_probe.py --ckpt outputs/world_model/h8/best.pt
 from __future__ import annotations
 
 import argparse
+import gc
 import shutil
 import sys
 import tempfile
@@ -35,6 +36,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model  # noqa
+from _corpus import clean_blob  # noqa
 
 FRACS = [0.25, 0.5, 0.75]
 
@@ -107,6 +109,8 @@ def main():
     ap.add_argument("--train-pt", default="data/processed/tick_sequences/train.pt")
     ap.add_argument("--val-pt", default="data/processed/tick_sequences/val.pt")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    ap.add_argument("--maps", default="",
+                    help="comma-sep map keep-set; probe only these maps (match the ckpt's training maps)")
     args = ap.parse_args()
 
     with tempfile.TemporaryDirectory() as td:
@@ -120,10 +124,26 @@ def main():
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     print(f"ckpt step {ck.get('step')}  arch={a['arch']}  latent_dim={a['d_model']}")
 
-    tr = build_reps(torch.load(args.train_pt, map_location="cpu", weights_only=False),
-                    model, window, args.device)
-    va = build_reps(torch.load(args.val_pt, map_location="cpu", weights_only=False),
-                    model, window, args.device)
+    keep = set(args.maps.split(",")) if args.maps else None
+
+    def _load_reps(pt, tag):
+        """Load one blob, filter, build compact reps, then FREE the blob before the
+        next load. Peak RAM = one blob (not train+val) -> safe under the 15 GB cap."""
+        blob = torch.load(pt, map_location="cpu", weights_only=False)
+        clean_blob(blob, tag=tag)  # datasheet §5 D1/D2
+        if keep:
+            n0 = len(blob["metas"])
+            idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
+            for k, v in list(blob.items()):
+                if isinstance(v, list) and len(v) == n0:
+                    blob[k] = [v[i] for i in idx]
+            print(f"[maps {tag}] kept {len(idx)}/{n0} rounds on {sorted(keep)}")
+        reps = build_reps(blob, model, window, args.device)
+        del blob; gc.collect()
+        return reps
+
+    tr = _load_reps(args.train_pt, "train")
+    va = _load_reps(args.val_pt, "val")
     base = va["labels"].float().mean().item()
     print(f"train samples {len(tr['labels'])}  val {len(va['labels'])}  "
           f"val CT-win base rate {base:.2f}\n")
