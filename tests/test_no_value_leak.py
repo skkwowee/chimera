@@ -8,8 +8,6 @@ backprop the value loss ALONE and assert that no parameter outside the value
 head receives a gradient.
 
 EXPECTED RED until the stop-grad detach lands in train_world_model.py ([3a]).
-Ported from the closed chimera2 clean-room experiment's rail test; adapted to
-this repo's build_model/heads() API.
 
 Run: .venv/bin/python -m pytest tests/test_no_value_leak.py -q
 """
