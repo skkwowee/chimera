@@ -40,6 +40,9 @@
 #     Knob 5 — NOT yet implemented; end-phase mask is), (b) scheduled sampling
 #     = one-step sample-and-swap w/ p-ramp (Knob 6 — NOT yet implemented),
 #     (c) tests/test_no_value_leak.py proving zero outcome gradient in trunk.
+#     PORT SOURCE: ~/chimera2 (DEPRECATED repo, kept as donor) already has the
+#     gradient-based leak test (tests/test_rails.py:92-110) and the forgery-
+#     rejecting gate mechanism (tools/gate.py) — adapt, don't rewrite.
 #     DONE-CHECK: test passes; SS smoke shows p>0 path executing.
 # [4] COVERAGE HARNESS (code): extend rollout_eval.py to K sampled rollouts
 #     (minADE-K, frozen K/temperature) — doubles as the GRPO group generator.
