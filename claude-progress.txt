@@ -39,10 +39,11 @@
 # [3] TRAINER COMPLETION (code, no GPU): (a) DETACH value head (stop-grad,
 #     Knob 5 — NOT yet implemented; end-phase mask is), (b) scheduled sampling
 #     = one-step sample-and-swap w/ p-ramp (Knob 6 — NOT yet implemented),
-#     (c) tests/test_no_value_leak.py proving zero outcome gradient in trunk.
-#     PORT SOURCE: _archive/chimera2-donor/ (gate.py, test_rails.py — the
-#     gradient leak test is at test_rails.py:92-110). chimera2 repo CLOSED
-#     2026-07-18; full history restorable: git clone _archive/chimera2.bundle
+#     (c) tests/test_no_value_leak.py — PORTED 2026-07-18, verified RED against
+#     the current attached head (the test detects the live leak; flips green
+#     when (a) lands). Gradient-based on purpose: detachment makes the trunk
+#     gradient-identical to value_weight=0, so keeping the head + proving it
+#     with the gradient rail beats banning the head.
 #     DONE-CHECK: test passes; SS smoke shows p>0 path executing.
 # [4] COVERAGE HARNESS (code): extend rollout_eval.py to K sampled rollouts
 #     (minADE-K, frozen K/temperature) — doubles as the GRPO group generator.
