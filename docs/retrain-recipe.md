@@ -70,9 +70,32 @@ measured at +3pp (the +27.2pp headline was never reproduced), was largely a shor
 artifact, and the 500 ms rollout + coverage objective (Knob 1) drains most of its power.
 Run `facing_bias_check.py --corrupt-yaw` on the NEW canonical model; add velocity (v4)
 only if the shortcut demonstrably survives. Evidence before rebuilds.
-## Knob 4 — Maps (3-map dense vs all-map + OOD holdout)  ⬜ OPEN
-## Knob 5 — Heads (dist + value weight)  ⬜ OPEN (value not horizon-indexed: one head, current frame)
-Locked sub-item from the 2026-07-05 schema review: **alive-mask the displacement loss**
-(exclude dead players' xy from next-state/dist targets — they're frozen bodies; ~13% of
-player-frames are wasted capacity otherwise). One-line change, must be in the canonical run.
-## Knob 6 — Budget / early-stop (existing stopped at 500–1500 steps — likely undertrained)  ⬜ OPEN
+## Knobs 4–7 — ✅ LOCKED 2026-07-18 → see `docs/retrain-recipe-knobs4-7.md`
+
+Judge-panel decisions (3 designers × rigor/simplicity/frugal priors + judge per
+question, harmonized). Headlines:
+- **Knob 4 (maps/OOD):** train on 5 maps (ancient/dust2/inferno/mirage/nuke =
+  3,573/641 clean rounds); **de_overpass held out entirely** (367 rounds = OOD set).
+  Coords stay global /3000. OOD decode: map one-hot ZEROED (primary), plus an
+  ID-maps-zeroed-one-hot control that turns the protocol from assumption into
+  measurement.
+- **Knob 5 (heads):** trunk trained by next-state ONLY; value head kept but
+  **detached (stop-grad)**, end-phase-masked, BCE 1.0 — closes the F2 circularity
+  structurally (trunk is gradient-identical to value_weight=0; unit-test enforced).
+  Dist edges REFIT for k=4 on the 5-map clean train split (rule pre-registered in
+  fit_dist_edges.py). Alive-masked displacement loss (subsumes the 2026-07-05
+  sub-item). `best_ns.pt` is canonical; `best.pt` retired.
+- **Knob 6 (budget/SS/seeds):** scheduled sampling = **one-step sample-and-swap**
+  (measured 1.27× teacher-forcing cost); fixed 25k steps, NO early stop; 3 paired
+  model seeds × both schemas + one SS-off control (7 pod runs); 5 probe seeds;
+  checkpoint selection on val next-state loss only (probes never touch selection).
+- **Knob 7 (keystone L2):** retrain the round encoder on the clean 5-map corpus
+  (v6 config verbatim); probe six frozen representations with a linear-only gating
+  probe; C1 gates pre-registered (Δ ≥ +0.02, paired CI excludes 0, ≥4 of 5 maps,
+  plus a scaling clause) with committed failure branches — C1-REP failure
+  falsifies C1, no salvage wording. Historical 0.759 retired to history.
+- **Compute:** ~12–20 local 4090-h + ~28–44 pod-h ≈ $45–85.
+
+Amendment to Knob 1: the scheduled-sampling algorithm is now PINNED (one-step
+sample-and-swap with p-ramp, per Knob 6) — resolving adversarial-review R1's
+"unpinned" finding. Committing these docs constitutes the pre-registration.

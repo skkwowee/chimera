@@ -13,7 +13,9 @@ This certifies what the corpus IS; it does not decide the feature schema (see §
   so local rounds with no HF overlap are back-filled as `local-<team-pair>` pseudo-matches.
 
 ## 2. Representation
-- **Rate:** 8 Hz (downsample 8 from 128-tick). Round-scoped (no attention across resets).
+- **Rate:** 8 Hz (downsample 8 from **64-tick** CS2 demos; corrected 2026-07-18 —
+  an earlier version said 128-tick, which was wrong and internally inconsistent;
+  adversarial-review D5). Round-scoped (no attention across resets).
 - **Tokens:** 11 per frame = 10 players + 1 global.
 - **Schema v2 (`*_v2m.pt`):** 597-d/frame — 10×56 per-player + 37 global.
 - **Schema v3 (`*_v3m.pt`):** 687-d/frame — v2 + 9 derived perception dims/player
@@ -68,6 +70,26 @@ Dimension-level audit of the encoders (`build_tick_sequences.py`), verified empi
   evaluate. **Action: EXCLUDE.**
 - **Clean corpus after D1+D2 exclusion: 3876 train / 705 val = 4581 rounds.**
   Exclusion is applied as a load-time mask (reversible), NOT a re-bake.
+  (Canonical TRAINING corpus is further restricted to 5 maps = 3,573/641 with
+  de_overpass held out as OOD — retrain-recipe Knob 4.)
+
+**Defects found by the 2026-07-18 adversarial review (docs/adversarial-review.md)
+— code fixed, CORPUS REBUILD REQUIRED before the canonical retrain:**
+- **D3 — bomb_state one-hot entirely dead** (vocab string mismatch; all 4 bits zero
+  on every frame corpus-wide). Falsifies the earlier "dimension-level audit — PASS"
+  claim for this block. [review D1] **Follow-up (2026-07-18): the raw `bomb_site`
+  label itself is unreliable** — 873/879 plants labeled "bombsite_b" while plant
+  positions form two well-separated clusters (1.5–3k units) on every map, i.e.
+  both sites are planted but the label doesn't record it. The rebuild must derive
+  site from plant POSITION (xy; z on nuke, whose sites stack vertically), not the
+  metadata label.
+- **D4 — round_time includes pauses/halftime** (anchored at previous round's
+  official_end; ~28% of rounds shifted, up to +2.4 normalized units). [review D2]
+- **D5 — 17.5% of frames are freeze-phase**, previously undisclosed; now masked
+  from displacement losses at train time and to be disclosed/stratified in evals.
+  [review D3]
+- **D6 — v3 dist_to_bomb was distance-to-origin on the 84% pre-plant frames**;
+  now plant-gated with sentinel. Contaminated the v2-vs-v3 deconfound. [review D4]
 
 ## 6. Reproducibility checklist
 - [x] Corpus regenerable from script (`merge_hf_tick_sequences.py` + `build_v3_features.py --workers 1`).

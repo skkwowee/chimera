@@ -98,14 +98,20 @@ killed idea below is a thing that violated that bet or failed its own test.
   *co-trained head* on a dense foundation it works and becomes GRPO's reward.
 - **Gate it passed:** value-through-rollout AUC stays ~flat through 8s of
   *imagined* frames (≈0.86) → rollouts carry value signal → GRPO viable.
-- **Open caveat:** flatness is partly window-confounded (88/96 frames still real
-  at depth 8) — cite the gate with that caveat until tested at depth > window.
+- **Open caveat:** flatness is partly window-confounded — at depth 8 only 32/96
+  frames are real (the earlier "88/96" was a step-vs-frame miscount; see
+  methodology-review F4) — cite the gate with that caveat until tested at
+  depth > window. NOTE (2026-07-18): the 0.856/0.865 gate numbers also pooled
+  excluded/off-training maps (adversarial-review E1) — treat as historical until
+  recomputed per-map on the clean corpus.
 
 ### v3 derived perception (LOS/FOV/exposure raycasts, input-only)
 - Input-only (loss-masked); deterministic functions of state × the `.tri` mesh.
 - **Refined caveat:** its headline value-transfer win is *confounded* with the
-  value co-train (both shipped in the v2→v3 jump); linear-probe parity was
-  0.803 vs 0.807. Needs the v2+co-train control run to deconfound.
+  value co-train (both shipped in the v2→v3 jump). The oft-cited "linear-probe
+  parity 0.803 vs 0.807" was PHANTOM — never computed on any checkpoint
+  (methodology-review F2); purged 2026-07-18. The v2-vs-v3 deconfound runs as
+  part of the canonical retrain (retrain-recipe Knob 2).
 
 ### Geometry-gated decode (GeoGate)
 - Inference-only constrained decoding: mask wall-infeasible displacement classes
@@ -210,11 +216,14 @@ Applied: wall-rays → passes (1), blocked on (3) until GeoGate veto-rate measur
 Duration counters → fail (1), probe. Δz classes → output parameterization, judge
 by coverage eval. Ground-snap → decode-time env query, allowed inference-only.
 
-Known live violation: **the facing shortcut.** Yaw is a direct input (dims 3-6),
-velocity has NO input dims → the model over-follows facing (+27.2pp; causal,
-confirmed by yaw-shuffle dropping it to +19.3pp). Fix = give velocity equal input
-footing (the v4 schema decision). This is itself a paper finding: *input features
-create behavioral shortcuts in world models.*
+Known SUSPECTED violation: **the facing shortcut.** Yaw is a direct input
+(dims 3-6), velocity has NO input dims — the asymmetry is real. But the
+magnitude is UNVERIFIED: the "+27.2pp" headline was never reproduced (cached
+run shows +3pp) and the yaw-shuffle causal test has NEVER been run — an earlier
+version of this entry claimed "+19.3pp, causal, confirmed," a number with no
+provenance; struck 2026-07-18 (adversarial-review T2). Controlling docs:
+datasheet §7 + retrain-recipe Knob 3 — velocity (v4) is DEFERRED until the
+yaw-shuffle test on the NEW canonical model shows the shortcut survives.
 
 ---
 
