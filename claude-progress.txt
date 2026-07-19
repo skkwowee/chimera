@@ -29,8 +29,20 @@
 #     POSITION (xy; z on nuke) NOT the broken metadata label], (b) round_time
 #     re-anchored at the in-tensor freeze->live phase transition + its /115 dim
 #     + 8 sinusoids, (c) v3 dim7 dist_to_bomb plant-gated (sentinel 1.0).
-#     VALIDATE: re-bake a few rounds from LOCAL demos with the fixed builders
-#     and diff vs the patch (full re-bake impossible: ~65/92 matches HF-only).
+#     CORRECTED 2026-07-19 (corpus-strategy): full re-bake is FEASIBLE — 224
+#     raw .dem (109.7GB) persist on HF skkwowee/chimera-cs2/demos/, 92/92
+#     matches covered (split is 70 HF + 22 local). Patch-in-place is right
+#     because it is ~100x cheaper (~1h CPU vs 110GB + 20-40 CPU-h re-parse),
+#     NOT because there is no alternative.
+#     PRECONDITION (HARD): snapshot the merged v2m/v3m blobs + split manifest
+#     BEFORE patching — they are the single-copy irreversible asset ([1]
+#     mutates them; nothing equivalent exists on HF).
+#     REQUIRED: patch lineage stamping ({script sha, transforms, blob sha256
+#     pre/post, date}) into blobs + corpus manifest.
+#     VALIDATE: re-bake >=1 LOCAL-era AND >=1 HF-era match with the v2.1
+#     builder and diff vs the patch (HF-era stems never locally verified);
+#     assert every blob meta carries match_id and the set == the 92 manifest
+#     keys. This diff doubles as the v2.1 builder's correctness certificate.
 #     DONE-CHECK: patched blobs exist + validation diff report in outputs/.
 # [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
 #     .venv/bin/python scripts/fit_dist_edges.py  on the PATCHED train_v2m,

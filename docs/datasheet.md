@@ -9,8 +9,13 @@ This certifies what the corpus IS; it does not decide the feature schema (see §
   claimed to generalize to lower skill tiers without an OOD test.
 - **Parser:** `demoparser2 >= 0.41.3` (0.41.1 hits `EntityNotFound` on Major demos).
 - **Canonical store:** HF `skkwowee/chimera-cs2`, `tick_sequences/<match_id>/{train,val}.pt`.
-  HF is canonical but NOT a superset — only ~27 of 81 local demo stems exist on HF,
-  so local rounds with no HF overlap are back-filled as `local-<team-pair>` pseudo-matches.
+  CORRECTED 2026-07-19: HF holds 224 raw `.dem` (109.7 GB) under `demos/` covering
+  ALL 92 matches (the earlier "~27 of 81 stems / re-bake impossible" claim was false
+  — it conflated per-match tick_sequences blobs with raw demos). Split provenance:
+  70 HF-pipeline + 22 local matches; local rounds with no HF tick-blob overlap are
+  back-filled as `local-<team-pair>` pseudo-matches (mechanism unchanged). NOTE:
+  filename is NOT a unique match key (5 proven same-name-different-content
+  collisions) — keying is sha256 + HLTV match id.
 
 ## 2. Representation
 - **Rate:** 8 Hz (downsample 8 from **64-tick** CS2 demos; corrected 2026-07-18 —
