@@ -14,7 +14,8 @@ Per docs/round-encoder-design.md §2:
 Output:
   data/processed/tick_sequences/train.pt          dict[str, list[tensor]]
   data/processed/tick_sequences/val.pt
-  data/processed/tick_sequences/feature_schema_v1.json
+  data/processed/tick_sequences/feature_schema.json  (+ legacy-name copy
+                                feature_schema_v1.json for one transition)
   data/processed/tick_sequences/manifest.json     per-round metadata for joins
 
 Train/val split is DEMO-LEVEL (per the design, avoids round-leakage). Default:
@@ -98,6 +99,60 @@ NONE_EVENT_IDX = EVENT_IDX["none"]
 # whole round); long enough that "none" is meaningfully informative during
 # slow phases instead of being the trivial answer everywhere.
 EVENT_HORIZON_TICKS = 256
+
+# Bumped v2 -> v2.1 when the site-from-plant-position fix landed (datasheet
+# D-defect) + bomb_exploded labels from round-end reason. Dim-preserving:
+# feature_dim is unchanged, but planted_a/planted_b semantics differ, so
+# pre-fix and post-fix blobs must never be merged silently.
+SCHEMA_VERSION = "feature_schema_v2.1"
+
+# Site-from-plant-position (datasheet D-defect): the awpy round-level
+# `bomb_site` label is broken corpus-wide (873/879 labeled B while plant
+# positions cluster at BOTH sites on every map). Site MUST be derived from
+# the plant position. Centroids below were measured from the local corpus's
+# plant events (whose per-event `bombsite` labels cluster tightly, unlike
+# the round-level label). de_nuke's sites are vertically stacked, so xy is
+# ambiguous there — use the Z split instead (A upper z~-406, B lower z~-767).
+BOMBSITE_CENTROIDS = {
+    #              A site (x, y)         B site (x, y)
+    "de_ancient":  ((-1324.0,   775.0), (  868.0,    23.0)),
+    "de_anubis":   (( 1267.0,  1969.0), (-1060.0,   642.0)),
+    "de_dust2":    (( 1089.0,  2521.0), (-1537.0,  2572.0)),
+    "de_inferno":  (( 1952.0,   428.0), (  491.0,  2864.0)),
+    "de_mirage":   (( -411.0, -2074.0), (-1981.0,   391.0)),
+    "de_nuke":     ((  674.0,  -757.0), (  535.0, -1007.0)),
+    "de_overpass": ((-2476.0,   648.0), (-1143.0,   -22.0)),
+    "de_train":    ((  417.0,   -45.0), ( -121.0, -1287.0)),
+}
+NUKE_Z_SPLIT = -600.0  # z >= split -> A (upper); z < split -> B (lower/ramp)
+
+# Cross-check counters (per-process): derived site vs the plant event's own
+# `bombsite` string and vs the known-broken awpy round label. process_demo
+# prints the per-demo deltas so disagreement rates are visible in bake logs.
+SITE_XCHECK = {"plants": 0, "event_label_disagree": 0, "awpy_label_disagree": 0}
+
+
+def derive_site_from_plant(map_name: str, x: float, y: float,
+                           z: float | None,
+                           event_bombsite: str | None = None) -> str:
+    """Classify a plant as site 'a' or 'b' from its position.
+
+    Nearest bombsite centroid in xy for all maps; Z-split override on
+    de_nuke (vertically stacked sites). Unknown maps fall back to the plant
+    event's own `bombsite` string (e.g. 'BombsiteA'), then 'a'.
+    """
+    if map_name == "de_nuke" and z is not None:
+        return "a" if z >= NUKE_Z_SPLIT else "b"
+    cents = BOMBSITE_CENTROIDS.get(map_name)
+    if cents is None:
+        if event_bombsite and event_bombsite.strip().lower().endswith("b"):
+            return "b"
+        return "a"
+    (ax, ay), (bx, by) = cents
+    da = (x - ax) ** 2 + (y - ay) ** 2
+    db = (x - bx) ** 2 + (y - by) ** 2
+    return "a" if da <= db else "b"
+
 
 DOWNSAMPLE_DEFAULT = 8  # 64Hz -> 8Hz
 PLAYERS_PER_SIDE = 5
@@ -406,6 +461,12 @@ def compute_event_labels(
         elif "explod" in ev or "detonat" in ev:
             events.append((int(be["tick"]), EVENT_IDX["bomb_exploded"]))
     if end_tick is not None:
+        # awpy's bomb.json has NO explode rows (events are only
+        # {plant, drop, defuse, pickup}) — the 'explod'/'detonat' branch
+        # above never fires. Detonations are recoverable ONLY from the
+        # round-end reason; the explosion coincides with the round end tick.
+        if "explod" in (round_meta.get("reason") or "").lower():
+            events.append((int(end_tick), EVENT_IDX["bomb_exploded"]))
         events.append((int(end_tick), EVENT_IDX["round_end"]))
 
     events.sort()
@@ -460,9 +521,13 @@ def build_round_tensor(
     bomb_site = round_meta.get("bomb_site")
 
     plant_pos = None
+    plant_z = None
+    plant_event_site = None
     for be in bomb_events:
         if be.get("event") == "plant" and be.get("round_num") == round_meta["round_num"]:
             plant_pos = (be.get("X") or 0.0, be.get("Y") or 0.0)
+            plant_z = be.get("Z")
+            plant_event_site = be.get("bombsite")   # e.g. 'BombsiteA'
             break
 
     slot_map = assign_player_slots(round_df)
@@ -508,9 +573,26 @@ def build_round_tensor(
     bomb_age_s = np.zeros(T, dtype=np.float32)
     if plant_tick and plant_pos is not None:
         planted = kept_ticks >= plant_tick
-        # Normalize awpy's site strings ('bombsite_a'/'bombsite_b') to the
-        # vocab's 'planted_a'/'planted_b'.
-        site_str = "planted_b" if (bomb_site or "").lower().endswith("b") else "planted_a"
+        # Datasheet D-defect fix: derive the site from the plant POSITION.
+        # The awpy round-level `bomb_site` label is broken corpus-wide
+        # (873/879 labeled B) and is kept only as a logged cross-check.
+        site = derive_site_from_plant(map_name, plant_pos[0], plant_pos[1],
+                                      plant_z, plant_event_site)
+        site_str = f"planted_{site}"
+        SITE_XCHECK["plants"] += 1
+        if plant_event_site:
+            ev_site = ("b" if plant_event_site.strip().lower().endswith("b")
+                       else "a")
+            if ev_site != site:
+                SITE_XCHECK["event_label_disagree"] += 1
+                print(f"    WARN r{round_meta['round_num']}: derived site "
+                      f"'{site}' != plant-event bombsite '{plant_event_site}' "
+                      f"at ({plant_pos[0]:.0f},{plant_pos[1]:.0f},"
+                      f"{plant_z if plant_z is not None else 0:.0f}) on {map_name}")
+        if bomb_site and bomb_site != "not_planted":
+            awpy_site = "b" if bomb_site.lower().endswith("b") else "a"
+            if awpy_site != site:
+                SITE_XCHECK["awpy_label_disagree"] += 1  # known-broken label
         bomb_states[planted] = site_str
         bomb_x[planted] = plant_pos[0]
         bomb_y[planted] = plant_pos[1]
@@ -552,11 +634,14 @@ def build_round_tensor(
     # (kill/plant/defuse/explode). Capped at 256 ticks (4s) then normalized.
     rn = round_meta["round_num"]
     kill_ticks = sorted(int(k["tick"]) for k in kills if k.get("round_num") == rn)
+    # bomb.json has no explode rows — detonation comes from the round-end
+    # reason (at end_tick), matching compute_event_labels.
     event_only_ticks = sorted(set(kill_ticks) | set(
         int(b["tick"]) for b in bomb_events
         if b.get("round_num") == rn
-        and (b.get("event") or "").lower() in {"plant", "defuse", "detonate"}
-    ))
+        and (b.get("event") or "").lower() in {"plant", "defuse"}
+    ) | ({int(end_tick)}
+         if "explod" in (round_meta.get("reason") or "").lower() else set()))
     cap = 256  # 4s at 64Hz; same horizon as EVENT_HORIZON_TICKS so labels and
                # tempo features share a time scale.
 
@@ -650,6 +735,8 @@ def process_demo(
 
     df = pl.read_parquet(parq)
 
+    xc0 = dict(SITE_XCHECK)   # per-demo cross-check deltas printed below
+
     # Running score — winner of each round so far
     score_t = score_ct = 0
     tensors = []
@@ -678,6 +765,14 @@ def process_demo(
         elif r.get("winner") == "ct":
             score_ct += 1
 
+    d_plants = SITE_XCHECK["plants"] - xc0["plants"]
+    if d_plants:
+        print(f"    site cross-check [{stem}]: {d_plants} plants, "
+              f"{SITE_XCHECK['event_label_disagree'] - xc0['event_label_disagree']} "
+              f"disagree vs plant-event label, "
+              f"{SITE_XCHECK['awpy_label_disagree'] - xc0['awpy_label_disagree']} "
+              f"disagree vs awpy round label (known broken)")
+
     summary = {
         "demo_stem": stem,
         "map_name": map_name,
@@ -686,6 +781,32 @@ def process_demo(
         "feature_dim": TOTAL_DIM,
     }
     return tensors, metas, label_seqs, time_seqs, summary
+
+
+def builder_provenance() -> dict:
+    """Best-effort git provenance stamped into blobs + manifests at bake time.
+
+    The demo pipeline runs a COPY of this script outside any git repo, so
+    commit/dirty are None there — the pipeline records the hash itself from
+    the source checkout before copying (see chimera-demo-pipeline process.py).
+    """
+    import subprocess
+    commit, dirty = None, None
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=10)
+        if r.returncode == 0:
+            commit = r.stdout.strip()
+            s = subprocess.run(
+                ["git", "-C", str(REPO), "status", "--porcelain", "--",
+                 "scripts/build_tick_sequences.py", "scripts/parse_demos.py"],
+                capture_output=True, text=True, timeout=10)
+            dirty = bool(s.stdout.strip())
+    except Exception:
+        pass
+    return {"schema_version": SCHEMA_VERSION, "builder_commit": commit,
+            "builder_dirty": dirty, "baked_at_unix": int(time.time())}
 
 
 def main() -> None:
@@ -717,7 +838,11 @@ def main() -> None:
     train_parqs = parqs[val_n:]
     val_parqs = parqs[:val_n]
 
+    prov = builder_provenance()
+
     print(f"Total demos: {len(parqs)} (train: {len(train_parqs)}, val: {len(val_parqs)})")
+    print(f"Schema: {SCHEMA_VERSION} (builder {prov['builder_commit'] or 'unknown'}"
+          f"{'+dirty' if prov['builder_dirty'] else ''})")
     print(f"Downsample: {args.downsample}x (8Hz from 64Hz)")
     print(f"Feature dim: {TOTAL_DIM} ({N_PLAYERS}×{PER_PLAYER_DIM} player + {GLOBAL_DIM} global)")
     print(f"Output dir: {OUT_DIR}")
@@ -762,6 +887,7 @@ def main() -> None:
             "summaries": summaries,
             "feature_dim": TOTAL_DIM,
             "downsample": args.downsample,
+            **prov,   # schema_version, builder_commit, builder_dirty, baked_at_unix
         }, out_path)
         total_ticks = sum(t.shape[0] for t in all_tensors)
         size_mb = out_path.stat().st_size / 1e6
@@ -785,7 +911,9 @@ def main() -> None:
 
     # Schema doc — every downstream consumer reads this
     schema = {
-        "version": "feature_schema_v2",
+        "version": SCHEMA_VERSION,
+        "builder_commit": prov["builder_commit"],
+        "builder_dirty": prov["builder_dirty"],
         "downsample": args.downsample,
         "tickrate_hz": 8,
         "feature_dim": TOTAL_DIM,
@@ -825,19 +953,26 @@ def main() -> None:
                            "(capped at event_horizon_ticks; raw 64Hz ticks)",
         },
     }
-    (OUT_DIR / "feature_schema_v1.json").write_text(json.dumps(schema, indent=2))
+    # Canonical name is now feature_schema.json (the content self-versions via
+    # the "version" key — the old feature_schema_v1.json NAME contradicted its
+    # own "feature_schema_v2" content). Keep writing the old name as a copy for
+    # one transition release so existing consumers don't break.
+    schema_body = json.dumps(schema, indent=2)
+    (OUT_DIR / "feature_schema.json").write_text(schema_body)
+    (OUT_DIR / "feature_schema_v1.json").write_text(schema_body)
 
     manifest = {
         "train": train_summary,
         "val": val_summary,
-        "feature_schema": "feature_schema_v1.json",
+        "feature_schema": "feature_schema.json",
+        **prov,
     }
     (OUT_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
     print("=== summary ===")
     print(json.dumps(manifest, indent=2))
     print()
-    print(f"Schema: {OUT_DIR / 'feature_schema_v1.json'}")
+    print(f"Schema: {OUT_DIR / 'feature_schema.json'} ({SCHEMA_VERSION})")
     print(f"Done.")
 
 

@@ -25,6 +25,9 @@ dependencies = [
     "polars>=0.19.0",
     "pyarrow>=10.0.0",
     "awpy>=2.0.0",
+    # Explicit floor — awpy 2.0.x only requires demoparser2>=0.38.0, which
+    # hits EntityNotFound on Major demos. Do not rely on awpy's own floor.
+    "demoparser2>=0.41.3",
     # CS2 demo tools
     "cs2-tools[parse] @ git+https://github.com/skkwowee/cs2-tools.git",
     # Utilities

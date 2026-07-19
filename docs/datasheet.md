@@ -82,7 +82,10 @@ Dimension-level audit of the encoders (`build_tick_sequences.py`), verified empi
   positions form two well-separated clusters (1.5–3k units) on every map, i.e.
   both sites are planted but the label doesn't record it. The rebuild must derive
   site from plant POSITION (xy; z on nuke, whose sites stack vertically), not the
-  metadata label.
+  metadata label. **Refinement (implementer validation, 927 plants/40 demos): the
+  per-EVENT bombsite strings are fine (493 A / 434 B, 0 disagreements with derived
+  positions) — the broken path was the per-round metadata. The v2.1 builder derives
+  from position and logs the event label as a cross-check.**
 - **D4 — round_time includes pauses/halftime** (anchored at previous round's
   official_end; ~28% of rounds shifted, up to +2.4 normalized units). [review D2]
 - **D5 — 17.5% of frames are freeze-phase**, previously undisclosed; now masked

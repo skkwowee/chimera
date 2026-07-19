@@ -80,8 +80,10 @@ def load_blob(path):
 
 
 def pool_rounds(matches: list[str], fileset: set[str]):
-    """Download + pool every round of every match. Returns list of (match_id, meta, tensor)."""
-    rounds, seen, stem_match, collided = [], {}, {}, set()
+    """Download + pool every round of every match. Returns
+    (rounds, seen, versions) — versions maps input source -> schema_version
+    (pre-provenance blobs report 'unversioned-pre-v2.1')."""
+    rounds, seen, stem_match, collided, versions = [], {}, {}, set(), {}
     t0 = time.time()
     for k, mid in enumerate(matches):
         for part in ("train", "val"):
@@ -95,6 +97,7 @@ def pool_rounds(matches: list[str], fileset: set[str]):
             except Exception as e:
                 print(f"  WARN skipping {rel}: {type(e).__name__}: {e}")
                 continue
+            versions[mid] = b.get("schema_version", "unversioned-pre-v2.1")
             for t, m in zip(b["tensors"], b["metas"]):
                 if t.ndim != 2 or t.shape[1] != FDIM or t.dtype != torch.float32:
                     print(f"  WARN bad tensor {rel} r{m.get('round_num')}: {tuple(t.shape)} {t.dtype}")
@@ -117,10 +120,29 @@ def pool_rounds(matches: list[str], fileset: set[str]):
             print(f"  pooled {k+1}/{len(matches)} matches, {len(rounds)} rounds  {time.time()-t0:.0f}s", flush=True)
     for stem, m1, m2 in sorted(collided):
         print(f"  NOTE stem collision {stem}: matches {m1} + {m2} (distinct games, both kept)")
-    return rounds, seen
+    return rounds, seen, versions
 
 
-def backfill_local(rounds, seen, out_dir: Path):
+def check_schema_versions(versions: dict) -> None:
+    """Refuse to merge inputs baked under different schema versions.
+
+    Dim-preserving semantic changes (bomb-state site fix, round_time
+    re-anchoring) are invisible to the feature_dim assert — mixing pre-fix
+    and post-fix blobs would silently poison the corpus. Fails listing the
+    offending inputs per version."""
+    by_ver = defaultdict(list)
+    for src, ver in versions.items():
+        by_ver[ver].append(str(src))
+    if len(by_ver) > 1:
+        detail = "; ".join(
+            f"{v}: {sorted(srcs)[:8]}{' ...' if len(srcs) > 8 else ''}"
+            for v, srcs in sorted(by_ver.items()))
+        raise SystemExit(
+            f"FATAL schema_version mismatch across inputs — re-bake the old "
+            f"matches before merging. {detail}")
+
+
+def backfill_local(rounds, seen, out_dir: Path, versions: dict):
     """Append local rounds whose demo has ZERO key overlap with the pooled HF
     rounds, grouped into 'local-<team-pair>' pseudo-matches. Demos with any
     overlap are HF-canonical: skipped whole (stragglers would imply a parser
@@ -133,6 +155,7 @@ def backfill_local(rounds, seen, out_dir: Path):
             continue
         b = load_blob(p)
         assert b["feature_dim"] == FDIM and b["downsample"] == DOWNSAMPLE
+        versions[f"local:{name}"] = b.get("schema_version", "unversioned-pre-v2.1")
         for t, m in zip(b["tensors"], b["metas"]):
             by_stem[m["demo_stem"]].append((t, m))     # tensors stay mmap-backed
         del b
@@ -208,10 +231,12 @@ def main():
         matches = matches[:args.limit_matches]
     print(f"{len(matches)} matches on HF{' (limited)' if sfx else ''}")
 
-    rounds, seen = pool_rounds(matches, files)
+    rounds, seen, versions = pool_rounds(matches, files)
     assert rounds, "no rounds pooled"
     if not args.hf_only:
-        rounds = backfill_local(rounds, seen, out_dir)
+        rounds = backfill_local(rounds, seen, out_dir, versions)
+    check_schema_versions(versions)
+    schema_version = next(iter(versions.values()), "unversioned-pre-v2.1")
 
     # ---- match-level split -------------------------------------------------
     val_matches = split_matches(rounds, args.seed, args.val_frac)
@@ -277,7 +302,7 @@ def main():
         blob = {"tensors": [rounds[i][2] for i in side_idx[side]],
                 "metas":   [rounds[i][1] for i in side_idx[side]],
                 "feature_dim": FDIM, "downsample": DOWNSAMPLE,
-                "schema_version": "feature_schema_v2"}
+                "schema_version": schema_version}
         out = out_dir / f"{side}_v2m{sfx}.pt"
         torch.save(blob, out)
         print(f"wrote {out}  ({len(blob['tensors'])} rounds)", flush=True)
