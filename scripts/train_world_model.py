@@ -42,13 +42,19 @@ from __future__ import annotations
 
 import argparse
 import math
+import random
+import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _corpus import clean_blob
 
 DATA_DIR = Path("data/processed/tick_sequences")
 
@@ -127,7 +133,7 @@ class WorldModelFlat(nn.Module):
     def forward(self, x):
         return self.head(self._run(x))                # [B,L,F] residual
 
-    def gen_residual(self, x, sample=False, temperature=1.0):
+    def gen_residual(self, x, sample=False, temperature=1.0, generator=None):
         return self.forward(x)
 
     def latent(self, x):
@@ -260,7 +266,7 @@ class WorldModelPlayers(nn.Module):
             out["dist_off"] = do[..., DIST_C:].reshape(*do.shape[:-1], DIST_C, 2)
         return out
 
-    def gen_residual(self, x, sample=False, temperature=1.0):
+    def gen_residual(self, x, sample=False, temperature=1.0, generator=None):
         """Decode-time residual: like forward(), but with the player xy dims
         OVERWRITTEN by the distributional head (class center + refine offset).
         Falls back to forward() when the dist head is absent, so callers can
@@ -281,7 +287,8 @@ class WorldModelPlayers(nn.Module):
         off = do[..., DIST_C:].reshape(*do.shape[:-1], DIST_C, 2)
         if sample:
             probs = F.softmax(logits / temperature, dim=-1)
-            cls = torch.multinomial(probs.reshape(-1, DIST_C), 1).reshape(logits.shape[:-1])
+            cls = torch.multinomial(probs.reshape(-1, DIST_C), 1,
+                                    generator=generator).reshape(logits.shape[:-1])
         else:
             cls = logits.argmax(dim=-1)                                 # [B,L,P]
         off_c = off.gather(-2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
@@ -322,7 +329,7 @@ def auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, pred_mask, max_batches=50, cv_residual=False):
+def evaluate(model, loader, device, pred_mask, freeze_col, end_col, max_batches=50, cv_residual=False):
     model.eval()
     m_loss = copy_loss = cv_loss = n = 0.0
     vlog, vlab = [], []
@@ -335,14 +342,20 @@ def evaluate(model, loader, device, pred_mask, max_batches=50, cv_residual=False
         cv_base = (model.horizon * (x - x_prev)) if cv_residual else 0.0
         # decode path (dist head decodes class+offset for xy; plain forward otherwise)
         pred_res = (model.gen_residual(x) + cv_base)[..., pred_mask]
-        m_loss += huber(pred_res, true_res).item()
-        copy_loss += huber(torch.zeros_like(true_res), true_res).item()
-        cv_loss += huber((model.horizon * (x - x_prev))[..., pred_mask], true_res).item()
-        n += 1
+        live = x[..., freeze_col] < 0.5                          # D3: freeze frames out of ns metrics
+        if live.any():
+            m_loss += huber(pred_res[live], true_res[live]).item()
+            copy_loss += huber(torch.zeros_like(true_res[live]), true_res[live]).item()
+            cv_loss += huber((model.horizon * (x - x_prev))[..., pred_mask][live], true_res[live]).item()
+            n += 1
         if "value" in out:
-            vlog.append(out["value"][:, -1].float().cpu()); vlab.append(won)
+            keep = x[:, -1, end_col] < 0.5                       # O3: end-phase windows out of AUC
+            if keep.any():
+                vlog.append(out["value"][keep, -1].float().cpu()); vlab.append(won[keep])
     model.train()
     v_auc = auc(torch.cat(vlog), torch.cat(vlab)) if vlog else float("nan")
+    if n == 0:
+        return float("nan"), float("nan"), float("nan"), v_auc
     return m_loss / n, copy_loss / n, cv_loss / n, v_auc
 
 
@@ -373,8 +386,9 @@ def main():
                     help="DISTRIBUTIONAL player-xy head: classify displacement into 97 classes "
                          "(stationary + 6 rings x 16 dirs) + per-class refine offset. Fixes "
                          "regression mode-averaging (stationary jitter, between-mode means).")
-    ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3.pt"))
-    ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3.pt"))
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3m.pt"))
+    ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3m.pt"))
     ap.add_argument("--out", default="outputs/world_model")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--smoke", action="store_true", help="tiny CPU sanity run on val.pt")
@@ -389,13 +403,27 @@ def main():
         args.device = "cpu"
         print("[smoke] tiny CPU run on val.pt")
 
+    random.seed(args.seed); np.random.seed(args.seed)
+    torch.manual_seed(args.seed); torch.cuda.manual_seed_all(args.seed)
+    print(f"seed={args.seed}")
+
     dev = torch.device(args.device)
     print(f"loading {args.train_pt} ...")
     train_blob = torch.load(args.train_pt, map_location="cpu", weights_only=False)
     val_blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
+    clean_blob(train_blob, tag="train")
+    clean_blob(val_blob, tag="val")
     fdim = train_blob["feature_dim"]
     assert fdim == val_blob["feature_dim"]
     ppd = train_blob.get("per_player_dim", 56)
+
+    # phase flags (build_tick_sequences.encode_global: global block starts at
+    # 10*ppd, map_onehot then phase_onehot = [freeze, live, post_plant, end])
+    n_maps = len(train_blob.get("map_vocab", [None] * 7))
+    freeze_col = N_PLAYERS * ppd + n_maps
+    end_col = freeze_col + 3
+    _ph = val_blob["tensors"][0][:, freeze_col:end_col + 1]
+    assert _ph.max() <= 1.0 and ((_ph.sum(1) - 1.0).abs() < 1e-4).all(), "phase one-hot layout mismatch"
 
     if args.maps:
         keep = set(args.maps.split(","))
@@ -412,10 +440,16 @@ def main():
     print(f"feature_dim={fdim} per_player={ppd}  horizon={args.horizon} ({args.horizon*125}ms)  "
           f"window={args.window}  train_rounds={len(tr_ds.rounds)} (dropped {tr_ds.dropped}) "
           f"val_rounds={len(va_ds.rounds)}  value_weight={args.value_weight}")
+    dl_gen = torch.Generator(); dl_gen.manual_seed(args.seed)
+    def _winit(wid):
+        ws = torch.initial_seed() % 2**32
+        random.seed(ws); np.random.seed(ws)
     tr_ld = DataLoader(tr_ds, batch_size=args.batch, shuffle=True, drop_last=True,
-                       num_workers=0 if args.smoke else 4)
+                       num_workers=0 if args.smoke else 4,
+                       generator=dl_gen, worker_init_fn=_winit)
     va_ld = DataLoader(va_ds, batch_size=args.batch, shuffle=False,
-                       num_workers=0 if args.smoke else 2)
+                       num_workers=0 if args.smoke else 2,
+                       generator=dl_gen, worker_init_fn=_winit)
 
     model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads,
                         per_player_dim=ppd, dist=args.dist_head).to(dev)
@@ -473,23 +507,34 @@ def main():
         # correction on top of it (pred_residual = cv_base + head), so straight
         # frames cost ~0 and the head spends capacity only on tactics.
         cv_base = (args.horizon * (x - x_prev)) if args.cv_residual else 0.0
+        live_m = x[..., freeze_col] < 0.5     # [B,L] D3: freeze frames are immobile — out of ns losses
         with torch.autocast(device_type=dev.type, enabled=use_amp):
             o = model.heads(x)
             pred_res = o["residual"] + cv_base
-            reg_loss = huber(pred_res[..., reg_mask], true_res[..., reg_mask])
+            if live_m.any():
+                reg_loss = huber(pred_res[..., reg_mask][live_m], true_res[..., reg_mask][live_m])
+            else:
+                reg_loss = pred_res.sum() * 0.0                          # all-freeze batch
             if args.dist_head:
                 d_true = true_res[..., xy_idx]                           # [B,L,P,2]
                 cls = dist_class(d_true)                                 # [B,L,P]
-                ce_loss = F.cross_entropy(o["dist_logits"].reshape(-1, DIST_C).float(),
-                                          cls.reshape(-1))
-                off = o["dist_off"].gather(
-                    -2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
-                ref_loss = huber(off, d_true - model.centers[cls])
+                pm = live_m.unsqueeze(-1).expand_as(cls)                 # [B,L,P]
+                if pm.any():
+                    ce_loss = F.cross_entropy(o["dist_logits"][pm].float(), cls[pm])
+                    off = o["dist_off"].gather(
+                        -2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
+                    ref_loss = huber(off[pm], (d_true - model.centers[cls])[pm])
+                else:
+                    ce_loss = ref_loss = pred_res.sum() * 0.0
                 ns_loss = reg_loss + 0.1 * ce_loss + ref_loss
             else:
                 ns_loss = reg_loss
             v_tgt = won.unsqueeze(1).expand_as(o["value"])
-            v_loss = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt)
+            # O3: end-phase frames trivially label the winner — out of value loss.
+            # Freeze frames stay in (freeze-time value is legitimate).
+            keep_v = x[..., end_col] < 0.5
+            v_all = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt, reduction="none")
+            v_loss = (v_all * keep_v).sum() / keep_v.sum().clamp(min=1)
             loss = ns_loss + args.value_weight * v_loss
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
@@ -501,7 +546,8 @@ def main():
         step += 1
 
         if step % args.eval_every == 0 or step == args.steps:
-            m, c, cv, vauc = evaluate(model, va_ld, dev, pred_mask, max_batches=10 if args.smoke else 50,
+            m, c, cv, vauc = evaluate(model, va_ld, dev, pred_mask, freeze_col, end_col,
+                                      max_batches=10 if args.smoke else 50,
                                       cv_residual=args.cv_residual)
             skill = (cv - m) / cv * 100 if cv > 0 else 0.0
             comp = (f"[reg {reg_loss.item():.4f} ce {ce_loss.item():.3f} ref {ref_loss.item():.4f}] "
@@ -509,7 +555,7 @@ def main():
             print(f"step {step:6d}  ns {ns_loss.item():.4f} {comp}v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
                   f"VALUE_AUC {vauc:.3f}  lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
-            meta = {"model": model.state_dict(), "args": vars(args),
+            meta = {"model": model.state_dict(), "args": vars(args), "seed": args.seed,
                     "feature_dim": fdim, "per_player_dim": ppd,
                     "val_ns": m, "value_auc": vauc, "step": step}
             if not math.isnan(vauc) and vauc > best_v:
