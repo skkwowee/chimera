@@ -288,6 +288,11 @@ prediction is dense, self-supervised, grounded in real dynamics. That's the bet.
 - cs2-demo-viewer KEPT — repurposed for visualizing world-model rollouts.
 
 ## Roadmap / next steps (see feature-list.json: W00-W06)
+## [HISTORICAL 2026-06 — superseded by the ORDERED RUNBOOK at the top of this
+##  file. Stale specifics below: W02's 125ms->2s horizon sweep is superseded by
+##  Knob 1 (k=4/500ms; horizons {1,2,5,7,10}s via rollout depths {2,4,10,14,20});
+##  W06's "Qwen 3.6/3.7" hedge is pinned to Qwen3.6-35B-A3B and the
+##  "contrastive commentary" stage is parked (bridge-design.md §2b).]
 - [x] W00 — state tensors ready (597-d feature_schema_v2 .pt files built)
 - [ ] W01 — TRAIN THE WORLD MODEL: causal spatiotemporal transformer,
             next-state prediction, round-scoped attention, distributional
@@ -309,8 +314,8 @@ prediction is dense, self-supervised, grounded in real dynamics. That's the bet.
             DISCIPLINE: ablate the latent — if removing it doesn't hurt the
             language head, it's circular.
 
-# Immediate next action: implement + train W01 (world model). Validate via W03
-# probe transfer, not prediction MSE.
+# [2026-06 note, superseded] The immediate next action is determined by the
+# ORDERED RUNBOOK [1]-[7] at the top of this file, not by this section.
 
 # ============================================================================
 # ===================  ARCHIVE — prior VLM history below  ====================

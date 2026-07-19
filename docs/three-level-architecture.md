@@ -20,9 +20,10 @@
 >   trained against tactical labels. Events fall out of **prediction
 >   surprise**; value/policy are MuZero-style heads on the latent.
 > - **L3 (Think)** = a **downstream language bridge** into that latent
->   (phase 2): a frozen Qwen 3.6/3.7 MoE wired in Flamingo-style, with
->   reasoning trained as *verbalized rollouts scored against the actual
->   future*.
+>   (phase 2): a frozen Qwen3.6-35B-A3B fed soft tokens via a trainable
+>   featurizer + Perceiver resampler (canonical design:
+>   `docs/bridge-design.md`), with reasoning trained as *verbalized
+>   rollouts scored against the actual future*.
 >
 > The sections below describe the prior three-level pipeline (VLM "See,
 > Then Think" with a round encoder at L2 and GRPO advice at L3). Read them

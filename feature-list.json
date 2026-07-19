@@ -11,13 +11,13 @@
     {
       "id": "W01",
       "name": "Train world model — next-state prediction",
-      "description": "Causal spatiotemporal transformer over game-state frames, trained state->state (NO text), like LM pretraining over game states. Round = a document (no cross-round attention). Distributional prediction head (discretize or GMM) to avoid mode-averaging blur. Default near-term predict a single future frame; horizon swept in W02. Borrows MLMove feature recipe (per-player tokens, derived visibility) but engineers ONLY L1/See perception primitives — the model LEARNS tactics (L2), no hand-engineered tactical labels.",
+      "description": "Causal spatiotemporal transformer over game-state frames, trained state->state (NO text), like LM pretraining over game states. Round = a document (no cross-round attention). Distributional prediction head to avoid mode-averaging blur — LOCKED 2026-07-18 as 97-class classify-then-refine at k=4/500 ms (retrain-recipe.md Knobs 1-7; GMM stays an armed switch trigger, not a default). Borrows MLMove feature recipe (per-player tokens, derived visibility) but engineers ONLY L1/See perception primitives — the model LEARNS tactics (L2), no hand-engineered tactical labels.",
       "passes": false
     },
     {
       "id": "W02",
       "name": "Horizon sweep",
-      "description": "Predict a future frame and sweep the prediction horizon 125 ms -> 2 s. k=+1 frame approximates MLMove-style positional inertia; strategic signal expected to emerge at longer horizons. Characterize the inertia->strategy transition across horizons.",
+      "description": "[SUPERSEDED 2026-07-18 by LOCKED Knob 1, retrain-recipe.md — no per-horizon training sweep. Single k=4 (500 ms) step model; horizons {1,2,5,7,10}s reached as sampled-rollout depths {2,4,10,14,20}, scored by coverage (minADE-K) against the fair stochastic baseline (runbook [4]).] Original intent: sweep 125 ms -> 2 s to characterize the inertia->strategy transition.",
       "passes": false
     },
     {
@@ -41,7 +41,7 @@
     {
       "id": "W06",
       "name": "Phase 2 — language bridge into the latent",
-      "description": "Bridge a frozen LLM (Qwen 3.6/3.7, 35B-A3B MoE) into world-model latents. Start Flamingo-style: resampler -> read tokens + gated cross-attention; LoRA the LLM since the state latent is far OOD. Graduate to Mixture-of-Transformers (MoT). Training stages: templated grounding -> contrastive commentary -> GRPO reasoning rewarded by checking verbalized predictions vs actual futures. DISCIPLINE: ablate the latent — if removing it doesn't hurt the language head, it's circular.",
+      "description": "Bridge a frozen LLM (pinned: Qwen3.6-35B-A3B) into world-model latents. Canonical design now in docs/bridge-design.md: featurizer + 32-query Perceiver resampler -> soft tokens, base frozen + QLoRA; contrastive commentary parked 2026-06-05 (optional enrichment only, bridge-design §2b); GRPO reasoning rewarded by checking verbalized predictions vs actual futures. Gated by the four co-equal faithfulness legs + three pre-QLoRA referees (runbook [7] CHANGES D-F). DISCIPLINE: ablate the latent — if removing it doesn't hurt the language head, it's circular.",
       "passes": false
     }
   ],

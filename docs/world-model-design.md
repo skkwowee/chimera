@@ -1,290 +1,239 @@
-# World Model Design — Next-State Prediction over CS2 Game State
+# World Model — Architecture Reference
 
-**Status: BUILT & MEASURED (world-model phase); language bridge is
-forward work.** Trained 2026-06: per-player-token transformer (19.2M),
-v3 features (687-d), multi-task next-state + value, distributional xy
-head (97 classes, classify-then-refine). The measured verdict ledger
-lives in `claude-progress.txt` — it supersedes any number or plan in
-this doc. Known doc-drift corrected after the 2026-06-12 bias audit:
-(a) §2 below claims per-player velocity dims — FALSE, the schema has
-view angle but no velocity (this exact asymmetry produced the measured
-+27.2pp facing shortcut); (b) §1's "no outcome label in the training
-objective" no longer holds — a value head (P(CT win), weight 0.3) is
-deliberately co-trained, a revision forced by the v2 value-transfer
-failure. Sections below are design-time text kept for the record.
-Original measured-findings pointers: `docs/learning-curve-finding.md`
-(the saturation result that motivated this pivot) and
-`docs/methodology.md` (the probe / σ_s gates we keep).
+This is the architecture reference for the Chimera world model: the objective,
+state schema, token layout, scoping rules, and the probe-first evaluation
+philosophy. Read it when you need to know how the model is shaped and why.
+What to *train* — step size, schema arms, seeds, budgets, gates — is locked and
+pre-registered in `docs/retrain-recipe.md` (+ `retrain-recipe-knobs4-7.md`),
+which supersedes this doc wherever the two overlap; measured results live in
+`claude-progress.txt`.
 
-## 0. Why we pivoted
+Built and measured 2026-06: a 19.2M per-player-token transformer trained on
+next-state prediction with a distributional xy head and a value head. Those
+checkpoints are baselines only; the canonical model comes from the recipe's
+retrain.
 
-The prior direction was a VLM "See, Then Think" pipeline with a Level-2
-round encoder trained on self-supervised forward-prediction objectives,
-gated on probe transfer (`docs/round-encoder-design.md`). Two measured
-results killed that recipe as the *main* lever:
+## 1. Why a world model
 
-1. **The round encoder saturates at ~16 demos.** Adding demos beyond
-   ~328 training rounds produced no probe-accuracy improvement and a
-   slightly negative top-end slope (`docs/learning-curve-finding.md`).
-   Architectural scaling (1024-d + salience) did not help either.
+The prior direction was a VLM "See, Then Think" pipeline with a Level-2 round
+encoder trained on self-supervised forward-prediction objectives
+(`docs/round-encoder-design.md`). Two measured results killed it as the main
+lever. First, the round encoder saturates at ~16 demos: beyond ~328 training
+rounds, probe accuracy stopped improving and the top-end slope went slightly
+negative; architectural scaling (1024-d + salience) did not help
+(`docs/learning-curve-finding.md`). Second, outcome supervision is
+information-starved: `round_won` is ~1 bit per round, so an encoder gated on
+`probe_outcome` extracts that bit almost immediately and then has nothing left
+to learn. Change-point objectives found statistical boundaries, not semantic
+ones, and Claude-caption supervision was circular — it paraphrased the same
+structured features the encoder already had (discriminative-check gap +0.008).
 
-2. **Outcome supervision is information-starved.** `round_won` is
-   ~1 bit per round. A round encoder gated on `probe_outcome` is
-   learning to predict a single noisy bit; it extracts essentially all
-   of that bit's worth of structure almost immediately and then has
-   nothing left to learn. Change-point / event objectives found
-   *statistical* boundaries, not *semantic* ones, and Claude-caption
-   supervision was circular (it paraphrased the same structured features
-   the encoder already had; discriminative-check gap was +0.008).
+The diagnosis: a sparse target was starving the representation. The fix changes
+the *target*, not the data scale or the encoder size. Next-state prediction
+supplies a dense, high-bandwidth signal — hundreds of bits per frame, thousands
+of frames per round. It is the same bet language modeling makes: pretrain on a
+huge self-supervised signal, then read everything downstream off the learned
+latent. Here the "tokens" are game-state frames.
 
-The diagnosis: we were starving the representation with a sparse target.
-The fix is to change the *target*, not the data scale or the encoder
-size. **Next-state prediction supplies a dense, high-bandwidth signal:**
-predicting the full 597-d game state one step ahead is hundreds of bits
-per frame, thousands of frames per round. This is the same bet language
-modeling makes — pretrain on next-token prediction over a huge,
-self-supervised signal, then read off everything downstream from the
-learned latent. Here the "tokens" are game-state frames.
+This reframes the three levels (`docs/three-level-architecture.md`): the world
+model is *how* L1→L2 understanding is learned (the dynamics of the game), and
+language (L3) becomes a downstream bridge into the learned latent rather than a
+co-trained reasoning loss.
 
-This reframes the three levels (`docs/three-level-architecture.md`):
-the world model is *how L1→L2 understanding is learned* (the dynamics
-of the game), and language (L3) becomes a downstream bridge into the
-learned latent rather than a co-trained reasoning loss.
+## 2. Objective
 
-## 1. Objective
-
-Train a **causal spatiotemporal transformer** to predict the next
-game-state frame from the history of frames within a round:
+Train a causal spatiotemporal transformer to predict the next game-state frame
+from the history of frames within a round:
 
 ```
-p(state_{t+k} | state_{≤t})        state → state, NO text in the loop
+p(state_{t+k} | state_{≤t})        state → state, no text in the loop
 ```
 
-This is a self-supervised dynamics model. The labels are the demos
-themselves — no human annotation, no outcome label in the training
-objective, no caster commentary. It is LM-style pretraining over game
-states.
+This is a self-supervised dynamics model. The labels are the demos themselves —
+no human annotation, no caster commentary. The dynamics objective carries no
+outcome label: a value head predicting P(CT win) is co-trained for downstream
+use, but it is detached (stop-grad), so the trunk's gradients are identical to
+training with no value head at all (recipe, Knob 5).
 
-Key discipline: **we judge the model by probe transfer, not by
-prediction loss.** A model can drive next-frame MSE down by predicting
-inertia (everything keeps moving the way it was) without learning any
-tactics. The question is whether the *latent* the model builds to make
-those predictions is decision-relevant — which is exactly what the
-probe battery in `docs/methodology.md` measures. Prediction loss is a
-training signal; probe transfer is the acceptance gate.
+Key discipline: the model is judged by probe transfer, not by prediction loss.
+A model can drive next-frame error down by predicting inertia — everything
+keeps moving the way it was — without learning any tactics. The question is
+whether the *latent* the model builds to make those predictions is
+decision-relevant, which is exactly what the probe battery in
+`docs/methodology.md` measures. Prediction loss is a training-health metric;
+probe transfer is the acceptance gate (§8).
 
-## 2. State schema (feature_schema_v2, 597-d/frame)
+## 3. State schema
 
-Each frame is a fixed **597-dimensional** vector:
+`feature_schema_v2` is a fixed 597-d vector per frame, and is
+canonical-by-default (recipe, Knob 2):
 
-- **10 players × 56-d = 560** — per-player block, positional slots
-  (T1..T5, CT1..CT5), no player-identity embedding (learn *role*, not
-  *player*; identity is an opt-in feature later). Per-player block
-  carries the perception primitives: position, view angle, velocity,
-  HP/armor, money, weapon, utility loadout, status bits, and derived
-  visibility (see §6).
-- **37-d global** — bomb status / position / timer, round timer, score,
-  round number, map, phase, and round-relative time encodings.
+- **10 players × 56-d = 560.** Per-player blocks in positional slots
+  (T1..T5, CT1..CT5) with no player-identity embedding — the model should learn
+  *role*, not *player*; identity is an opt-in feature later. Each block carries
+  position, view angle, HP/armor, money, weapon, utility loadout, and status
+  bits. There are no velocity dims (recipe, Knob 3: velocity is added only if
+  the facing-shortcut check demonstrably fails on the canonical model).
+- **37-d global.** Bomb status/position/timer, round timer, score, round
+  number, map, phase, and round-relative time encodings.
 
-This succeeds `feature_schema_v1` (~582–750-d in
-`docs/round-encoder-design.md`); the canonical schema is emitted by the
-tensor-build step (see §9) and travels with every checkpoint.
+`feature_schema_v3` (687-d) adds 9 derived perception dims per player —
+visibility computed per §7 — and is the ablation arm of the recipe's
+perception deconfound (Knob 2). The canonical schema is emitted by the
+tensor-build step and travels with every checkpoint; corpus facts and defects
+live in `docs/datasheet.md`.
 
-### Cadence
+**Cadence: 8 Hz** — every 8th tick of the 64 Hz server. That is ~125 ms between
+frames, finer than human reaction time, and ~960 frames for a 2-minute round —
+short enough for full attention over a round without efficient-attention
+tricks.
 
-**8 Hz** (every 8th tick of the 64 Hz server). ~125 ms between frames,
-finer than human reaction time; ~960 frames for a 2-minute round. Same
-cadence the round encoder used — short enough for full attention over a
-round without efficient-attention tricks.
+## 4. Token layout and backbone
 
-## 3. Round-scoping: the round is the "document"
+The backbone is a causal transformer with RoPE, ~19.2M parameters,
+d_model = 512. Each frame becomes 11 tokens — one per player plus one global —
+a per-player token layout borrowed from MLMove. The model's output is a
+contextualized token grid `[B, L, 11, 512]`; this grid is the interface for
+everything downstream (probes, value head, the bridge).
 
-Attention is **round-scoped**. A round is the unit of context, like a
-document in LM pretraining. There is **no cross-reset attention** — a
-frame in round 7 never attends to round 6. Resets (buy phase, side
-switch, score change) are hard boundaries.
+The backbone design is reused from the round encoder
+(`docs/round-encoder-design.md` §3 — superseded as a *direction*, kept as the
+reusable architecture). What changed is the objective (dense distributional
+next-state prediction instead of five SSL heads), the scoping discipline
+(round-as-document, below), and the downstream story (heads plus the bridge,
+instead of a frozen embedding feeding RECALL).
 
-The information that *would* carry across rounds — economy, score,
-round number — enters as **features inside the frame** (the 37-d
-global block), not as attention reach. This keeps the model honest:
-it cannot leak future-round outcomes backward, and it cannot use
-cross-round trajectory bleed as a shortcut (the F1 leakage failure
-that haunted the round encoder has no surface here).
+## 5. Round scoping: the round is the document
 
-Causal attention within the round means `h_t` is a function of frames
-`0..t` only — F2-safe by construction, same property the v4 round
-encoder relied on.
+Attention is round-scoped. A round is the unit of context, like a document in
+LM pretraining. There is no cross-reset attention — a frame in round 7 never
+attends to round 6; resets (buy phase, side switch, score change) are hard
+boundaries. Information that *would* carry across rounds — economy, score,
+round number — enters as features inside the frame (the 37-d global block),
+not as attention reach. The model therefore cannot leak future-round outcomes
+backward and cannot use cross-round trajectory bleed as a shortcut (the F1
+leakage failure that haunted the round encoder has no surface here).
 
-## 4. Horizon sweep
+Causal attention within the round means `h_t` is a function of frames `0..t`
+only — F2-safe by construction, the same property the v4 round encoder relied
+on.
 
-We do not commit to a single prediction horizon. We **sweep k**:
+## 6. Prediction head and horizons
 
-| Horizon k | Wall time @ 8 Hz | What it should capture |
-|---|---|---|
-| +1 | 125 ms | Inertia / physics — near-trivial, mostly extrapolation |
-| +4 | ~0.5 s | Short-term motion, peeks |
-| +8 | ~1 s | Engagement-scale dynamics |
-| +16 | ~2 s | Strategy-scale — rotations, executes, repositioning |
+The future is multimodal — a player at a chokepoint might push, hold, or
+retreat. A point-estimate regression head (MSE) averages those modes and
+produces blurred, physically-implausible "average" states. The non-negotiable
+architectural principle is that the head represents a *distribution* over next
+states, for the same reason image/world-model work (discretized tokens,
+DIAMOND's diffusion head) avoids plain MSE.
 
-The hypothesis: **short horizons are dominated by inertia and reward a
-model that learns physics; longer horizons force the model to encode
-intent and tactics** because position alone no longer predicts where a
-player will be in 2 seconds — you have to know what they are *trying to
-do*. The horizon at which probe transfer peaks is itself a finding.
+How that principle is instantiated is locked in the recipe (Knob 1):
+rollout-native — a single short-step model (k = 4 frames = 500 ms) with a
+distributional xy head (97-class classify-then-refine), reaching all horizons
+by sampled autoregressive rollout and evaluated on coverage (minADE-K). This
+supersedes the design-time horizon sweep (direct +1/+4/+8/+16 heads) and the
+discretize-vs-GMM open point that earlier versions of this doc carried.
 
-## 5. Distributional output head
+## 7. Feature-engineering boundary: perception, not tactics
 
-The future is multimodal — a player at a chokepoint might push, hold,
-or retreat. A plain regression (MSE) head averages those modes and
-produces blurred, physically-implausible "average" states. To avoid
-mode-averaging blur, the prediction head is **distributional**:
+The single most important design rule, carried over from the three-level
+framing: engineer only perception primitives (L1 / "See"); the model learns
+tactics (L2). No hand-engineered tactical labels enter the model.
 
-- **Discretize** continuous fields (position, velocity) into bins and
-  predict a categorical over bins (LM-style), and/or
-- **GMM** head — predict a mixture of Gaussians per continuous field.
+Derived visibility — who can see whom, from positions, view angles, and map
+geometry — is a *perception* primitive: it is what a player would perceive, so
+computing it for the model is fair game (implementation and its known
+limitations are locked in recipe Knob 2). By contrast, "this is an execute,"
+"this is a retake," "this is a default" are tactical abstractions; if they are
+real, the model should discover them as structure in its latent. Injecting
+them as features would repeat the circularity that sank Claude-caption
+supervision.
 
-The choice (discretize vs GMM, per-field) is an open design point; the
-non-negotiable is that the head represents a *distribution* over next
-states, not a point estimate. This is the same reason image/world-model
-work (e.g. discretized tokens, DIAMOND's diffusion head) avoids plain
-MSE.
+The line: if a primitive is something the player's *senses* deliver (position,
+what's visible, what's audible-in-principle), engineer it. If it is an
+*interpretation* of the situation, let the model learn it.
 
-## 6. Feature-engineering boundary: perception, not tactics
+## 8. Evaluation: probe transfer, not prediction loss
 
-The single most important design rule, carried over from the
-three-level framing:
+Acceptance is the probe / σ_s discipline of `docs/methodology.md` (the
+canonical statement of the gates), retargeted onto the world-model latent:
 
-**We engineer ONLY perception primitives (L1 / "See"). The model LEARNS
-tactics (L2). No hand-engineered tactical labels enter the model.**
-
-- Borrow from **MLMove** the per-player token layout and **derived
-  visibility** (who can see whom, line-of-sight from positions + view
-  angles + map geometry). Visibility is a *perception* primitive — it
-  is what a player would perceive — so computing it for the model is
-  fair game.
-- Do **not** engineer "this is an execute," "this is a retake," "this
-  is a default." Those are tactical abstractions; if they are real,
-  the model should discover them as structure in its latent. Injecting
-  them as features would be the same circularity that sank the
-  Claude-caption supervision.
-
-The line: if a primitive is something the player's *senses* deliver
-(position, what's visible, what's audible-in-principle), engineer it.
-If it is an *interpretation* of the situation, let the model learn it.
-
-## 7. Evaluation: probe transfer, not prediction loss
-
-Acceptance is the existing probe / σ_s discipline from
-`docs/methodology.md`, retargeted from the round-encoder latent onto
-the world-model latent:
-
-- **Probe battery** (methodology axis 2). Freeze the world model; train
-  tiny MLP probes on its latent for `round_won`, `pro_action_next`, and
-  forward-state. Pass thresholds carry over (`probe_outcome` ≥ 0.65,
-  `probe_action` ≥ 0.45, `probe_next` R² ≥ 0.50). The decisive
-  question vs the round encoder: does next-state pretraining push
-  probe accuracy *above* the saturation ceiling
-  (`docs/learning-curve-finding.md`) at fixed data, especially on
-  multi-class / forward targets that `round_won` could not move?
+- **Probe battery** (methodology axis 2). Freeze the world model; train tiny
+  MLP probes on its latent for `round_won`, `pro_action_next`, and
+  forward-state. Pass thresholds carry over: `probe_outcome` ≥ 0.65,
+  `probe_action` ≥ 0.45, `probe_next` R² ≥ 0.50. The decisive question versus
+  the round encoder: does next-state pretraining push probe accuracy *above*
+  the saturation ceiling (`docs/learning-curve-finding.md`) at fixed data,
+  especially on the multi-class / forward targets that `round_won` could not
+  move? The keystone (C1) pass/fail criteria for this comparison are
+  pre-registered in the recipe (Knob 7).
 - **σ_s** (methodology axis 1). Neighbor-outcome variance on world-model
   latents, same Goldilocks band [0.15, 0.45], same
   `scripts/recall_variance_diagnostic.py` infrastructure.
 - **Encoder disagreement** (methodology axis 5) as a tiebreaker.
 
 Prediction loss (next-frame NLL / per-field accuracy) is reported as a
-training-health metric, **not** an acceptance gate. A model that wins on
-prediction loss but fails probe transfer has learned physics, not
-understanding.
+training-health metric, not an acceptance gate. A model that wins on prediction
+loss but fails probe transfer has learned physics, not understanding.
 
-## 8. What derives from the world model
+## 9. What derives from the world model
 
-The world model is the substrate; everything else is a head or a
-read-out on its latent.
+The world model is the substrate; everything else is a head or a read-out on
+its latent.
 
-- **Events fall out of prediction surprise.** An event is where the
-  model is surprised — where the realized next state has low likelihood
-  under the prediction. This *subsumes the change-point work*: instead
-  of fitting statistical boundaries (which found non-semantic splits),
-  semantically meaningful moments (a kill, a flash, a fake) are exactly
-  the high-surprise frames. No separate change-point objective.
-- **Value / policy = heads on the latent (MuZero-style).** A value head
-  predicts `round_won`; a policy head predicts the pro's next action.
-  These are downstream heads on a frozen (or lightly adapted) latent,
-  not part of the dynamics objective — keeping outcome out of the
-  representation-learning loop.
-- **Reasoning = verbalizing rollouts.** With a learned dynamics model
-  you can roll the latent forward and have the language bridge (§9)
-  describe what it predicts will happen — "they're going to fake A and
-  rotate B." This is the L3 "Think" step, now grounded in an actual
-  forward model rather than a single-state advice generator.
+- **Events fall out of prediction surprise.** An event is where the model is
+  surprised — where the realized next state has low likelihood under the
+  prediction. This subsumes the change-point work: instead of fitting
+  statistical boundaries (which found non-semantic splits), semantically
+  meaningful moments (a kill, a flash, a fake) are exactly the high-surprise
+  frames. No separate change-point objective.
+- **Value / policy are heads on the latent (MuZero-style).** The value head
+  predicts `round_won`; a policy head predicts the pro's next action. These
+  are downstream heads — the value head detached per recipe Knob 5 — keeping
+  outcome out of the representation-learning loop.
+- **Reasoning is verbalizing rollouts.** With a learned dynamics model you can
+  roll the latent forward and have the bridge describe what it predicts will
+  happen — "they're going to fake A and rotate B." This is the L3 "Think"
+  step, grounded in an actual forward model rather than a single-state advice
+  generator.
 
-## 9. Language bridge (phase 2)
+## 10. Language bridge (phase 2)
 
-Language is **deferred to phase 2** and bridges a *frozen* LLM into the
-world-model latent. The world-model latent is far out-of-distribution
-for a text LLM, so we start Flamingo-style and graduate:
+Canonical design: `docs/bridge-design.md`. In brief: the frozen world-model
+token grid feeds a trainable resampler into Qwen3.6-35B-A3B (QLoRA), the NLA
+gate scores round-trip faithfulness (does the text render the latent or
+hallucinate past it), and the phase-3 GRPO reward is grounded — the verbalized
+prediction is scored against the demo's *actual* future, in contrast to the
+prior judge/RECALL rewards (`docs/reward-candidates.md`), which had no
+ground-truth future to check against.
 
-1. **Flamingo-style bridge.** A resampler over world-model latents +
-   gated cross-attention into a frozen **Qwen 3.6 / 3.7 (35B-A3B MoE)**,
-   LoRA on the LLM. Gated cross-attn lets the frozen LLM ignore the
-   latent until the bridge learns to inject useful signal — appropriate
-   when the latent is far OOD.
-2. **Graduate to Mixture-of-Transformers (MoT)** once the bridge is
-   working — deeper integration than cross-attention bolted on.
+One discipline from this doc still binds every language result: ablate the
+latent. Each result must be re-run with the world-model latent zeroed or
+shuffled, to prove the language head is using the latent and not just the
+LLM's prior. This is the language-side analogue of the probe-transfer gate.
 
-Training stages for the bridge:
+## 11. Data
 
-1. **Templated grounding** — map latent → templated descriptions of
-   state (positions, economy) to teach the LLM to read the latent.
-2. **Contrastive commentary** — align latent windows with real caster
-   commentary (the parked grounding line from
-   `project_commentary_grounding`; global align was strong at 4.6σ,
-   per-event ASR-limited).
-3. **GRPO reasoning** — reward = verbalized prediction vs actual future.
-   The model says what will happen; we score it against what *did*
-   happen in the demo. This is a grounded, non-circular reasoning
-   reward (contrast the prior Claude-judge / RECALL rewards in
-   `docs/reward-candidates.md`, which had no ground-truth future to
-   check against).
-
-**Discipline: ABLATE the latent.** Every language result must be run
-with the world-model latent removed (zeroed / shuffled) to prove the
-language head is using the latent and not just the LLM's prior. This is
-the language-side analogue of the probe-transfer gate.
-
-## 10. Data
-
-- **85 demos, 81 parsed.**
-- **597-d tensors built** (feature_schema_v2).
-
-Per `docs/learning-curve-finding.md`, data scale is *not* the bottleneck
-for the saturated recipe — so the bet here is squarely on the denser
-objective, not on more demos. More / more-diverse demos (different era,
-skill bracket, MR12) remain a distribution-shift lever for later, but
+Corpus composition, splits, exclusions, and defects are canonical in
+`docs/datasheet.md`; the corpus's future is `docs/corpus-strategy.md`. The
+design-relevant fact: per `docs/learning-curve-finding.md`, data scale is
+*not* the bottleneck for the saturated recipe — the bet here is squarely on
+the denser objective, not on more demos. More / more-diverse demos (different
+era, skill bracket, MR12) remain a distribution-shift lever for later, but
 they are not the reason to expect the world model to beat the saturation
 ceiling.
 
-## 11. Architecture reuse
+## 12. Design questions: settled and open
 
-The world model reuses the round encoder's backbone: a **causal
-transformer with RoPE** over per-frame feature vectors (see
-`docs/round-encoder-design.md` §3, now marked superseded as a *design
-direction* but kept as the reusable architecture). What changes is the
-objective (dense distributional next-state prediction vs the prior
-five SSL heads), the scoping discipline (explicit round-as-document,
-no cross-reset attention), and the downstream story (heads + language
-bridge vs a frozen embedding feeding RECALL).
+Settled since this doc was first written — see the recipe: head form and
+horizon strategy (Knob 1), visibility computation (Knob 2), velocity inputs
+(Knob 3), and bridge staging (`docs/bridge-design.md`).
 
-## 12. Open design questions
+Still open:
 
-1. **Head form** — discretize vs GMM, per-field, bin resolution.
-2. **Horizon** — single best k vs multi-horizon joint training vs
-   the sweep as the deliverable.
-3. **Visibility computation** — full ray-cast vs approximate; cost at
-   8 Hz × 10 players × all-rounds.
-4. **Latent read-out point** — which layer / pooling feeds the probes
-   and the language bridge.
-5. **Surprise calibration** — what likelihood threshold defines an
-   "event," and does it recover awpy events (kills, plants) as a
-   sanity check.
-6. **Bridge depth** — how long to stay Flamingo-style before MoT.
+1. **Latent read-out point** — which layer / pooling feeds the probes and the
+   bridge (a tap-layer sweep is planned before bridge training; see the
+   runbook in `claude-progress.txt`).
+2. **Surprise calibration** — what likelihood threshold defines an "event,"
+   and whether it recovers awpy events (kills, plants) as a sanity check. The
+   adaptive event clock in `docs/bridge-design.md` depends on this.
