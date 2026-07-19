@@ -162,6 +162,8 @@ def inventory_to_categorical(inv: list[str] | None) -> dict:
 #   + primary_onehot (len(WEAPON_CAT_LIST)) + secondary_onehot (len(WEAPON_CAT_LIST))
 #   + util_bits (5)
 PER_PLAYER_DIM = 3 + 4 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + len(WEAPON_CAT_LIST) * 2 + 5
+HAS_C4_IDX = 14  # index of has_c4 within a per-player block (pos 3 + view 4
+                 # + hp/armor/helmet/defuser 4 + balance/equip/alive 3)
 # Global feature dim (v2 schema, bumped from v1):
 #   v1 components (22 dims):
 #     map_onehot (7) + phase_onehot (4) + score (2) + round_num (1) + round_time (1)
@@ -495,18 +497,29 @@ def build_round_tensor(
     # Bomb state
     bomb_states = np.empty(T, dtype=object)
     bomb_states[:] = "none"
+    # 'carried': some player has the C4 in inventory this frame. The per-player
+    # blocks are already baked into `out` above, so read the has_c4 bits back
+    # rather than re-deriving from inventory. Post-plant frames get overridden
+    # to planted_a/b below (the C4 also leaves inventories at plant).
+    c4_cols = [p * PER_PLAYER_DIM + HAS_C4_IDX for p in range(N_PLAYERS)]
+    bomb_states[out[:, c4_cols].max(axis=1) > 0.5] = "carried"
     bomb_x = np.zeros(T, dtype=np.float32)
     bomb_y = np.zeros(T, dtype=np.float32)
     bomb_age_s = np.zeros(T, dtype=np.float32)
     if plant_tick and plant_pos is not None:
         planted = kept_ticks >= plant_tick
-        site_str = f"planted_{bomb_site.lower()}" if bomb_site else "planted_a"
+        # Normalize awpy's site strings ('bombsite_a'/'bombsite_b') to the
+        # vocab's 'planted_a'/'planted_b'.
+        site_str = "planted_b" if (bomb_site or "").lower().endswith("b") else "planted_a"
         bomb_states[planted] = site_str
         bomb_x[planted] = plant_pos[0]
         bomb_y[planted] = plant_pos[1]
         bomb_age_s[planted] = (kept_ticks[planted] - plant_tick) / 64.0
 
-    round_time_s = np.maximum(0, (kept_ticks - start_tick) / 64.0).astype(np.float32)
+    # Anchored at freeze_end, clamped at 0: round_meta["start"] is the previous
+    # round's official_end, so anchoring there bakes halftime/timeout pauses
+    # into the clock. Live play starts at ~0 every round; freeze frames are 0.
+    round_time_s = np.maximum(0, (kept_ticks - freeze_end) / 64.0).astype(np.float32)
 
     # v2: team aggregates (money, equipment, alive count) per kept tick.
     # Vectorized via polars group_by(tick) sum filtered by side.

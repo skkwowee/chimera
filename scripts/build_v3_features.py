@@ -11,7 +11,8 @@ Recovers world x/y/z, view direction (cos/sin yaw), alive, side (slot 0-4=T,
   4 n_enemies_in_fov (/5)   LOS AND enemy in MY view cone  (what I'm looking at)
   5 n_enemies_aim_me (/5)   LOS AND I'm in ENEMY's cone     (threats on me)
   6 min_aim_error   (/pi)   angle from my crosshair to nearest LOS enemy (1=none)
-  7 dist_to_bomb    (/3000)
+  7 dist_to_bomb    (/3000) post-plant only; 1.0 pre-plant (no plant yet — same
+                            sentinel convention as min_aim_error's "none")
   8 time_since_los  (/64)   frames since I last had any LOS enemy (cap 64)
 
 LOS via awpy VisibilityChecker (.tri, eye+64), distance-gated, validated at 91.2%
@@ -89,6 +90,10 @@ def compute_derived(t: np.ndarray, vc) -> np.ndarray:
     alive = pl[:, :, 13] > 0.5
     bx = g[:, 19] * 3000.0
     by = g[:, 20] * 3000.0
+    # Pre-plant, bomb_x/y are (0,0) — dist_to_bomb would be distance-to-origin.
+    # Gate on nonzero bomb pos (set only at plant, and no bombsite sits at the
+    # map origin); pre-plant frames get the 1.0 sentinel instead.
+    planted = (bx != 0.0) | (by != 0.0)
     out = np.zeros((T, NP_, DERIVED), dtype=np.float32)
     last_los = np.full(NP_, TIME_CAP, dtype=np.float32)   # frames since LOS
     T_idx, CT_idx = range(0, 5), range(5, 10)
@@ -143,7 +148,8 @@ def compute_derived(t: np.ndarray, vc) -> np.ndarray:
             o[4] = n_fov / 5.0
             o[5] = n_aim / 5.0
             o[6] = (math.acos(max(-1.0, min(1.0, best_dot))) / math.pi) if los_en else 1.0
-            o[7] = min(math.hypot(ax[p] - bx[f], ay[p] - by[f]), 3000.0) / 3000.0
+            o[7] = (min(math.hypot(ax[p] - bx[f], ay[p] - by[f]), 3000.0) / 3000.0
+                    if planted[f] else 1.0)
             last_los[p] = 0.0 if los_en else min(TIME_CAP, last_los[p] + 1)
             o[8] = last_los[p] / TIME_CAP
     return out.reshape(T, NP_ * DERIVED)
