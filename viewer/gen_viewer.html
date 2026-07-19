@@ -6,19 +6,25 @@
 <style>
   :root { --bg:#0e0f13; --panel:#171922; --ink:#e6e8ef; --mut:#8a90a2;
           --t:#e8b13a; --ct:#4ea3ff; --gen:#ff5db1; --cv:#46e0c0; --ok:#39d98a;
-          --surp:#ff9d3a; }
+          --surp:#ff9d3a; --amber:#e8a13a; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink);
          font:14px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .banner { display:none; background:#3a2c10; color:var(--amber);
+            border-bottom:1px solid var(--amber); padding:8px 16px; font-size:13px; }
   .wrap { display:flex; gap:16px; padding:16px; align-items:flex-start; }
   .stage { position:relative; }
   canvas { background:#000; border-radius:8px; display:block; }
-  .side { width:300px; background:var(--panel); border-radius:10px; padding:14px 16px; }
+  .side { width:320px; background:var(--panel); border-radius:10px; padding:14px 16px; }
   h1 { font-size:15px; margin:0 0 4px; letter-spacing:.3px; }
-  .sub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:6px; }
+  .pill { display:inline-block; font-size:10px; font-weight:700; color:#3a2c10;
+          background:var(--amber); border-radius:9px; padding:1px 7px; margin:0 4px 8px 0; }
   .row { display:flex; justify-content:space-between; margin:6px 0; }
   .k { color:var(--mut); }
-  .controls { display:flex; gap:8px; align-items:center; margin:14px 0 6px; }
+  .controls { display:flex; gap:8px; align-items:center; margin:14px 0 6px; flex-wrap:wrap; }
+  select { background:#222634; color:var(--ink); border:1px solid #2c3142;
+           border-radius:6px; padding:5px 6px; font:inherit; max-width:100%; }
   button { background:#222634; color:var(--ink); border:1px solid #2c3142;
            border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
   button:hover { border-color:#3a4156; background:#272c3c; }
@@ -37,6 +43,7 @@
 </style>
 </head>
 <body>
+<div class="banner" id="banner">HISTORICAL CHECKPOINT — pre-reset model, baselines only. Not the canonical (Knob 1–7) retrain.</div>
 <div class="wrap">
   <div class="stage">
     <canvas id="cv" width="760" height="760"></canvas>
@@ -44,37 +51,45 @@
   </div>
   <div class="side">
     <h1>World-Model Generation</h1>
+    <div id="pills"></div>
     <div class="sub" id="meta">loading…</div>
+    <div class="controls" id="pickerRow" style="display:none">
+      <select id="mapSel"></select>
+      <select id="roundSel" style="flex:1"></select>
+    </div>
 
     <div class="row"><span class="k">frame</span><span id="fnum">–</span></div>
-    <div class="row"><span class="k">mean gen err (alive)</span><span class="err" id="merr">–</span></div>
-    <div class="row"><span class="k">mean const-vel err</span><span style="color:var(--cv)" id="cverr">–</span></div>
+    <div class="row"><span class="k" id="merrK">mean gen err (alive)</span><span class="err" id="merr">–</span></div>
+    <div class="row"><span class="k">mean naive-CV err</span><span style="color:var(--cv)" id="cverr">–</span></div>
     <div class="row"><span class="k">surprise</span><span style="color:var(--surp)" id="surp">–</span></div>
 
-    <div class="k" style="margin-top:10px">value head — P(CT win)</div>
-    <div class="valbar"><i id="vb" style="width:50%"></i></div>
+    <div class="k" style="margin-top:10px" id="vtitle">value (detached head, monitoring)</div>
+    <div class="valbar" id="valwrap"><i id="vb" style="width:50%"></i></div>
     <div class="row" style="margin-top:2px"><span class="k" style="color:var(--t)">T</span>
       <span id="vtxt">–</span><span class="k" style="color:var(--ct)">CT</span></div>
+    <div class="hint" style="margin-top:2px">reportable value = frozen-trunk linear probe (value_probe.py), not this head; masked in end phase.</div>
 
     <div class="controls">
       <button id="play">▶ play</button>
       <button id="rollBtn">rollout</button>
+      <button id="modeBtn" style="display:none">mode (argmax)</button>
+      <button id="fanSrcBtn" style="display:none">fan: model</button>
     </div>
     <input id="scrub" type="range" min="0" max="0" value="0"/>
 
     <div class="toggles">
-      <button id="tGen" class="on">gen +1s</button>
-      <button id="tCV" class="on">const-vel</button>
-      <button id="tFut" class="on">truth +1s</button>
+      <button id="tGen" class="on">gen</button>
+      <button id="tCV" class="on">naive CV</button>
+      <button id="tFut" class="on">truth</button>
       <button id="tArrow" class="on">arrows</button>
     </div>
 
     <div class="legend" style="margin-top:14px">
       <div><span class="dot" style="background:var(--t)"></span> T (now)</div>
       <div><span class="dot" style="background:var(--ct)"></span> CT (now)</div>
-      <div><span class="ring"></span> generated +1s (model)</div>
-      <div><span style="display:inline-block;width:12px;height:12px;border:2px solid var(--cv)"></span> const-vel +1s (momentum)</div>
-      <div><span style="color:var(--mut)">✕</span> &nbsp;truth +1s (reality)</div>
+      <div><span class="ring"></span> <span id="legGen">generated (mode of dist)</span></div>
+      <div><span style="display:inline-block;width:12px;height:12px;border:2px solid var(--cv)"></span> <span id="legCV">naive CV (not the reportable baseline)</span></div>
+      <div><span style="color:var(--mut)">✕</span> &nbsp;<span id="legFut">truth</span></div>
       <div><span class="dot" style="background:radial-gradient(rgba(255,157,58,.9),rgba(255,157,58,0))"></span> surprise halo (per-player nats)</div>
     </div>
     <div class="hint" id="hint"></div>
@@ -85,7 +100,11 @@
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const S = cv.width; // square canvas
 let D=null, img=null, fi=0, playing=false, rollMode=false;
+let showModeTrail=false, fanSrc='model', INDEX=null, bound=false, curEntry=null;
 const show = {gen:true, cv:true, fut:true, arrow:true};
+
+const fmtMs = ms => (ms>=1000 && ms%1000===0) ? (ms/1000)+'s' : ms+'ms';
+let H = '?';   // horizon label, derived from meta.horizon_ms — never hardcoded
 
 function tx(x){ return (x - D.map_data.pos_x)/D.map_data.scale * (S/1024); }
 function ty(y){ return (D.map_data.pos_y - y)/D.map_data.scale * (S/1024); }
@@ -102,10 +121,12 @@ function drawFrame(){
   drawBase();
   const f = D.frames[fi];
   document.getElementById('fnum').textContent = f.t;
-  // value bar
-  const v = f.value;
+  // value bar (detached head, monitoring; end-phase masked per Knob 5)
+  const v = f.value, end = !!f.end;
+  document.getElementById('valwrap').style.opacity = end ? 0.3 : 1;
   document.getElementById('vb').style.width = (v*100).toFixed(0)+'%';
-  document.getElementById('vtxt').textContent = (v*100).toFixed(0)+'% CT';
+  document.getElementById('vtxt').textContent =
+    end ? 'end phase — value masked' : (v*100).toFixed(0)+'% CT';
   let errSum=0, cvSum=0, n=0;
   // surprise halos first (under everything): radius/alpha scale with per-player nats
   for(const p of f.players){
@@ -119,13 +140,13 @@ function drawFrame(){
   for(const p of f.players){
     if(!p.alive) continue;
     const nx=tx(p.x), ny=ty(p.y);
-    // const-vel +1s (teal square)
+    // naive const-vel +k (teal square) — NOT the reportable (damped-CV) baseline
     if(show.cv){
       const cx=tx(p.cvx), cy=ty(p.cvy);
       ctx.strokeStyle=getCss('--cv'); ctx.lineWidth=2;
       ctx.strokeRect(cx-5,cy-5,10,10);
     }
-    // truth +1s
+    // truth +k
     if(show.fut){
       const fx=tx(p.fx), fy=ty(p.fy);
       ctx.strokeStyle='rgba(180,186,200,0.8)'; ctx.lineWidth=1.5;
@@ -138,7 +159,7 @@ function drawFrame(){
       ctx.strokeStyle='rgba(255,93,177,0.55)'; ctx.lineWidth=1.5;
       ctx.beginPath(); ctx.moveTo(nx,ny); ctx.lineTo(gx,gy); ctx.stroke();
     }
-    // generated +1s (ring)
+    // generated +k (ring; mode decode)
     if(show.gen){
       const gx=tx(p.gx), gy=ty(p.gy);
       ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2;
@@ -151,6 +172,7 @@ function drawFrame(){
     ctx.fillText(p.slot.replace(/[^0-9]/g,''), nx, ny+3);
     errSum += p.err; cvSum += (p.cverr||0); n++;
   }
+  document.getElementById('merrK').textContent='mean gen err (alive)';
   document.getElementById('merr').textContent = n? (errSum/n).toFixed(0)+'u' : '–';
   document.getElementById('cverr').textContent = n? (cvSum/n).toFixed(0)+'u' : '–';
   // surprise readout: total nats + the player the model is most surprised by
@@ -161,55 +183,111 @@ function drawFrame(){
   drawSpark();
 }
 
+// first step at which player p is dead (trails must never extend past death)
+function deathStep(ro,p){
+  for(let i=0;i<ro.steps.length;i++){
+    const a=ro.steps[i].alive;
+    if(a && !a[p]) return i;
+  }
+  return ro.steps.length;
+}
+function trail(pts){
+  ctx.beginPath();
+  pts.forEach((q,i)=>{ const x=tx(q[0]), y=ty(q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.stroke();
+}
+
 function drawRollout(){
   drawBase();
   const ro = D.rollout;
+  const hasFan = Array.isArray(ro.steps[0].gens);
+  const hasBase = Array.isArray(ro.steps[0].baseline_gens);
+  const last = ro.steps[ro.steps.length-1];
   document.getElementById('fnum').textContent = 'anchor '+ro.anchor;
-  document.getElementById('merr').textContent = '(drift trail)';
+  document.getElementById('merrK').textContent = hasFan ? 'minADE-'+ro.K+' @ '+fmtMs(last.t_ms) : 'rollout';
+  document.getElementById('merr').textContent =
+    hasFan && last.minade!=null ? last.minade+'u' : '(drift trail)';
   for(let p=0;p<10;p++){
+    const ds = deathStep(ro,p);
+    if(ds===0) continue;                       // dead at first step: draw nothing
+    const steps = ro.steps.slice(0,ds);
+    const lt = steps[steps.length-1];
     const col = ro.sides[p]==='t'?getCss('--t'):getCss('--ct');
     // truth trail
-    ctx.strokeStyle='rgba(180,186,200,0.7)'; ctx.lineWidth=2; ctx.beginPath();
-    ro.steps.forEach((s,i)=>{ const x=tx(s.truth[p][0]),y=ty(s.truth[p][1]);
-      i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
-    // generated trail
-    ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.beginPath();
-    ro.steps.forEach((s,i)=>{ const x=tx(s.gen[p][0]),y=ty(s.gen[p][1]);
-      i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.setLineDash([]);
-    // endpoints
-    const lt=ro.steps[ro.steps.length-1];
-    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(tx(lt.truth[p][0]),ty(lt.truth[p][1]),4,0,7); ctx.fill();
-    ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(tx(lt.gen[p][0]),ty(lt.gen[p][1]),5,0,7); ctx.stroke();
+    ctx.strokeStyle='rgba(180,186,200,0.7)'; ctx.lineWidth=2;
+    trail(steps.map(s=>s.truth[p]));
+    if(hasFan){
+      const drawFan=(key,color,best)=>{
+        const Kn = ro.steps[0][key].length;
+        for(let i=0;i<Kn;i++){
+          if(best!=null && i===best) continue;
+          ctx.strokeStyle=color; ctx.lineWidth=1.2; ctx.globalAlpha=0.15;
+          trail(steps.map(s=>s[key][i][p]));
+        }
+        ctx.globalAlpha=1;
+        if(best!=null){                        // argmin-ADE trajectory, full opacity
+          ctx.strokeStyle=color; ctx.lineWidth=2;
+          trail(steps.map(s=>s[key][best][p]));
+          ctx.beginPath(); ctx.arc(tx(lt[key][best][p][0]),ty(lt[key][best][p][1]),5,0,7); ctx.stroke();
+        }
+      };
+      if(fanSrc!=='baseline') drawFan('gens', getCss('--gen'), ro.best!=null?ro.best:0);
+      if(hasBase && fanSrc!=='model')
+        drawFan('baseline_gens', getCss('--cv'), ro.baseline_best!=null?ro.baseline_best:0);
+      if(showModeTrail && steps[0].mode){      // argmax trail — NOT the model's claim
+        ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=1.5; ctx.setLineDash([4,3]);
+        trail(steps.map(s=>s.mode[p])); ctx.setLineDash([]);
+      }
+    } else {
+      // legacy single-trajectory export: an argmax (mode) trail, labeled as such
+      ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2; ctx.setLineDash([4,3]);
+      trail(steps.map(s=>s.gen[p])); ctx.setLineDash([]);
+      ctx.strokeStyle=getCss('--gen'); ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(tx(lt.gen[p][0]),ty(lt.gen[p][1]),5,0,7); ctx.stroke();
+    }
+    // truth endpoint
+    ctx.fillStyle=col; ctx.beginPath();
+    ctx.arc(tx(lt.truth[p][0]),ty(lt.truth[p][1]),4,0,7); ctx.fill();
   }
-  document.getElementById('hint').textContent =
-    'dashed pink = generated rollout · solid grey = ground truth · '+ro.steps.length+
-    ' steps ('+ro.steps[ro.steps.length-1].t_ms+'ms). Watch generated trails diverge.';
+  let hint;
+  if(hasFan){
+    hint = 'K='+ro.K+' sampled futures (T='+ro.temperature+', seed '+ro.seed+') · '+
+           'solid pink = argmin-ADE trajectory · solid grey = truth · minADE-'+ro.K+' = '+
+           last.minade+'u @ '+fmtMs(last.t_ms);
+    if(hasBase) hint += ' · baseline minADE-'+ro.K+' = '+last.baseline_minade+'u';
+    if(showModeTrail) hint += ' · dashed = mode (argmax) — not the model’s claim';
+    if(ro.sampled===false) hint = 'K=1 deterministic (no dist head) — not the recipe’s claim. '+hint;
+  } else {
+    hint = 'dashed pink = argmax (mode) rollout — not the model’s claim (re-export for the '+
+           'K-sample fan) · solid grey = truth · '+ro.steps.length+' steps ('+
+           fmtMs(last.t_ms)+').';
+  }
+  document.getElementById('hint').textContent = hint;
 }
 
 const spark = document.getElementById('spark'), sctx = spark.getContext('2d');
 function drawSpark(){
-  const W=spark.width, H=spark.height, N=D.frames.length;
+  const W=spark.width, H2=spark.height, N=D.frames.length;
   const mx = Math.max(...D.frames.map(f=>f.surp||0), 1);
-  sctx.clearRect(0,0,W,H);
-  sctx.fillStyle='#171922'; sctx.fillRect(0,0,W,H);
+  sctx.clearRect(0,0,W,H2);
+  sctx.fillStyle='#171922'; sctx.fillRect(0,0,W,H2);
   // median line (the "compressible half" boundary)
   const sorted=[...D.frames].map(f=>f.surp||0).sort((a,b)=>a-b);
-  const med=sorted[Math.floor(N/2)], my=H-6-(med/mx)*(H-14);
+  const med=sorted[Math.floor(N/2)], my=H2-6-(med/mx)*(H2-14);
   sctx.strokeStyle='rgba(138,144,162,0.35)'; sctx.setLineDash([3,3]);
   sctx.beginPath(); sctx.moveTo(0,my); sctx.lineTo(W,my); sctx.stroke(); sctx.setLineDash([]);
   // surprise area
-  sctx.beginPath(); sctx.moveTo(0,H-6);
-  for(let i=0;i<N;i++) sctx.lineTo(i/(N-1)*W, H-6-((D.frames[i].surp||0)/mx)*(H-14));
-  sctx.lineTo(W,H-6); sctx.closePath();
+  sctx.beginPath(); sctx.moveTo(0,H2-6);
+  for(let i=0;i<N;i++) sctx.lineTo(i/(N-1)*W, H2-6-((D.frames[i].surp||0)/mx)*(H2-14));
+  sctx.lineTo(W,H2-6); sctx.closePath();
   sctx.fillStyle='rgba(255,157,58,0.35)'; sctx.fill();
   sctx.strokeStyle='#ff9d3a'; sctx.lineWidth=1.2; sctx.beginPath();
-  for(let i=0;i<N;i++){ const x=i/(N-1)*W, y=H-6-((D.frames[i].surp||0)/mx)*(H-14);
+  for(let i=0;i<N;i++){ const x=i/(N-1)*W, y=H2-6-((D.frames[i].surp||0)/mx)*(H2-14);
     i?sctx.lineTo(x,y):sctx.moveTo(x,y); } sctx.stroke();
   // playhead
   const px=fi/(N-1)*W;
   sctx.strokeStyle='#e6e8ef'; sctx.lineWidth=1.5;
-  sctx.beginPath(); sctx.moveTo(px,2); sctx.lineTo(px,H-2); sctx.stroke();
+  sctx.beginPath(); sctx.moveTo(px,2); sctx.lineTo(px,H2-2); sctx.stroke();
   sctx.fillStyle='#8a90a2'; sctx.font='10px monospace'; sctx.textAlign='left';
   sctx.fillText('surprise (nats) — click to seek · dashed = median', 6, 11);
 }
@@ -218,47 +296,124 @@ spark.addEventListener('click', e=>{
   fi=Math.max(0, Math.min(D.frames.length-1,
       Math.round((e.clientX-r.left)/r.width*(D.frames.length-1))));
   document.getElementById('scrub').value=fi;
-  if(rollMode){rollMode=false;document.getElementById('rollBtn').classList.remove('on');}
+  if(rollMode) setRollMode(false);
   drawFrame();
 });
 
 function render(){ rollMode && D.rollout ? drawRollout() : drawFrame(); }
+
+function setRollMode(on){
+  rollMode = on && !!D.rollout;
+  document.getElementById('rollBtn').classList.toggle('on', rollMode);
+  const hasFan = D.rollout && Array.isArray(D.rollout.steps[0].gens);
+  const hasBase = D.rollout && Array.isArray(D.rollout.steps[0].baseline_gens);
+  document.getElementById('modeBtn').style.display = (rollMode && hasFan) ? '' : 'none';
+  document.getElementById('fanSrcBtn').style.display = (rollMode && hasBase) ? '' : 'none';
+  if(!rollMode) setHomeHint();
+}
+
+function setHomeHint(){
+  document.getElementById('hint').textContent =
+    'Ring leads the dot by '+H+' = mode of the model’s displacement distribution. '+
+    'If the ring lands on the ✕, the mode was right. Hit "rollout" for the K-sample fan '+
+    '(the recipe’s honest claim: coverage, minADE-K).';
+}
 
 function tick(){ if(!playing) return;
   fi=(fi+1)%D.frames.length; document.getElementById('scrub').value=fi; drawFrame();
   setTimeout(()=>requestAnimationFrame(tick), 80); }
 
 function bind(){
+  if(bound) return; bound=true;
   document.getElementById('play').onclick=e=>{
-    if(rollMode){rollMode=false;document.getElementById('rollBtn').classList.remove('on');}
+    if(rollMode) setRollMode(false);
     playing=!playing; e.target.textContent=playing?'❚❚ pause':'▶ play';
     e.target.classList.toggle('on',playing); if(playing) tick(); };
   document.getElementById('scrub').oninput=e=>{ fi=+e.target.value;
-    if(rollMode){rollMode=false;document.getElementById('rollBtn').classList.remove('on');}
+    if(rollMode) setRollMode(false);
     drawFrame(); };
-  document.getElementById('rollBtn').onclick=e=>{
-    if(!D.rollout) return; rollMode=!rollMode; playing=false;
+  document.getElementById('rollBtn').onclick=()=>{
+    if(!D.rollout) return;
+    playing=false;
     document.getElementById('play').textContent='▶ play';
     document.getElementById('play').classList.remove('on');
-    e.target.classList.toggle('on',rollMode); render(); };
+    setRollMode(!rollMode); render(); };
+  document.getElementById('modeBtn').onclick=e=>{
+    showModeTrail=!showModeTrail; e.target.classList.toggle('on',showModeTrail); render(); };
+  document.getElementById('fanSrcBtn').onclick=e=>{
+    fanSrc = fanSrc==='model' ? 'baseline' : (fanSrc==='baseline' ? 'both' : 'model');
+    e.target.textContent='fan: '+fanSrc; render(); };
   const tg=(id,key)=>document.getElementById(id).onclick=e=>{
     show[key]=!show[key]; e.target.classList.toggle('on',show[key]); render(); };
   tg('tGen','gen'); tg('tCV','cv'); tg('tFut','fut'); tg('tArrow','arrow');
 }
 
-fetch('data/round.json').then(r=>r.json()).then(d=>{
-  D=d;
+function applyData(d, entry){
+  D=d; curEntry=entry||null; fi=Math.floor(d.frames.length/2);
+  rollMode=false; showModeTrail=false; fanSrc='model';
+  document.getElementById('rollBtn').classList.remove('on');
+  document.getElementById('modeBtn').classList.remove('on');
+  document.getElementById('modeBtn').style.display='none';
+  document.getElementById('fanSrcBtn').style.display='none';
+  H = fmtMs(d.meta.horizon_ms);                 // every horizon label derives from meta
+  document.getElementById('tGen').textContent='gen +'+H;
+  document.getElementById('tFut').textContent='truth +'+H;
+  document.getElementById('legGen').textContent='generated +'+H+' (mode of dist)';
+  document.getElementById('legCV').textContent='naive CV +'+H+' (not the reportable baseline)';
+  document.getElementById('legFut').textContent='truth +'+H+' (reality)';
+  document.getElementById('banner').style.display = d.meta.historical ? 'block' : 'none';
+  const pills=document.getElementById('pills'); pills.innerHTML='';
+  const ood = (entry && entry.ood) || d.meta.ood || d.map==='de_overpass';
+  if(ood){ const s=document.createElement('span'); s.className='pill';
+           s.textContent='OOD — held-out map'; pills.appendChild(s); }
+  if(d.meta.zero_map_id){ const s=document.createElement('span'); s.className='pill';
+           s.textContent='map-ID zeroed control'; pills.appendChild(s); }
   document.getElementById('meta').textContent =
     `${d.meta.demo} · rnd ${d.meta.round_num} · ${d.map} · winner ${d.meta.winner} · `+
     `horizon ${d.meta.horizon_ms}ms · ckpt ${d.meta.ckpt_step}`;
-  document.getElementById('scrub').max = d.frames.length-1;
-  document.getElementById('hint').textContent =
-    'Ring leads the dot by 1s = where the model thinks each player will be. '+
-    'If the ring lands on the ✕, the generation was right. Hit "rollout" for compounding drift.';
-  img=new Image(); img.onload=()=>{ bind(); fi=Math.floor(d.frames.length/2);
-    document.getElementById('scrub').value=fi; drawFrame(); };
-  img.onerror=()=>{ bind(); drawFrame(); }; img.src='data/'+d.radar;
-}).catch(e=>{ document.getElementById('meta').textContent='no data/round.json — run export_gen_viewer.py'; });
+  const sc=document.getElementById('scrub'); sc.max=d.frames.length-1; sc.value=fi;
+  setHomeHint();
+  img=new Image();
+  img.onload=()=>{ bind(); drawFrame(); };
+  img.onerror=()=>{ bind(); drawFrame(); };
+  img.src='data/'+d.radar;
+}
+
+function loadFile(file, entry){
+  fetch('data/'+file).then(r=>r.json()).then(d=>applyData(d, entry))
+    .catch(()=>{ document.getElementById('meta').textContent=
+      'no data/'+file+' — run export_gen_viewer.py'; });
+}
+
+function buildPicker(idx){
+  INDEX=idx;
+  const row=document.getElementById('pickerRow'); row.style.display='flex';
+  const mapSel=document.getElementById('mapSel'), roundSel=document.getElementById('roundSel');
+  const maps=[...new Set(idx.map(e=>e.map))];
+  mapSel.innerHTML='<option value="">all maps</option>'+
+    maps.map(m=>'<option value="'+m+'">'+m+(m==='de_overpass'?' (OOD)':'')+'</option>').join('');
+  const fill=()=>{
+    const mf=mapSel.value;
+    const rows=idx.filter(e=>!mf || e.map===mf);
+    roundSel.innerHTML=rows.map(e=>
+      '<option value="'+e.i+'">'+e.map.replace('de_','')+' · '+e.demo+' rnd '+e.round_num+
+      (e.ood?' · OOD':'')+'</option>').join('');
+    if(rows.length){ roundSel.value=rows[0].i; loadFile(rows[0].file, rows[0]); }
+  };
+  mapSel.onchange=fill;
+  roundSel.onchange=()=>{
+    const e=idx.find(x=>String(x.i)===roundSel.value);
+    if(e) loadFile(e.file, e);
+  };
+  fill();
+}
+
+fetch('data/index.json')
+  .then(r=>r.ok?r.json():null).catch(()=>null)
+  .then(idx=>{
+    if(idx && idx.length) buildPicker(idx);
+    else loadFile('round.json');
+  });
 </script>
 </body>
 </html>

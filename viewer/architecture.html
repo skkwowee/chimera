@@ -121,7 +121,7 @@
       <g fill="#3a76c2"><circle cx="820" cy="150" r="12"/><circle cx="820" cy="240" r="12"/></g>
       <!-- region labels -->
       <text x="115" y="362" text-anchor="middle" class="svgtxt" fill="#c2683a">INPUT</text>
-      <text x="115" y="28" text-anchor="middle" class="svgsm">687-d frame · 11 tokens</text>
+      <text x="115" y="28" text-anchor="middle" class="svgsm">597-d frame (v2) · 11 tokens</text>
       <text x="385" y="362" text-anchor="middle" class="svgtxt" fill="#6b655c">HIDDEN LAYERS</text>
       <text x="385" y="28" text-anchor="middle" class="svgsm">the transformer · 6 layers · 512-d</text>
       <text x="665" y="362" text-anchor="middle" class="svgtxt" fill="#c2683a">LATENT → heads</text>
@@ -145,7 +145,7 @@
       <!-- nodes -->
       <g>
         <circle cx="80"  cy="80" r="9" fill="#9a9388"/><text x="80"  y="55" text-anchor="middle" class="svgsm">demos</text>
-        <circle cx="250" cy="80" r="13" fill="#c2683a"/><text x="250" y="50" text-anchor="middle" class="svgtxt" fill="#c2683a">World Model</text><text x="250" y="112" text-anchor="middle" class="svgsm">predict +1s</text>
+        <circle cx="250" cy="80" r="13" fill="#c2683a"/><text x="250" y="50" text-anchor="middle" class="svgtxt" fill="#c2683a">World Model</text><text x="250" y="112" text-anchor="middle" class="svgsm">k=4 step (500 ms) · sampled rollout</text>
         <circle cx="420" cy="80" r="9" fill="#c2683a"/><text x="420" y="55" text-anchor="middle" class="svgsm">latent</text>
         <circle cx="560" cy="80" r="13" fill="#3a76c2"/><text x="560" y="50" text-anchor="middle" class="svgtxt" fill="#3a76c2">Resampler</text><text x="560" y="112" text-anchor="middle" class="svgsm">→ 32 soft tokens</text>
         <circle cx="720" cy="80" r="13" fill="#3a76c2"/><text x="720" y="50" text-anchor="middle" class="svgtxt" fill="#3a76c2">Qwen 35B</text><text x="720" y="112" text-anchor="middle" class="svgsm">frozen</text>
@@ -158,20 +158,21 @@
       <!-- GRPO branch -->
       <path d="M250 93 C 250 200, 470 200, 470 200" fill="none" stroke="#3a9d6b" stroke-width="2"/>
       <rect x="470" y="186" width="240" height="30" rx="8" fill="#e7f4ee" stroke="#bfe3d1"/>
-      <text x="590" y="206" text-anchor="middle" style="font:600 11px sans-serif;fill:#2f7d54">GRPO: sample K rollouts → score → reward</text>
+      <text x="590" y="206" text-anchor="middle" style="font:600 11px sans-serif;fill:#2f7d54">GRPO: sample K rollouts → grounded reward vs actual future</text>
     </svg>
     <figcaption>The pipeline on one line: world model → latent → resampler → Qwen → reasoning, with the
     dashed NLA loop (text rebuilds the latent = faithfulness) and the GRPO self-play branch.</figcaption>
   </figure>
 
   <!-- ============ PHASE 1 ============ -->
-  <h2>Phase 1 — The World Model <span class="phase-tag" style="background:var(--wm)">TRAINED ✓</span></h2>
+  <h2>Phase 1 — The World Model <span class="phase-tag" style="background:var(--wm)">RECIPE LOCKED · RETRAIN PENDING</span></h2>
+  <p class="sub" style="margin-bottom:14px">Knobs 1–7 locked &amp; pre-registered (<code>docs/retrain-recipe.md</code>). Earlier checkpoints are <b>history</b> — baselines only, never evaluated as final.</p>
   <div class="flow">
     <div class="box">
       <div class="bar" style="background:var(--frozen)"></div>
       <div class="nm">Demos → Tick State</div>
-      <div class="meta">687-d / frame · 8 Hz</div>
-      <div class="desc">Pro-match replays parsed to exact game state: 10 players × 65 features + 37 global, per 125 ms frame.</div>
+      <div class="meta">597-d / frame (v2 canonical) · 8 Hz</div>
+      <div class="desc">Pro-match replays parsed to exact game state: 10 players × 56 features + 37 global, per 125 ms frame. (v3 687-d = ablation arm.)</div>
       <div class="why">why: demos give complete state for free — no perception needed.</div>
     </div>
     <div class="arrow">→</div>
@@ -180,7 +181,7 @@
       <span class="tag t-train-wm">trained</span>
       <div class="nm">World Model</div>
       <div class="meta">causal transformer · ~19M · d=512</div>
-      <div class="desc">Per-frame: 11 tokens (10 players + global). Attends across players (relational) &amp; time (causal). Objective: <b>predict the state ~1 s ahead.</b></div>
+      <div class="desc">Per-frame: 11 tokens (10 players + global). Attends across players (relational) &amp; time (causal). Objective: <b>predict the next 500 ms (k=4)</b>; any longer horizon is reached by <b>sampled autoregressive rollout</b>. Eval = coverage (minADE-16) at {1,2,5,7,10} s — not point error.</div>
       <div class="why">why predict, not caption: the future is a consequence — you must model dynamics, you can't paraphrase your way to it.</div>
     </div>
     <div class="arrow">→</div>
@@ -199,9 +200,26 @@
       <div class="nm">Heads on the latent</div>
       <div class="desc">
         <b>Distributional head</b> — predicts a <i>distribution</i> over 97 movement classes (not one point), so it captures "stay vs peek" instead of averaging into blur. <span class="kv">16 samples = a planning group.</span><br>
-        <b>Value head</b> — P(CT wins) from the latent. <span class="kv">survives 8 s of imagined rollout (AUC ≈ 0.82) → usable as an RL reward.</span>
+        <b>Value head</b> — <b>detached</b> (stop-grad) and <b>end-phase-masked</b>: it never trains the trunk and is monitoring only. <span class="kv">reported value = linear probe on the FROZEN trunk (value_probe.py), never this head.</span>
       </div>
       <div class="why">why a distribution: a regression head mode-averages; the win is representing the <i>set</i> of plausible futures, which also gives the GRPO group.</div>
+    </div>
+  </div>
+
+  <div class="flow" style="margin-top:12px">
+    <div class="box">
+      <div class="bar" style="background:var(--wm)"></div>
+      <div class="nm">Scheduled sampling</div>
+      <div class="meta">one-step sample-and-swap · p-ramp</div>
+      <div class="desc">During training, with ramping probability p the input frame is replaced by a <i>sampled</i> one-step generation (targets stay real, alive-mask from real frames) — the model practices standing on its own outputs before rollout eval demands it.</div>
+      <div class="why">gate: SS must beat the p=0 control on depth-{10,20} coverage, or it ships as a reported negative result.</div>
+    </div>
+    <div class="box">
+      <div class="bar" style="background:var(--wm)"></div>
+      <div class="nm">OOD holdout — de_overpass</div>
+      <div class="meta">5 maps train · 367 rounds held out</div>
+      <div class="desc">Train = 5 maps (ancient, dust2, inferno, mirage, nuke; 3,573/641 clean rounds). <b>de_overpass never enters training</b>; it is the out-of-distribution test, with a zeroed-map-ID control run to validate the decode.</div>
+      <div class="why">generalization is measured on a map the model has never seen, not claimed.</div>
     </div>
   </div>
 
@@ -237,7 +255,8 @@
   </figure>
 
   <!-- ============ PHASE 2 ============ -->
-  <h2>Phase 2 — The Language Bridge <span class="phase-tag" style="background:var(--bridge)">WIRED · TRAINING NEXT</span></h2>
+  <h2>Phase 2 — The Language Bridge <span class="phase-tag" style="background:var(--bridge)">DESIGNED · AFTER GATES</span></h2>
+  <p class="sub" style="margin-bottom:4px">Runs only after the keystone/OOD gates pass and the pre-QLoRA referees (capacity probe, SAE/linear-probe audit, tap-layer sweep) pick the bridge target — before any 35B pod spend.</p>
   <p class="sub" style="margin-bottom:14px">Two frozen specialists — the world model (understands) and Qwen (writes) — connected by a small trainable adapter. The bridge is <b>latent → language</b>.</p>
   <div class="flow">
     <div class="box">
@@ -362,14 +381,14 @@
     <div class="box">
       <div class="bar" style="background:var(--grpo)"></div>
       <div class="nm">Score each</div>
-      <div class="desc">The <b>value head</b> rates every rollout. Faithfulness is a constraint, not a reward.</div>
+      <div class="desc"><b>Reward = grounded vs the ACTUAL future</b> (what really happened in the demo). Value-through-rollout only <i>generates</i> the candidate group — it never grades it. Faithfulness is a constraint, not a reward.</div>
     </div>
     <div class="arrow">→</div>
     <div class="box">
       <div class="bar" style="background:var(--grpo)"></div>
       <div class="nm">Advantage &amp; update</div>
-      <div class="desc">Reasoning that leads to higher-value futures is reinforced. <b>No human labels in the loop.</b></div>
-      <div class="why">the world model is its own reward — reasoning is graded by outcomes it imagines.</div>
+      <div class="desc">Reasoning whose claims match the real future is reinforced. <b>No human labels in the loop.</b></div>
+      <div class="why">graded against reality, not against outcomes the model imagines — imagined-outcome reward was rejected as circular.</div>
     </div>
   </div>
 
@@ -380,7 +399,7 @@
       <h3 style="color:var(--wm)">World Model — the analyst</h3>
       <div class="role">custom · ~19M params · built by us, from scratch</div>
       <p>Thinks in 512-number latents. Deep CS2 understanding from predicting millions of frames. <b>Cannot speak a word of English.</b></p>
-      <p class="kv">input 687-d frame · hidden 512-d · 6 layers</p>
+      <p class="kv">input 597-d frame (v2) · hidden 512-d · 6 layers</p>
     </div>
     <div class="card">
       <h3 style="color:var(--bridge)">Qwen 3.6 — the writer</h3>
@@ -415,19 +434,20 @@
       <line x1="252" y1="40" x2="252" y2="180" stroke="#b5462f" stroke-width="1.5" stroke-dasharray="4 3"/>
       <text x="262" y="52" class="svgsm" fill="#b5462f">95% of variance by dim ~6</text>
     </svg>
-    <figcaption>The capacity probe finding: the latent is <b>extremely low-rank</b> — ~95% of its content lives in
-    about <b>6 of 512</b> dimensions, and the win-probability signal is fully preserved by the top ~8. The model
-    is data-limited, not capacity-limited (a bigger model wouldn't help; more data did).</figcaption>
+    <figcaption><b>Historical measurement (pre-reset model — to be re-measured after the canonical retrain).</b>
+    The capacity probe found the old latent <b>extremely low-rank</b> — ~95% of its content in
+    about <b>6 of 512</b> dimensions, win-probability signal preserved by the top ~8; read as
+    data-limited, not capacity-limited. Whether this holds for the retrained model is an open question.</figcaption>
   </figure>
 
   <h2>Key numbers</h2>
   <div class="nums">
-    <div class="num"><b>687→512</b><small>frame → latent width</small></div>
+    <div class="num"><b>597→512</b><small>frame (v2) → latent width · v3 687-d = ablation</small></div>
     <div class="num"><b>11 tok</b><small>per frame (10 players + global)</small></div>
     <div class="num"><b>32</b><small>resampler soft tokens → Qwen</small></div>
     <div class="num"><b>512 → 4096</b><small>latent → Qwen's space</small></div>
-    <div class="num"><b>~4,730</b><small>training rounds (3 maps)</small></div>
-    <div class="num"><b>R² 0.92</b><small>latent reconstructable from text (capacity probe)</small></div>
+    <div class="num"><b>3,573 / 641</b><small>train/val clean rounds (5 maps) · +367 de_overpass held out (OOD)</small></div>
+    <div class="num"><b>R² 0.92</b><small>latent reconstructable from text — historical (pre-reset), to be re-measured</small></div>
   </div>
 
   <h2>Legend</h2>
@@ -439,8 +459,9 @@
   </div>
 
   <div class="foot">
-    Chimera · CS2 world-model reasoning. Phase 1 trained; Phase 2 bridge wired (NLA faithfulness loop), first SFT run next; Phase 3 infra ready.
-    Rationale &amp; killed ideas: <code>docs/decisions-ledger.md</code> · bridge design: <code>docs/bridge-design.md</code>.
+    Chimera · CS2 world-model reasoning. Post-2026-07-18 reset: Phase 1 recipe locked (Knobs 1–7), canonical retrain pending;
+    Phase 2 designed, gated behind keystone/OOD results + pre-QLoRA referees; Phase 3 reward = grounded vs actual future.
+    Recipe: <code>docs/retrain-recipe.md</code> · rationale &amp; killed ideas: <code>docs/decisions-ledger.md</code> · bridge design: <code>docs/bridge-design.md</code>.
   </div>
 
 </div>
