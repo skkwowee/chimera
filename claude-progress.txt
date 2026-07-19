@@ -44,6 +44,10 @@
 #     assert every blob meta carries match_id and the set == the 92 manifest
 #     keys. This diff doubles as the v2.1 builder's correctness certificate.
 #     DONE-CHECK: patched blobs exist + validation diff report in outputs/.
+#     >>> [1] DONE 2026-07-19: 4 blobs patched (*_p1.pt); invariants green
+#     (suite 23p/1s/1xf); validation PASS (clock PASS-with-caveat; D7
+#     tick-dropout disclosure added to datasheet+manifest); defaults
+#     flipped to _p1; HF push of patched blobs = last step. NEXT: [2].
 # [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
 #     .venv/bin/python scripts/fit_dist_edges.py  on the PATCHED train_v2m,
 #     5-map filtered. Update DIST_EDGES_U in train_world_model.py from output.

@@ -90,8 +90,19 @@ empirically. Caveat: the bomb_state block later turned out to be dead (defect D3
 | D5 | 17.5% of frames are freeze-phase, previously undisclosed. (adversarial-review D3) | Masked from displacement losses at train time. | To be disclosed and stratified in evals. |
 | D6 | v3 dist_to_bomb was distance-to-origin on the 84% of frames that are pre-plant. (adversarial-review D4) | Now plant-gated with a sentinel. | Contaminated the v2-vs-v3 deconfound. |
 
-D3–D6 come from the adversarial review (docs/adversarial-review.md). The code
-fixes are in, but the corpus must be rebuilt before the canonical retrain.
+D3–D6 come from the adversarial review (docs/adversarial-review.md).
+**RESOLVED 2026-07-19 (runbook [1]):** the patched corpus (`*_p1.pt` +
+`corpus_manifest.json`) carries the D3/D4/D6 fixes, validated against fresh v2.1
+re-bakes of one local-era and one HF-era match — bomb bits bit-exact
+(97,197/97,197 frames), site identity 54/54 plants including 22/22 on nuke
+(z-proxy: zero disagreements), dim7 at float epsilon. The re-anchored clock is
+PASS-with-caveat: sub-frame anchor offsets (<0.11 s, below the corpus's 8 Hz
+resolution) plus tick-dropout drift — see D7. Full report:
+`outputs/patch_validation/report.md`.
+
+| id | what | status | consequence |
+|---|---|---|---|
+| D7 | GOTV tick dropout (pre-existing; first quantified 2026-07-19): ~19% of rounds are missing >1% of their 8 Hz tick grid (mean ~3%; per-round fractions in corpus_manifest.json `tick_dropout_disclosure`). | Disclosed; armed options (per-demo re-bake from HF demos for a tick-anchored clock; masking crops that span grid gaps) adopted only if R1 evals show dropout-round degradation. | (a) the patched frame-anchored clock drifts up to ~2 s on such rounds (vs +510 s pause contamination pre-patch); (b) consecutive frames are not uniformly 125 ms apart there, so a k-step displacement target occasionally spans more wall time than k×125 ms. |
 
 **Clean corpus after D1+D2 exclusion: 3876 train / 705 val = 4581 rounds.** The
 exclusion is a load-time mask (reversible), not a re-bake. The canonical training
