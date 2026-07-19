@@ -288,6 +288,7 @@ PRE_PATCH_REASON = "pre-patch corpus, flips green after runbook [1]"
 # prefer the patched blobs when present (runbook [1]); fall back pre-patch
 _TS = "data/processed/tick_sequences"
 import os as _os
+
 VAL_BLOBS = [n if not _os.path.exists(f"{_TS}/{n[:-3]}_p1.pt") else f"{n[:-3]}_p1.pt"
              for n in ["val_v2m.pt", "val_v3m.pt"]]
 

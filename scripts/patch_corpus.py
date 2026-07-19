@@ -40,10 +40,14 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "tests"))
-from build_tick_sequences import BOMBSITE_CENTROIDS, NUKE_Z_SPLIT  # noqa: E402
-from test_corpus_invariants import (  # noqa: E402
-    check_bomb_bits_consistent, check_dim7_plant_gated, check_lineage,
-    check_match_ids, check_no_nan_inf, check_round_time,
+from build_tick_sequences import BOMBSITE_CENTROIDS, NUKE_Z_SPLIT
+from test_corpus_invariants import (
+    check_bomb_bits_consistent,
+    check_dim7_plant_gated,
+    check_lineage,
+    check_match_ids,
+    check_no_nan_inf,
+    check_round_time,
 )
 
 TS_DIR = ROOT / "data/processed/tick_sequences"
@@ -159,7 +163,11 @@ def main():
     with open(TS_DIR / "split_manifest_v2.json") as f:
         split_manifest = json.load(f)
     manifest_path = TS_DIR / "corpus_manifest.json"
-    manifest = json.load(open(manifest_path)) if manifest_path.exists() else {
+    if manifest_path.exists():
+        with open(manifest_path) as _mf:
+            manifest = json.load(_mf)
+    else:
+        manifest = {
         "corpus_version": "2.1.0+patch1",
         "blobs": {},
         "patch_lineage": [],
@@ -199,7 +207,7 @@ def main():
         blob["patch_lineage"] = blob.get("patch_lineage", []) + [entry]
         blob["schema_version"] = blob.get("schema_version", "v2") + "+patch1"
 
-        print(f"    invariant checks (in-memory) ...", flush=True)
+        print("    invariant checks (in-memory) ...", flush=True)
         viol = (check_bomb_bits_consistent(blob) + check_round_time(blob)
                 + check_no_nan_inf(blob) + check_lineage(blob)
                 + check_match_ids(blob, manifest=split_manifest,
