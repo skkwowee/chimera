@@ -53,7 +53,7 @@ def parse_one(dem_path: Path, force: bool = False) -> tuple[str, bool, str]:
     stem = dem_path.stem
     ticks_out = OUT_DIR / f"{stem}_ticks.parquet"
     if ticks_out.exists() and not force:
-        return (stem, True, f"skip (exists)")
+        return (stem, True, "skip (exists)")
 
     try:
         from awpy import Demo

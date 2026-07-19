@@ -36,14 +36,18 @@ Usage:
 """
 from __future__ import annotations
 
-import argparse, shutil, sys, tempfile
+import argparse
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS, auc  # noqa
-from _corpus import clean_blob  # noqa
+from _corpus import load_corpus
 
 XY_SCALE = 3000.0   # normalized coord -> game units (see featurization)
 
@@ -87,7 +91,7 @@ def drift_eval(model, blob, L, k, cv_residual, args, pos_idx):
     keep = [(t, m) for t, m in zip(blob["tensors"], blob["metas"]) if t.shape[0] >= need]
     gate, gate_map = None, None
     if args.geo:
-        from geo_gate import GeoGate  # noqa
+        from geo_gate import GeoGate
         keep.sort(key=lambda tm: tm[1].get("map_name", ""))   # one BVH load per map
         print("geometry-gated decode: ON (.tri BVH, wall-infeasible classes masked)")
     m_err = torch.zeros(R); cv_err = torch.zeros(R)
@@ -219,16 +223,7 @@ def main():
     print(f"ckpt step {ck.get('step')}  window={L}  horizon k={k} ({k*125}ms/step)  "
           f"per_player_dim={ppd}  cv_residual={cv_residual}")
 
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
-    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
-    if args.maps:
-        keep = set(args.maps.split(","))
-        n0 = len(blob["metas"])
-        idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
-        for key, v in list(blob.items()):
-            if isinstance(v, list) and len(v) == n0:
-                blob[key] = [v[i] for i in idx]
-        print(f"[maps] kept {len(idx)}/{n0} rounds on {sorted(keep)}")
+    blob = load_corpus(args.val_pt, maps=args.maps or None, tag="val")
     assert blob["feature_dim"] == ck["feature_dim"], (blob["feature_dim"], ck["feature_dim"])
 
     if args.value_auc:

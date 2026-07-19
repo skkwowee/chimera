@@ -27,14 +27,20 @@ Three measurements on `wm_3map_dist_v3m` val latents:
 Usage: python scripts/nla_capacity_probe.py --ckpt outputs/wm_3map_dist_v3m/h8_mt/best.pt
 """
 from __future__ import annotations
-import argparse, shutil, sys, tempfile
+
+import argparse
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS, auc  # noqa
+from _corpus import load_corpus
 
 
 def load_ckpt(path):
@@ -107,7 +113,7 @@ def main():
                         per_player_dim=ppd, dist=a.get("dist_head", False))
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
     keep = set(args.maps.split(","))
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False, mmap=True)
+    blob = load_corpus(args.val_pt, maps=keep, tag="val")
     print(f"ckpt step {ck.get('step')}  latent_dim={a['d_model']}  maps={sorted(keep)}")
 
     z, v, y, content = collect(model, blob, L, keep, ppd, torch.device(args.device),
@@ -125,7 +131,7 @@ def main():
     # ---- 2. decision capacity: value-AUC preserved under top-k truncation ----
     vh = model.value_head.to("cpu")
     full_auc = auc(vh(z).squeeze(1), y)
-    print(f"\n2) DECISION CAPACITY (value-AUC of value_head applied to top-k z):")
+    print("\n2) DECISION CAPACITY (value-AUC of value_head applied to top-k z):")
     print(f"   {'k':>5} {'value-AUC':>10} {'% of full':>10}")
     print(f"   {'full':>5} {full_auc:10.3f} {100.0:9.0f}%")
     for k in (8, 16, 32, 64, 128, 256):
@@ -148,7 +154,7 @@ def main():
                         nn.Linear(512, 512), nn.GELU(), nn.Linear(512, z.shape[1])).to(dev)
     opt = torch.optim.AdamW(mlp.parameters(), lr=1e-3, weight_decay=1e-4)
     trd = tr.to(dev)
-    for step in range(args.recon_steps):
+    for _step in range(args.recon_steps):
         b = trd[torch.randint(0, len(trd), (256,), device=dev)]
         pred = mlp(Cn[b])
         loss = (1 - F.cosine_similarity(pred, zd[b]).mean()) + 0.1 * F.mse_loss(pred, zd[b])
@@ -167,7 +173,7 @@ def main():
         r2_shuf = var_explained(mlp(Cn[sh]), zd[ted])
     # variance-explained is the honest capacity number (cosine is inflated when z is
     # low-rank — the latent-mean floor is R^2=0 by construction, shuffled is <=0).
-    print(f"\n3) CONTENT->z RECON (held-out):")
+    print("\n3) CONTENT->z RECON (held-out):")
     print(f"   {'':36} {'var-explained (R^2)':>18} {'cosine':>8}")
     print(f"   content (value + predicted movement) {r2_content:18.3f} {cos_content:8.3f}")
     print(f"   floor: latent-mean                   {0.0:18.3f} {'-':>8}")

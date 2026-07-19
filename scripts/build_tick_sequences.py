@@ -514,7 +514,6 @@ def build_round_tensor(
         return (torch.empty(0, TOTAL_DIM), {},
                 np.zeros(0, dtype=np.int8), np.zeros(0, dtype=np.int16))
 
-    start_tick = round_meta["start"]
     freeze_end = round_meta["freeze_end"]
     end_tick = round_meta["end"] or round_meta["official_end"] or int(ticks_all[-1])
     plant_tick = round_meta.get("bomb_plant")
@@ -973,7 +972,7 @@ def main() -> None:
     print(json.dumps(manifest, indent=2))
     print()
     print(f"Schema: {OUT_DIR / 'feature_schema.json'} ({SCHEMA_VERSION})")
-    print(f"Done.")
+    print("Done.")
 
 
 if __name__ == "__main__":

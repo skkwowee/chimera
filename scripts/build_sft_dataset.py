@@ -10,12 +10,12 @@ Implements the council's consensus:
 """
 
 import argparse
-import json
 import glob
+import json
 import os
 import random
 import sys
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
 

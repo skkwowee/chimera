@@ -22,17 +22,25 @@ Usage:
   python scripts/eval_ablate.py --llm qwen --model <id> --bridge outputs/bridge/single_v1/bridge.pt --generate
 """
 from __future__ import annotations
+
 import argparse
 import re
 import sys
 from pathlib import Path
+
 import torch
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.bridge import LanguageBridge  # noqa: E402
-from train_bridge import (ByteTokenizer, SFTPairs, make_collate, bridge_step,  # noqa: E402
-                          build_stub_backend, build_qwen_backend)
+from train_bridge import (
+    SFTPairs,
+    bridge_step,
+    build_qwen_backend,
+    build_stub_backend,
+    make_collate,
+)
+
+from src.bridge import LanguageBridge
 
 PCT_RE = re.compile(r"(\d{1,3})\s*%")
 
@@ -83,10 +91,12 @@ def prompt_only(batch, pad, tok=None, targets=None):
 
 
 def value_agreement(bridge, llm, tok, ds, dev, n=64, max_new=60, ablate=False):
-    """Mean |stated% - true%| over examples whose generated text states a percent."""
+    """Counts generated texts that state a percent. NOTE: the |stated% - true%|
+    value-agreement math is NOT implemented yet — runbook [7] CHANGE E lands it
+    as the exact-match fact audit; until then this returns (parsed, total) only."""
     coll = make_collate(tok)
     dl = DataLoader(ds, batch_size=min(16, n), shuffle=False, collate_fn=coll)
-    errs, parsed, total = [], 0, 0
+    parsed, total = 0, 0
     for batch in dl:
         if total >= n:
             break
@@ -164,7 +174,7 @@ def main():
     ds = SFTPairs(cache)
 
     on, off, shuf = ce_readout(bridge, llm, ds, tok, dev)
-    print(f"\nteacher-forced CE (held-out):")
+    print("\nteacher-forced CE (held-out):")
     print(f"  latent-on   {on:.4f}")
     print(f"  latent-off  {off:.4f}   (delta {off - on:+.4f})")
     print(f"  shuffled    {shuf:.4f}   (delta {shuf - on:+.4f})")

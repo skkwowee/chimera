@@ -12,13 +12,19 @@ the world model actually output?"
 Usage: python scripts/gen_demo.py --ckpt outputs/wm_3map/h8_mt/best_ns.pt --round 0 --frame 200
 """
 from __future__ import annotations
-import argparse, math, shutil, sys, tempfile
+
+import argparse
+import math
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
-import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS  # noqa
+from _corpus import load_corpus
 
 MAPS = ["de_ancient","de_dust2","de_inferno","de_mirage","de_nuke","de_overpass","de_train"]
 SLOTS = ["T1","T2","T3","T4","T5","CT1","CT2","CT3","CT4","CT5"]
@@ -50,7 +56,8 @@ def main():
     print(f"ckpt step {ck.get('step')}  window={L}  horizon k={k} ({k*125}ms)  per_player={ppd}  "
           f"cv_residual={cv_res}  val_ns={ck.get('val_ns', float('nan')):.4f}\n")
 
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
+    # --round indexes the CLEANED blob (datasheet §5 exclusions applied)
+    blob = load_corpus(args.val_pt, tag="val")
     need = L + args.rollout * k + 1
     # pick round
     if args.round is not None:
@@ -59,7 +66,7 @@ def main():
         ridx = next(i for i, t in enumerate(blob["tensors"]) if t.shape[0] >= need)
     r = blob["tensors"][ridx]; meta = blob["metas"][ridx]
     T = r.shape[0]
-    if T < L + k + 1:
+    if L + k + 1 > T:
         print(f"round {ridx} too short ({T} frames); need >= {L+k+1}"); return
     t = args.frame if args.frame is not None else min(T - k - 1, L + (T - L) // 2)
     t = max(L - 1, min(t, T - k - 1))
@@ -103,7 +110,7 @@ def main():
 
     # --- autoregressive rollout (compounding drift) ---
     R = args.rollout
-    if T >= L + R * k + 1 and R > 0:
+    if L + R * k + 1 <= T and R > 0:
         buf = r[t - L + 1:t + 1].clone().unsqueeze(0).to(args.device)
         last = r[t].clone(); vel = (r[t] - r[t-1])
         pos_idx = torch.tensor([p*ppd+d for p in range(N_PLAYERS) for d in (0,1,2)])
@@ -116,8 +123,11 @@ def main():
             truef = r[t + step * k].to(args.device)
             cvf = (last + (step*k)*vel).to(args.device)
             ge = (predf[pos_idx]-truef[pos_idx]).abs().mean().item()*3000/ (3000)  # normalized units
-            ge_u = ((predf.cpu()[pos_idx]-truef.cpu()[pos_idx]).reshape(-1,3)[:, :2]*3000).pow(2).sum(1).sqrt().mean().item()
-            ce_u = ((cvf.cpu()[pos_idx]-truef.cpu()[pos_idx]).reshape(-1,3)[:, :2]*3000).pow(2).sum(1).sqrt().mean().item()
+            def _xy_err(a, b):
+                return ((a.cpu()[pos_idx]-b.cpu()[pos_idx]).reshape(-1,3)[:, :2]*3000
+                        ).pow(2).sum(1).sqrt().mean().item()
+            ge_u = _xy_err(predf, truef)
+            ce_u = _xy_err(cvf, truef)
             better = (ce_u-ge_u)/ce_u*100 if ce_u>0 else 0
             print(f"{step:>4} {step*k*125:>6} {ge_u:11.1f}u {ce_u:9.1f}u  {better:9.1f}%")
             buf = torch.cat([buf[:, 1:, :], predf.view(1,1,-1)], dim=1)

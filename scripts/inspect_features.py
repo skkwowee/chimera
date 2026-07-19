@@ -7,9 +7,14 @@ labeled and de-normalized. The "what's actually in the state" viewer.
   full player:   python scripts/inspect_features.py --round 0 --frame 200 --player 1
 """
 from __future__ import annotations
+
 import argparse
 import math
-import torch
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _corpus import load_corpus
 
 WEAPONS = ["knife","pistol_low","pistol_high","smg","shotgun","rifle_t","rifle_ct",
            "awp","scout","auto_sniper","lmg","smoke","flash","molly","he","decoy","c4","other"]
@@ -73,7 +78,8 @@ def main():
         print(f"\nfeature_dim = {NP}*{PPD} + {len(GLOBAL)} = {NP*PPD+len(GLOBAL)}")
         return
 
-    blob = torch.load(args.pt, map_location="cpu", weights_only=False)
+    # NOTE: --round indexes the CLEANED blob (datasheet §5 exclusions applied)
+    blob = load_corpus(args.pt)
     r = blob["tensors"][args.round]; meta = blob["metas"][args.round]
     T = r.shape[0]
     f = args.frame if args.frame is not None else T // 2

@@ -127,3 +127,14 @@ judge per question, harmonized). Headlines; the linked doc is canonical:
   committed failure branches — C1-REP failure falsifies C1, no salvage
   wording. The historical 0.759 is retired to history.
 - **Compute:** ~12–20 local 4090-h + ~28–44 pod-h ≈ $45–85.
+
+## Checkpoint naming (fixed before any run exists)
+
+All R1-era checkpoints land in the HF model repo `skkwowee/chimera-wm` under
+`runs/`: the six canonical arms are `r1-v2-s{0,1,2}` and `r1-v3-s{0,1,2}`, the
+scheduled-sampling control is `r1-v2-ssoff-s0`, the retrained round encoder is
+`r1-re-v6`, and the matched-capacity supervised ceiling is `r1-sup-ceiling`.
+Each run directory contains `best_ns.pt`, `last.pt`, `train.log`, and
+`run_meta.json` (argv, resolved args, seed, git sha, config hash, corpus blob
+sha256s from the manifest). Named here, before any artifact exists, so nothing
+gets renamed mid-analysis.

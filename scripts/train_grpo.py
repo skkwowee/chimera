@@ -572,6 +572,7 @@ def main():
 
     # Set seeds for reproducibility
     import random
+
     import numpy as np
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)

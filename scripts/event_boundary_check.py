@@ -16,14 +16,20 @@ and report:
 Usage: python scripts/event_boundary_check.py --ckpt outputs/wm_3map_dist/h8_mt/best_ns.pt
 """
 from __future__ import annotations
-import argparse, json, shutil, sys, tempfile
+
+import argparse
+import json
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, dist_class, N_PLAYERS, auc  # noqa
-from _corpus import clean_blob  # noqa
+from _corpus import load_corpus
 
 DEMO_DIR = Path("data/processed/demos")
 OFF_LO, OFF_HI = -32, 17          # offsets in frames (-4s .. +2s)
@@ -63,13 +69,12 @@ def main():
     pos_maps, neg_maps = [], []
     n_kills_used = rounds = 0
 
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False, mmap=True)
-    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
+    blob = load_corpus(args.val_pt, maps=keep, tag="val")
     for r, m in zip(blob["tensors"], blob["metas"]):
         if m.get("map_name") not in keep:
             continue
         T = r.shape[0]
-        if T < L + k + 2:
+        if L + k + 2 > T:
             continue
         rounds += 1
         if args.max_rounds and rounds > args.max_rounds:
@@ -77,7 +82,7 @@ def main():
         stem = m["demo_stem"]
         if stem not in kills_cache:
             f = DEMO_DIR / f"{stem}_kills.json"
-            kills_cache[stem] = json.load(open(f)) if f.exists() else []
+            kills_cache[stem] = json.loads(f.read_text()) if f.exists() else []
         ds = m.get("downsample", 8)
         kf = sorted({int((kk["tick"] - m["first_tick"]) // ds)
                      for kk in kills_cache[stem]
@@ -142,7 +147,7 @@ def main():
           f"({pos.mean()/neg.mean():.1f}x)")
 
     # per-map breakdown (datasheet mandate: per-map, never pooled — mirrors decision_eval)
-    print(f"\nper-map detection:")
+    print("\nper-map detection:")
     print(f"{'map':12s} {'pos':>6s} {'neg':>7s} {'AUC':>7s} {'imminent':>9s} {'quiet':>6s}")
     for mp in sorted(set(pos_maps) | set(neg_maps)):
         p = torch.tensor([v for v, mm in zip(pos_scores, pos_maps) if mm == mp])

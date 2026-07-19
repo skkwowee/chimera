@@ -27,16 +27,21 @@ Usage:
   python scripts/gen_bridge_sft.py --smoke      # tiny CPU run on val, prints samples
 """
 from __future__ import annotations
+
 import argparse
 import json
 import math
 import random
 import sys
 from pathlib import Path
+
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.bridge.wm_interface import load_world_model, extract, N_PRED_CHANNELS  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _corpus import load_corpus
+
+from src.bridge.wm_interface import N_PRED_CHANNELS, extract, load_world_model
 
 DATA = Path("data/processed/tick_sequences")
 DIST_EDGES_U = [8.0, 24.0, 56.0, 120.0, 248.0, 512.0]  # ring edges (game units), mirrors train_world_model
@@ -197,7 +202,8 @@ def main():
     assert meta["dist"], "generator needs the distributional head (movement foresight)"
     L = meta["window"]
     keep = set(args.maps.split(","))
-    blob = torch.load(args.split, map_location="cpu", weights_only=False, mmap=True)
+    # read-only consumer (windows are torch.stack copies) -> safe on load_corpus mmap
+    blob = load_corpus(args.split, maps=keep, tag="sft-src")
     # record steps: horizon k=8 -> 1s/step, so +2s = step 2, +4s = step 4
     REC2, REC4 = 2, 4
     dev = torch.device(args.device)

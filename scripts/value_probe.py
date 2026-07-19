@@ -32,11 +32,10 @@ from pathlib import Path
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model  # noqa
-from _corpus import clean_blob  # noqa
+from _corpus import load_corpus
 
 FRACS = [0.25, 0.5, 0.75]
 
@@ -127,17 +126,9 @@ def main():
     keep = set(args.maps.split(",")) if args.maps else None
 
     def _load_reps(pt, tag):
-        """Load one blob, filter, build compact reps, then FREE the blob before the
-        next load. Peak RAM = one blob (not train+val) -> safe under the 15 GB cap."""
-        blob = torch.load(pt, map_location="cpu", weights_only=False)
-        clean_blob(blob, tag=tag)  # datasheet §5 D1/D2
-        if keep:
-            n0 = len(blob["metas"])
-            idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
-            for k, v in list(blob.items()):
-                if isinstance(v, list) and len(v) == n0:
-                    blob[k] = [v[i] for i in idx]
-            print(f"[maps {tag}] kept {len(idx)}/{n0} rounds on {sorted(keep)}")
+        """Load one blob (mmap: tensors stay on disk until build_reps touches
+        them), build compact reps, then FREE the blob before the next load."""
+        blob = load_corpus(pt, maps=keep, tag=tag)
         reps = build_reps(blob, model, window, args.device)
         del blob; gc.collect()
         return reps

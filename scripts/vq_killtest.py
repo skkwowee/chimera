@@ -12,11 +12,18 @@ stay continuous + add a distributional head.
 Usage: python scripts/vq_killtest.py --codebook 1024 --maps de_mirage,de_dust2,de_inferno
 """
 from __future__ import annotations
-import argparse, math
+
+import argparse
+import sys
+from pathlib import Path
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _corpus import load_corpus
 
 RAW_PPD, NP_, PPD = 56, 10, 65   # VQ the 56 raw dims (exclude the 9 derived)
 
@@ -54,8 +61,8 @@ def main():
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
-    blob = torch.load(args.pt, map_location="cpu", weights_only=False)
     keep = set(args.maps.split(","))
+    blob = load_corpus(args.pt, maps=keep)
     # flatten to alive per-player 56-d vectors, tagged by map
     vecs, vmap = [], []
     for t, m in zip(blob["tensors"], blob["metas"]):
@@ -110,7 +117,7 @@ def main():
     print(f"codebook utilization: {used}/{args.codebook} ({100*used/args.codebook:.0f}%) "
           f"{'<- COLLAPSE' if used < 0.2*args.codebook else 'ok'}")
     print(f"POSITION recon RMSE: xy={pos_xy:.1f} units, z={pos_z:.1f} units")
-    print(f"  (CS player radius ~32u; <~50u xy = positions survive VQ -> Path B viable)")
+    print("  (CS player radius ~32u; <~50u xy = positions survive VQ -> Path B viable)")
     print(f"hp recon MAE: {hp_err:.1f}")
     # per-map position recon
     print("per-map position xy-RMSE (units):")

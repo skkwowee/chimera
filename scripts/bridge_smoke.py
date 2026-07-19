@@ -25,14 +25,15 @@ Usage:
   python scripts/bridge_smoke.py --ckpt outputs/wm_3map_dist_v3m/h8_mt/best.pt
 """
 from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
+
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.bridge import (LanguageBridge, NLADecoder, TinyLLMStub, recon_loss,  # noqa: E402
-                        fraction_variance_explained)
+from src.bridge import LanguageBridge, NLADecoder, TinyLLMStub, fraction_variance_explained, recon_loss
 
 OK, BAD = "  \033[32mPASS\033[0m", "  \033[31mFAIL\033[0m"
 _fail = []
@@ -102,7 +103,7 @@ def part_b_decoder(g, bridge, llm):
     train_ids = torch.randint(0, V, (Ntr, 16), generator=g)
     z_mean = z_of(train_ids).mean(0, keepdim=True)
     opt = torch.optim.AdamW(dec.parameters(), lr=2e-3)
-    for step in range(1500):
+    for _step in range(1500):
         b = torch.randint(0, Ntr, (128,))
         ids = train_ids[b]
         # beta=1.0 here anchors magnitude: the cosine-dominated production default
@@ -150,7 +151,7 @@ def part_b_decoder(g, bridge, llm):
 
 def part_c_real_wm(args, g):
     print(f"\nC. REAL WORLD MODEL ({args.ckpt})")
-    from src.bridge.wm_interface import load_world_model, extract, N_PRED_CHANNELS
+    from src.bridge.wm_interface import N_PRED_CHANNELS, extract, load_world_model
     model, meta = load_world_model(args.ckpt, device="cpu")
     print(f"     loaded: window={meta['window']} d_model={meta['d_model']} "
           f"ppd={meta['ppd']} dist={meta['dist']}")

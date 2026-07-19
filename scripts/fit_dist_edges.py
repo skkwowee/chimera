@@ -14,15 +14,15 @@ Output: the six edges (rounded to integer game units) + per-map quantiles
 for the datasheet. CPU-only, minutes.
 """
 from __future__ import annotations
+
 import sys
 from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import torch
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _corpus import clean_blob
+from _corpus import load_corpus
 
 K = 4                    # 500 ms at 8 Hz
 XY_NORM = 3000.0
@@ -34,8 +34,7 @@ TRAIN_PT = "data/processed/tick_sequences/train_v2m.pt"
 def main():
     path = sys.argv[1] if len(sys.argv) > 1 else TRAIN_PT
     print(f"loading {path} ...")
-    blob = torch.load(path, map_location="cpu", weights_only=False)
-    clean_blob(blob, tag="fit_dist_edges")
+    blob = load_corpus(path, tag="fit_dist_edges")
     ppd = blob.get("per_player_dim", 56)
     per_map = defaultdict(list)
     mags_all = []

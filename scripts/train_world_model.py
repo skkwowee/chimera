@@ -54,7 +54,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _corpus import clean_blob
+from _corpus import load_corpus
 
 DATA_DIR = Path("data/processed/tick_sequences")
 
@@ -85,6 +85,9 @@ class RoundWindows(Dataset):
         return len(self.rounds) * self.crops_per_round
 
     def __getitem__(self, idx):
+        # NOTE: crops below are VIEWS into (possibly mmap'd, load_corpus) round
+        # tensors — never write into x/y/x_prev in place. Default collate stacks
+        # them into fresh batch tensors, so downstream code gets copies anyway.
         ri = idx % len(self.rounds)
         r = self.rounds[ri]
         L, k = self.window, self.horizon
@@ -409,10 +412,11 @@ def main():
 
     dev = torch.device(args.device)
     print(f"loading {args.train_pt} ...")
-    train_blob = torch.load(args.train_pt, map_location="cpu", weights_only=False)
-    val_blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
-    clean_blob(train_blob, tag="train")
-    clean_blob(val_blob, tag="val")
+    # load_corpus = mmap + clean_blob + --maps keep-set; tensors stay file-backed.
+    # In --smoke, train_pt == val_pt (val reuse): two mmap loads of the same file
+    # cost ~nothing, so the reuse behavior is preserved.
+    train_blob = load_corpus(args.train_pt, maps=args.maps or None, tag="train")
+    val_blob = load_corpus(args.val_pt, maps=args.maps or None, tag="val")
     fdim = train_blob["feature_dim"]
     assert fdim == val_blob["feature_dim"]
     ppd = train_blob.get("per_player_dim", 56)
@@ -424,16 +428,6 @@ def main():
     end_col = freeze_col + 3
     _ph = val_blob["tensors"][0][:, freeze_col:end_col + 1]
     assert _ph.max() <= 1.0 and ((_ph.sum(1) - 1.0).abs() < 1e-4).all(), "phase one-hot layout mismatch"
-
-    if args.maps:
-        keep = set(args.maps.split(","))
-        def _filter(blob):
-            idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
-            blob["tensors"] = [blob["tensors"][i] for i in idx]
-            blob["metas"] = [blob["metas"][i] for i in idx]
-            return len(idx)
-        nt, nv = _filter(train_blob), _filter(val_blob)
-        print(f"map filter {sorted(keep)}: train {nt} rounds, val {nv} rounds")
 
     tr_ds = RoundWindows(train_blob["tensors"], train_blob["metas"], args.window, args.horizon, args.crops_per_round)
     va_ds = RoundWindows(val_blob["tensors"], val_blob["metas"], args.window, args.horizon, args.crops_per_round)

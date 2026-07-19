@@ -17,9 +17,10 @@ Caveats (v1, documented not hidden):
   path around a corner can be vetoed. Again conservative.
 """
 from __future__ import annotations
-from pathlib import Path
-import torch
 
+from pathlib import Path
+
+import torch
 from awpy.visibility import VisibilityChecker
 
 RAY_H = 28.0          # game units above feet: clears steps, hits walls
@@ -58,7 +59,7 @@ class GeoGate:
         """Like model.gen_residual(x_win) for the LAST frame, but each player's
         displacement class is the most probable (or sampled) FEASIBLE one.
         x_win: [1, L, F]. Returns residual [F] for the newest frame."""
-        from train_world_model import N_PLAYERS, DIST_C, RAW_PPD  # local import, no cycle
+        from train_world_model import DIST_C, N_PLAYERS  # local import, no cycle
 
         res = model.gen_residual(x_win, sample=sample, temperature=temperature)[0, -1].clone()
         out = model.heads(x_win)

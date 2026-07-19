@@ -35,13 +35,19 @@ Usage: python scripts/decision_eval.py --ckpt outputs/wm_3map/h8_mt/best_ns.pt
        [--max-rounds 3 --device cpu]   # smoke test
 """
 from __future__ import annotations
-import argparse, gc, math, shutil, sys, tempfile
+
+import argparse
+import gc
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS  # noqa
-from _corpus import clean_blob  # noqa
+from _corpus import load_corpus
 
 MAPS = ["de_ancient","de_dust2","de_inferno","de_mirage","de_nuke","de_overpass","de_train"]
 BNAMES = ["stationary", "straight", "mild turn", "hard turn", "reversal"]
@@ -56,15 +62,6 @@ def load_ckpt(path):
         return torch.load(safe, map_location="cpu", weights_only=False)
 
 
-def load_blob(path):
-    """mmap so tensor storages stay on disk — train_v3.pt is 3.8GB and a full
-    load OOMs a 15GB WSL box alongside an active training run."""
-    try:
-        return torch.load(path, map_location="cpu", weights_only=False, mmap=True)
-    except (RuntimeError, TypeError):
-        return torch.load(path, map_location="cpu", weights_only=False)
-
-
 def xy_units(frame, idx):
     """frame[idx] -> game units (normalized * 3000)."""
     return frame[idx] * 3000
@@ -76,14 +73,13 @@ def fit_alpha(train_pt, keep, k, px, py, alive_i, L, max_rounds=50, stride=8):
     Streams a capped subsample of TRAIN rounds (alive players, same maps filter)
     so alpha is fit on data the model trained on, never on val.
     """
-    blob = load_blob(train_pt)
-    clean_blob(blob, tag="train")  # datasheet §5 D1/D2
+    blob = load_corpus(train_pt, maps=keep, tag="train")
     num = den = 0.0; used = 0
     for r, m in zip(blob["tensors"], blob["metas"]):
         if m.get("map_name") not in keep:
             continue
         T = r.shape[0]
-        if T < L + k:
+        if L + k > T:
             continue
         for t in range(L - 1, T - k, stride):
             cur, fut = r[t], r[t + k]
@@ -138,8 +134,7 @@ def main():
                                 max_rounds=args.alpha_rounds)
     print(f"damped-CV alpha = {alpha:.4f}  (LS fit on {a_rounds} train rounds, stride 8)")
 
-    blob = load_blob(args.val_pt)
-    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
+    blob = load_corpus(args.val_pt, maps=keep, tag="val")
     # per alive-player-frame: bucket id, the 5 errors, map index
     bid_all, errs_all, mapidx = [], [], []
     n_rounds = 0
@@ -190,7 +185,8 @@ def main():
     bid = torch.cat(bid_all); errs = torch.cat(errs_all); mapidx = torch.tensor(mapidx)
     N = len(bid)
     COLS = ["copy", "const-vel", "smooth-CV", "damped-CV", "MODEL"]
-    print(f"\nalive player-frame samples: {N}  (val rounds used: {min(n_rounds, args.max_rounds) if args.max_rounds else n_rounds})\n")
+    used = min(n_rounds, args.max_rounds) if args.max_rounds else n_rounds
+    print(f"\nalive player-frame samples: {N}  (val rounds used: {used})\n")
     hdr = f"{'bucket':12s} {'n':>7s} {'%frm':>6s}  " + " ".join(f"{c:>9s}" for c in COLS) \
           + f"  {'best-base':>9s} {'skill':>7s}"
     print(hdr)
@@ -212,7 +208,7 @@ def main():
 
     # hard-turn + reversal per map: does any 'beyond momentum' signal hold across maps?
     hi_sel = bid >= 3
-    print(f"\nhard turn + reversal frames — per map (model vs best baseline on that subset):")
+    print("\nhard turn + reversal frames — per map (model vs best baseline on that subset):")
     print(f"{'map':12s} {'n':>7s} {'best-base':>10s} {'MODEL':>8s} {'skill':>7s}")
     for mp in sorted(keep):
         ms = hi_sel & (mapidx == MAPS.index(mp))

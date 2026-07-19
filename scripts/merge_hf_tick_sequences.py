@@ -36,9 +36,17 @@ Usage:
   full:  python scripts/merge_hf_tick_sequences.py
 """
 from __future__ import annotations
-import argparse, gc, json, random, re, resource, time
+
+import argparse
+import gc
+import json
+import random
+import re
+import resource
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
+
 import torch
 from huggingface_hub import HfApi, hf_hub_download
 
@@ -72,7 +80,11 @@ def team_pair(stem: str) -> str:
 
 
 def load_blob(path):
-    """mmap keeps tensor data file-backed (page cache, evictable) — peak RSS stays low."""
+    """mmap keeps tensor data file-backed (page cache, evictable) — peak RSS stays low.
+
+    NOT _corpus.load_corpus: this is a corpus WRITER pooling per-match blobs —
+    load_corpus applies the datasheet §5 defect exclusions, which must never be
+    baked into the merged output (exclusions are load-time-only by design)."""
     try:
         return torch.load(path, map_location="cpu", weights_only=False, mmap=True)
     except Exception:

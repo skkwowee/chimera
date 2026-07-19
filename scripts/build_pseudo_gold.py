@@ -204,7 +204,7 @@ def main() -> None:
         print(f"  {k[0]:>14}  {k[1]:>4}  {k[2]:>16}  n={c}")
 
     print(f"\nWrote stub: {args.output}")
-    print(f"Next step: open the file and hand-author the four candidates per record.")
+    print("Next step: open the file and hand-author the four candidates per record.")
     print(f"After authoring: python scripts/eval_scorer.py {args.output}")
 
 

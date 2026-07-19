@@ -23,15 +23,17 @@ Usage:
   python scripts/train_bridge.py --llm qwen --model <path> ... # on the pod
 """
 from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
+
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.bridge import LanguageBridge, TinyLLMStub  # noqa: E402
+from src.bridge import LanguageBridge, TinyLLMStub
 
 SEP = "\n"
 
@@ -120,8 +122,8 @@ def build_stub_backend(cache):
 
 
 def build_qwen_backend(model_path, lora_r=16, lora_alpha=32):
-    from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
     from peft import LoraConfig, get_peft_model
+    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     tok = AutoTokenizer.from_pretrained(model_path)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token

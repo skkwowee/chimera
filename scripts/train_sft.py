@@ -407,9 +407,9 @@ def main():
         # Load pre-built dataset from build_sft_dataset.py
         import json as _json
         import random as _random
+
         from src.training.data_utils import (
             prepare_conversation_format,
-            format_ground_truth_as_json,
         )
 
         dataset_path = Path(args.dataset)
@@ -499,12 +499,13 @@ def main():
     if args.eval_only:
         print("Evaluation only mode...")
         trainer.load_model()
-        results = trainer.evaluate()
+        trainer.evaluate()
         print("\nEvaluation complete.")
         return
 
     # Set seeds for reproducibility
     import random
+
     import numpy as np
     import torch
     torch.manual_seed(args.seed)

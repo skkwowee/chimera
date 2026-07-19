@@ -1,0 +1,44 @@
+# CI (infra-plan §1 item 4): certifies the CODE, not the corpus — runners never
+# see the 22 GB blobs (data/ is gitignored), so blob-dependent tests skip here.
+# Deps are exactly what tests/ imports (torch/numpy via scripts/train_world_model
+# + scripts/_corpus), NOT the full requirements — awpy/GPU/bridge stack is
+# irrelevant to the suite and would blow the <5 min runtime target.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install CPU torch + test deps
+        run: |
+          uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu
+          uv pip install --system numpy pytest ruff==0.15.0
+
+      - name: pytest
+        run: python -m pytest tests/ -q
+
+      # ruff picks up [tool.ruff] in pyproject.toml (line-length 120, select/ignore
+      # lists, per-file-ignores — incl. E501 where noqa'd). No CLI --ignore E501:
+      # it would flip existing `# noqa: E501` comments into RUF100 errors.
+      # ruff==0.15.0 matches .pre-commit-config.yaml so local hooks and CI can
+      # never disagree. scripts/_archive is superseded code kept for history —
+      # not a lint gate.
+      - name: ruff
+        run: ruff check scripts/ tests/ --exclude scripts/_archive

@@ -30,6 +30,7 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import RoundWindows, build_model, N_PLAYERS  # noqa
+from _corpus import load_corpus
 
 
 def group_indices(ppd, fdim):
@@ -75,7 +76,7 @@ def main():
           f"({horizon*125}ms)  per_player={ppd}  val_ns(agg)={ck.get('val_ns', float('nan')):.4f}  "
           f"value_auc={ck.get('value_auc', float('nan')):.3f}")
 
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
+    blob = load_corpus(args.val_pt, tag="val")
     ds = RoundWindows(blob["tensors"], blob["metas"], a["window"], horizon, crops_per_round=16)
     ld = DataLoader(ds, batch_size=args.batch, shuffle=False)
     groups = group_indices(ppd, ck["feature_dim"])

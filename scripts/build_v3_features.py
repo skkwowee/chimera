@@ -31,16 +31,24 @@ existing v3 blobs, save the assembled result. WSL: keep --workers 1 (one BVH).
       --todo .../v3_todo.json --reuse .../train_v3.pt,.../val_v3.pt --workers 1
 """
 from __future__ import annotations
+
 import os
+
 # Cap BLAS/OMP threads BEFORE numpy/torch import. With fork, 12 workers x 32
 # intra-op threads = ~384 threads (oversubscription); pin to 1/worker.
 for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
            "NUMEXPR_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
     os.environ.setdefault(_v, "1")
-import argparse, json, math, re, time
+import argparse
+import json
+import math
+import re
+import time
 from pathlib import Path
+
 import numpy as np
 import torch
+
 torch.set_num_threads(1)
 
 PPD = 56                      # v2 per-player dim
@@ -69,6 +77,7 @@ def norm_stem(s: str) -> str:
 
 def _get_vc(map_name):
     import gc
+
     from awpy.visibility import VisibilityChecker
     if map_name not in _VC:
         _VC.clear(); gc.collect()   # FREE the prior ~1.5GB BVH BEFORE building the
@@ -186,6 +195,10 @@ def main():
         src, out = Path(args.data) / f"{args.split}.pt", Path(args.data) / f"{args.split}_v3.pt"
         split_key = args.split
     print(f"loading {src} ...")
+    # NOT _corpus.load_corpus: this is a corpus WRITER — load_corpus applies the
+    # datasheet §5 defect exclusions, which must never leak into a baked blob
+    # (the output must carry ALL rounds). Tensor "mutation" below is whole-entry
+    # list replacement (never in-place storage writes), so mmap stays safe.
     try:    # mmap: source v2 tensors stay file-backed until replaced
         _BLOB = torch.load(src, map_location="cpu", weights_only=False, mmap=True)
     except Exception:
@@ -193,7 +206,8 @@ def main():
     n = len(_BLOB["tensors"])
     _MAPS = [m.get("map_name", "de_dust2") for m in _BLOB["metas"]]
     if args.todo:
-        td = json.load(open(args.todo))[split_key]
+        with open(args.todo) as _fh:
+            td = json.load(_fh)[split_key]
         for r in td:    # todo must have been built against THIS blob's ordering
             m = _BLOB["metas"][r["index"]]
             assert (m["demo_stem"], m["round_num"], m["first_tick"]) == \

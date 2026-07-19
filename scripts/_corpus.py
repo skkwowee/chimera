@@ -13,7 +13,46 @@ rebuild so it actually carries identity).
 """
 from __future__ import annotations
 
+import os
+
+import torch
+
 EXCLUDED_MAPS = frozenset({"de_anubis", "de_train"})
+
+
+def load_corpus(path, *, maps=None, tag=None):
+    """THE corpus reader — every script that reads a tick-sequence blob goes
+    through here (infra-plan §1 item 1).
+
+    torch.load(..., mmap=True): tensor storages stay ON DISK (page cache,
+    evictable) until actually touched, so loading a multi-GB blob costs ~MBs
+    of RSS instead of the full file. clean_blob and the `maps` keep-set filter
+    only rebuild the blob's parallel python LISTS — they never touch tensor
+    storage — so both are mmap-safe.
+
+    Consumers must NOT assume the returned tensors are writable: mmap'd
+    storages are shared/file-backed — .clone() before any in-place mutation.
+    Corpus WRITERS (patch/bake/merge scripts) must not use this: it applies
+    the datasheet §5 defect exclusions, which must never leak into bytes
+    written back to disk.
+
+    maps: optional keep-set — comma-separated string or iterable of map_names;
+          filters ALL parallel per-round lists in lockstep (value_probe's
+          _mfilter pattern). None/empty = keep all maps.
+    tag:  label for log lines; defaults to the file's basename.
+    """
+    tag = tag or os.path.basename(str(path))
+    blob = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
+    clean_blob(blob, tag=tag)  # datasheet §5 D1/D2
+    if maps:
+        keep = set(maps.split(",")) if isinstance(maps, str) else set(maps)
+        n0 = len(blob["metas"])
+        idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
+        for k, v in list(blob.items()):
+            if isinstance(v, list) and len(v) == n0:
+                blob[k] = [v[i] for i in idx]
+        print(f"[corpus {tag}] maps filter {sorted(keep)}: kept {len(idx)}/{n0} rounds")
+    return blob
 
 
 def clean_blob(blob: dict, *, verbose: bool = True, tag: str = "") -> int:

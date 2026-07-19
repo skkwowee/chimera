@@ -24,13 +24,21 @@ Usage:
   # then open viewer/gen_viewer.html in a browser
 """
 from __future__ import annotations
-import argparse, json, math, shutil, sys, tempfile
+
+import argparse
+import json
+import math
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, dist_class, N_PLAYERS  # noqa
+from _corpus import load_corpus
 from awpy.data.map_data import MAP_DATA
 
 MAPS = ["de_ancient","de_dust2","de_inferno","de_mirage","de_nuke","de_overpass","de_train"]
@@ -122,7 +130,8 @@ def main():
         vmodel.load_state_dict(vck["model"]); vmodel.to(args.device).eval()
         print(f"value readout from {args.value_ckpt} (step {vck.get('step')})")
 
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
+    # --round/--round-list index the CLEANED blob (datasheet §5 exclusions applied)
+    blob = load_corpus(args.val_pt, tag="val")
     vocab = blob.get("map_vocab", MAPS); n_maps = len(vocab)
     gbase = N_PLAYERS * ppd                       # global block start
     # encode_global layout: map_onehot(n_maps) then phase_onehot [freeze,live,post_plant,end]
@@ -204,7 +213,7 @@ def main():
         anchor = args.anchor if args.anchor is not None else \
             max(L - 1, min(T - args.rollout*k - 1, T // 2))
         rollout = None
-        if T >= anchor + args.rollout * k + 1 and anchor >= L - 1:
+        if anchor + args.rollout * k + 1 <= T and anchor >= L - 1:
             g = torch.Generator(device=args.device); g.manual_seed(args.rollout_seed)
             win0 = r_in[anchor-L+1:anchor+1].to(args.device)
             buf = win0.unsqueeze(0).repeat(K, 1, 1)              # [K,L,F] sampled fan

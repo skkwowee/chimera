@@ -21,13 +21,18 @@ actual job and 'generate the group' gets diverse futures for free.
 Usage: python scripts/dist_coverage_eval.py --ckpt outputs/wm_3map_dist/h8_mt/best_ns.pt --k 16
 """
 from __future__ import annotations
-import argparse, math, shutil, sys, tempfile
+
+import argparse
+import shutil
+import sys
+import tempfile
 from pathlib import Path
+
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, dist_class, N_PLAYERS  # noqa
-from _corpus import clean_blob  # noqa
+from _corpus import load_corpus
 
 BNAMES = ["stationary", "straight", "mild turn", "hard turn", "reversal"]
 THETA_EDGES = torch.tensor([20.0, 60.0, 120.0])
@@ -69,8 +74,7 @@ def main():
     alive_i = torch.tensor([p*ppd+13 for p in range(N_PLAYERS)])
     centers = model.centers.cpu()                                     # [C,2] normalized
 
-    blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
-    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
+    blob = load_corpus(args.val_pt, maps=keep, tag="val")
     maplist = sorted(keep)
     bid_all, cp_all, am_all, mn_all, md_all, mapidx = [], [], [], [], [], []
     n_rounds = 0
@@ -148,7 +152,7 @@ def main():
     # per-map breakdown (datasheet mandate: per-map, never pooled — mirrors
     # decision_eval): all buckets pooled, plus the headline turn+reversal cover
     hi_sel = bid >= 3
-    print(f"\nper map (all buckets; turn+ = hard turn + reversal subset):")
+    print("\nper map (all buckets; turn+ = hard turn + reversal subset):")
     print(f"{'map':12s} {'n':>7s} {'copy':>7s} {'argmax':>8s} {'minADE-'+str(args.k):>9s} "
           f"{'medADE':>7s}  {'cover':>6s} {'n(turn+)':>9s} {'cover(turn+)':>12s}")
     for mpi, mp in enumerate(maplist):

@@ -21,17 +21,20 @@ value-head-agreement holds. Backend-abstracted (stub smoke / Qwen on the pod).
 Usage: python scripts/eval_recon.py --smoke
 """
 from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
+
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.bridge import LanguageBridge, NLADecoder, recon_loss, fraction_variance_explained  # noqa: E402
-from src.bridge.wm_interface import load_world_model  # noqa: E402
-from train_bridge import (SFTPairs, make_collate, build_stub_backend, build_qwen_backend)  # noqa: E402
-from eval_ablate import greedy_generate, prompt_only  # noqa: E402
-from src.bridge.featurizer import N_TOKENS  # noqa: E402
+from eval_ablate import greedy_generate, prompt_only
+from train_bridge import SFTPairs, build_qwen_backend, build_stub_backend, make_collate
+
+from src.bridge import LanguageBridge, NLADecoder, fraction_variance_explained, recon_loss
+from src.bridge.featurizer import N_TOKENS
+from src.bridge.wm_interface import load_world_model
 
 
 @torch.no_grad()
@@ -116,7 +119,7 @@ def main():
                      frozen_embedding=llm.get_input_embeddings().weight.detach()).to(dev)
     opt = torch.optim.AdamW(dec.parameters(), lr=2e-3)
     y_on, z = y_on.to(dev), z.to(dev)
-    for step in range(args.recon_steps):
+    for _step in range(args.recon_steps):
         b = tr[torch.randint(0, len(tr), (min(32, len(tr)),))]
         loss, _, _ = recon_loss(dec(y_on[b]), z[b], beta=1.0)
         opt.zero_grad(); loss.backward(); opt.step()
@@ -142,7 +145,7 @@ def main():
         zhat_pool = dec(y_on[te]).mean(1)                       # [n,512]
         v_auc = auc(wm.value_head(zhat_pool).squeeze(1).cpu(), won[te])
 
-    print(f"\nrecon-fidelity (fraction-variance-explained over latent-mean floor):")
+    print("\nrecon-fidelity (fraction-variance-explained over latent-mean floor):")
     print(f"  real text     {r_real:+.3f}")
     print(f"  shuffled text {r_shuf:+.3f}   (must collapse to ~0)")
     print(f"  empty text    {r_empty:+.3f}   (firewall floor)")
@@ -160,7 +163,9 @@ def main():
         sys.exit(0 if ok else 1)
 
     faithful = (r_real - r_shuf > 0.05) and (r_real - r_abl > 0.03) and not leak
-    print(f"\nVERDICT: {'FAITHFUL (real > shuffled/ablated above floor)' if faithful else 'NOT FAITHFUL — recon does not beat controls (§3 eval #2)'}"
+    verdict = ('FAITHFUL (real > shuffled/ablated above floor)' if faithful
+               else 'NOT FAITHFUL — recon does not beat controls (§3 eval #2)')
+    print(f"\nVERDICT: {verdict}"
           + "  [pair with value-agreement + readability before claiming the gate]")
 
 

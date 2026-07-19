@@ -67,6 +67,12 @@ ignore = [
   "RUF001", # ambiguous unicode in strings — intentional math notation (×, etc.)
   "RUF002", # ambiguous unicode in docstrings — intentional math notation (α, β, γ, etc.)
   "RUF003", # ambiguous unicode in comments — intentional math notation (−, etc.)
+  "E702",   # multiple statements on one line (semicolon) — deliberate terse style in research scripts
+  "E701",   # multiple statements on one line (colon) — same terse style
+  "B905",   # zip without strict= — corpus lists are length-asserted upstream; strict= churn adds noise
+  "RUF005", # list concat vs unpacking — concat reads fine here
+  "RUF059", # unpacked-but-unused tuple parts — idiomatic in shape destructuring
+  "E731",   # lambda assignment — used deliberately for tiny local helpers
 ]
 
 [tool.ruff.lint.per-file-ignores]
