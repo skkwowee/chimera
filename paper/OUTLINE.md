@@ -15,6 +15,25 @@ gate ([1]–[7] in `claude-progress.txt`) that fills it. Until runbook [7] lands
 this paper is a plan with pre-registered criteria, and must be labeled as such if
 circulated.
 
+## 0. Venue plan (as of 2026-07-19; NeurIPS 2026 main track has passed)
+
+Two targets, sequential — never simultaneous (dual submission is prohibited):
+
+- **Plan A — ICLR 2027** (abstract ~Sep 19, paper ~Sep 24, 2026). Strongest
+  topical fit (representation learning, probing, SSL). Reachable only if the
+  keystone goes green on the first pass.
+- **Plan B — NeurIPS 2027** (~May 2027). The committed fallback: absorbs a
+  failed gate, a redesign loop, or an ICLR rejection (whose reviews then feed
+  the resubmission). ICML 2027 (~late Jan) is an optional middle stop if the
+  paper is ready mid-winter and waiting to May feels wasteful.
+
+**Decision rule (mechanical, so deadline pressure cannot distort the gates):**
+keystone (runbook [7]) green by **Sep 1, 2026** → sprint ICLR with C1 as the
+headline and C2/C3 as preliminary results; otherwise NeurIPS 2027 without
+schedule pressure. A NeurIPS 2026 *workshop* short paper (~Aug–Sep deadlines)
+remains an optional timestamp for C1 alone if it happens to be green in time.
+Verify every deadline against the official CFP when it posts.
+
 ---
 
 ## 1. Title candidates
