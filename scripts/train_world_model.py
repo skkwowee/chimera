@@ -390,8 +390,8 @@ def main():
                          "(stationary + 6 rings x 16 dirs) + per-class refine offset. Fixes "
                          "regression mode-averaging (stationary jitter, between-mode means).")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3m.pt"))
-    ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3m.pt"))
+    ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3m_p1.pt"))
+    ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3m_p1.pt"))
     ap.add_argument("--out", default="outputs/world_model")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--smoke", action="store_true", help="tiny CPU sanity run on val.pt")

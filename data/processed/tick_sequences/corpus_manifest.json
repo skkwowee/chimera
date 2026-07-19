@@ -1,0 +1,109 @@
+{
+ "corpus_version": "2.1.0+patch1",
+ "blobs": {
+  "val_v2m_p1.pt": {
+   "sha256": "68fa23f8ef4ec1b176cda9299a617665129852101cff12acbfab59a15da68980",
+   "bytes": 1770717395,
+   "sha256_source": "312c1e89e508d89bb52059429e915e125dc741f66f078b6d5c936f99d11be521"
+  },
+  "split_manifest_v2.json": {
+   "sha256": "740e8c805ee437a2c2526ec50a94ade7123992e846dadce9ab2300ac7b5e5465",
+   "bytes": 3042
+  },
+  "corpus_manifest.json": {
+   "sha256": "self",
+   "bytes": 0
+  },
+  "train_v2m_p1.pt": {
+   "sha256": "0d3ad2b1031663beed91e9b107adaf578fbb0734c17cc65f9ec4d63792ef38ed",
+   "bytes": 9265207373,
+   "sha256_source": "467ca919def6f9778ce9aee0ffb9b99f067c958b648477e90774b865e338c322"
+  },
+  "val_v3m_p1.pt": {
+   "sha256": "1ec291f2328142254b71b1c7c658ece30bec5c696e380e954ac7941e8a0654eb",
+   "bytes": 2037616339,
+   "sha256_source": "e121f78b1cf91c295f52f1e67bc3ba48ab1331b31e81f28c2ab1050145d663e0"
+  },
+  "train_v3m_p1.pt": {
+   "sha256": "1c9e8554a09c49d0c11a8cc557c6c2426213e2828cff87f06203b5431b2fe97a",
+   "bytes": 10661742149,
+   "sha256_source": "2a165efc25dfe9c075b8718ba87c9972a9c9f8b248192d978daaf45b89f70328"
+  }
+ },
+ "patch_lineage": [
+  {
+   "script": "scripts/patch_corpus.py",
+   "script_sha": "e7efd9626c88e24868b643ac9fb4dd2b8a081481",
+   "transforms": [
+    "bomb_state_bits(D3)",
+    "round_time_reanchor(D4)"
+   ],
+   "sha256_pre": "312c1e89e508d89bb52059429e915e125dc741f66f078b6d5c936f99d11be521",
+   "sha256_post": "68fa23f8ef4ec1b176cda9299a617665129852101cff12acbfab59a15da68980",
+   "date": "2026-07-19",
+   "blob": "val_v2m_p1.pt"
+  },
+  {
+   "script": "scripts/patch_corpus.py",
+   "script_sha": "e7efd9626c88e24868b643ac9fb4dd2b8a081481",
+   "transforms": [
+    "bomb_state_bits(D3)",
+    "round_time_reanchor(D4)"
+   ],
+   "sha256_pre": "467ca919def6f9778ce9aee0ffb9b99f067c958b648477e90774b865e338c322",
+   "sha256_post": "0d3ad2b1031663beed91e9b107adaf578fbb0734c17cc65f9ec4d63792ef38ed",
+   "date": "2026-07-19",
+   "blob": "train_v2m_p1.pt"
+  },
+  {
+   "script": "scripts/patch_corpus.py",
+   "script_sha": "e7efd9626c88e24868b643ac9fb4dd2b8a081481",
+   "transforms": [
+    "bomb_state_bits(D3)",
+    "round_time_reanchor(D4)",
+    "dim7_plant_gate(D6)"
+   ],
+   "sha256_pre": "e121f78b1cf91c295f52f1e67bc3ba48ab1331b31e81f28c2ab1050145d663e0",
+   "sha256_post": "1ec291f2328142254b71b1c7c658ece30bec5c696e380e954ac7941e8a0654eb",
+   "date": "2026-07-19",
+   "blob": "val_v3m_p1.pt"
+  },
+  {
+   "script": "scripts/patch_corpus.py",
+   "script_sha": "e7efd9626c88e24868b643ac9fb4dd2b8a081481",
+   "transforms": [
+    "bomb_state_bits(D3)",
+    "round_time_reanchor(D4)",
+    "dim7_plant_gate(D6)"
+   ],
+   "sha256_pre": "2a165efc25dfe9c075b8718ba87c9972a9c9f8b248192d978daaf45b89f70328",
+   "sha256_post": "1c9e8554a09c49d0c11a8cc557c6c2426213e2828cff87f06203b5431b2fe97a",
+   "date": "2026-07-19",
+   "blob": "train_v3m_p1.pt"
+  }
+ ],
+ "split": {
+  "seed": 0,
+  "val_frac": 0.15,
+  "unit": "match",
+  "dedup_key": "(norm_stem, round_num, first_tick, n_ticks)",
+  "split_manifest_sha256": "740e8c805ee437a2c2526ec50a94ade7123992e846dadce9ab2300ac7b5e5465"
+ },
+ "parser": {
+  "demoparser2": ">=0.41.3",
+  "awpy": "see uv.lock"
+ },
+ "builder": {
+  "schema_version": "v2.1",
+  "builder_sha": "aaef50bcc21171fc07263ed00498d2d7712e0fd9",
+  "note": "blobs predate v2.1; this patch retrofits D3/D4/D6 fixes"
+ },
+ "exclusions": {
+  "load_time_mask": [
+   "de_anubis",
+   "de_train"
+  ],
+  "note": "datasheet \u00a75 D1/D2; NEVER baked into blob bytes"
+ },
+ "datasheet": "docs/datasheet.md"
+}

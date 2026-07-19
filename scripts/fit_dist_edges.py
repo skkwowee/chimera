@@ -28,7 +28,7 @@ K = 4                    # 500 ms at 8 Hz
 XY_NORM = 3000.0
 FLOOR_U = 8.0            # stationary threshold, absolute (not horizon-scaled)
 ALIVE_DIM = 13           # per_player_layout index of "alive"
-TRAIN_PT = "data/processed/tick_sequences/train_v2m.pt"
+TRAIN_PT = "data/processed/tick_sequences/train_v2m_p1.pt"  # patched corpus (runbook [1])
 
 
 def main():
