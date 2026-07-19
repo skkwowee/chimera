@@ -24,13 +24,21 @@ horizons by autoregressive sampling rollout. NOT direct t+k regression.**
   the honest claim is "the true future is in the sampled set," not "we hit it."
 - **This rollout group is also what Phase-3 GRPO consumes** ("generate the group").
 
-**Why not direct multi-horizon heads:** model-free `res/d` analysis (val_v3, normalized
-coords) shows const-velocity residual/displacement = 0.68 (1s), 0.87 (2s), 1.22 (5s),
-1.38 (7s), 1.57 (10s). Above 1.0 momentum is worse than "don't move" → a direct long-k
-head can only learn the average (mode collapse). Direct targets are only sound in the
-{1,2}s band; rollout+sampling degrades gracefully (spreads) instead of collapsing.
-The `res/d` curve is itself a headline figure: motion is momentum-trivial <2s and
-decision-dominated >4s, motivating a distributional, tactical-horizon objective.
+**Why rollout, not direct multi-horizon heads (rationale RESTATED 2026-07-18,
+first-principles-plan CHANGE G):** the model-free `res/d` analysis (val_v3,
+normalized coords: const-velocity residual/displacement = 0.68 @1s, 0.87 @2s,
+1.22 @5s, 1.38 @7s, 1.57 @10s) establishes that motion is momentum-trivial <2s
+and decision-dominated >4s — motivating distributional, tactical-horizon
+prediction. It does NOT establish that direct long-k heads fail: an earlier
+version claimed "a direct long-k head can only learn the average (mode
+collapse)" — that is TRUE for point regression but FALSE for multimodal anchor
+heads (MultiPath/MTR predict 6–8s directly and own the minADE-K metric family).
+The load-bearing argument for rollout is CONSUMPTION: (a) GRPO's reward needs
+value on *intermediate* imagined frames — round value is path-dependent (deaths
+are absorbing, ordering matters); (b) the bridge verbalizes *lines*, not
+endpoints; (c) 10 coupled agents stay jointly coherent only under stepwise
+re-simulation. Control (cheap, on the trained trunk): pilot a direct
+winner-take-all anchor head at t+{40,80} and report it next to rollout coverage.
 
 ---
 

@@ -282,20 +282,30 @@ shown the value/rollouts, never raw-features-only) and whatever aligned commenta
 it is not required for the thesis.
 
 **Phase 3 (GRPO) — the real reasoning quality.** SFT is the warm start only.
-Reasoning is made *good* by GRPO: group = sampled world-model rollouts, reward =
-value-through-rollout (gate passed, flat ~0.82 through 8s) + perception grounding.
-No human reasoning labels in the RL loop. **This is why we don't over-invest in
-2a/2b text quality** — the bridge SFT teaches the mapping; GRPO teaches the reasoning.
+Reasoning is made *good* by GRPO. **AMENDED 2026-07-18 (first-principles-plan
+CHANGE A): the reward is GROUNDED — verbalized predictions scored against the
+ACTUAL demo future** (probabilistic scoring: CRPS/Brier over extracted claims,
+not binary match). An earlier version of this section named value-through-rollout
+as the sole quality signal; that reward is model-authored (the LLM is graded by
+the same frozen value head whose latent it consumes) and uncorrectable without an
+environment — reward hacking by construction (adversarial-review F3; red-team
+verdict unambiguous). **Value-through-rollout is DEMOTED to the group generator**:
+it produces the K sampled futures the group is built from, but the score each
+completion earns comes from the realized demo future. No human reasoning labels
+in the RL loop. Pre-GRPO feasibility gates (first-principles-plan CHANGE F):
+(i) the text→claim checker must reach AUC ≥ ~0.75 on a constructed pseudo-gold
+set; (ii) reward-noise ICC under single-draw future noise must exceed ~0.2, or
+group advantages are noise; (iii) run one offline ReST/rejection-sampling round
+with the validated checker BEFORE any on-policy GRPO.
 
 **Recon in GRPO is a CONSTRAINT, not a summed reward.** Do **not** add `λ·recon` to
 the GRPO reward — that lets the policy trade reasoning for info-density (stilted
-text) and double-counts grounding already in value-through-rollout. Instead:
-**hard-floor / zero the advantage** of any of the G=16 group completions whose
-recon-fidelity < threshold τ, *before* group-normalizing. Faithfulness becomes a
-**feasibility constraint**; value-through-rollout stays the **sole quality signal**
-that shapes ranking. τ = 25th percentile of the SFT-passing recon distribution.
-**Documented fallback:** if the constraint starves the group (zero-variance-advantage
-collapse), drop to **recon-as-eval-only.**
+text). Instead: **hard-floor / zero the advantage** of any of the G=16 group
+completions whose recon-fidelity < threshold τ, *before* group-normalizing.
+Faithfulness becomes a **feasibility constraint**; the grounded reward stays the
+**sole quality signal** that shapes ranking. τ = 25th percentile of the
+SFT-passing recon distribution. **Documented fallback:** if the constraint starves
+the group (zero-variance-advantage collapse), drop to **recon-as-eval-only.**
 
 ---
 

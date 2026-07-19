@@ -43,13 +43,37 @@
 #     DONE-CHECK: test passes; SS smoke shows p>0 path executing.
 # [4] COVERAGE HARNESS (code): extend rollout_eval.py to K sampled rollouts
 #     (minADE-K, frozen K/temperature) — doubles as the GRPO group generator.
-#     DONE-CHECK: sampled-coverage smoke on val runs.
+#     CHANGE B (first-principles-plan): MUST ship with (i) the fair stochastic
+#     baseline (per-bucket damped-CV + fitted residual covariance, K=16, scored
+#     identically) — coverage numbers are UNREPORTABLE without it; (ii) a
+#     trajectory-coherence metric (mode-switch rate of depth-10/20 rollouts vs
+#     matched real trajectories) — the only instrument that sees mode-dithering.
+#     DONE-CHECK: sampled-coverage smoke on val runs incl. baseline column.
 # [5] LOCAL SMOKE of the full canonical config (v2, seed 0, small steps).
 # [6] RUNS (pod, ~$45-85, ONLY on user go): 3 seeds x {v2,v3} + SS-off control
 #     = 7 runs; + round-encoder retrain on clean corpus (Knob 7, v6 config);
-#     + keystone WM data-scaling curve (reuses the 3 canonical v2 runs).
+#     + keystone WM data-scaling curve (reuses the 3 canonical v2 runs);
+#     + CHANGE C: matched-capacity SUPERVISED ceiling — same 19M arch, clean
+#     corpus, end-to-end on round_won (+event heads), probed under the identical
+#     protocol (hours on 4090, no pod). Kills the legacy-strawman objection.
 # [7] GATES: keystone probes (pre-registered criteria in knobs4-7 doc §Knob 7),
-#     OOD overpass protocol (Knob 4), THEN bridge/GRPO ladder (L3-L5).
+#     OOD overpass protocol (Knob 4), THEN bridge/GRPO ladder (L3-L5) with:
+#     CHANGE D (pre-QLoRA referees, CPU/4090, BEFORE any 35B pod spend):
+#       (i) grid-target capacity probe ([11,512] recon from head-output text vs
+#           latent) — decides soft-tokens vs head-readout; (ii) SAE/linear-probe
+#       audit for latent features not decodable from head outputs; (iii) bridge
+#       tap layer sweep (layers 3-6, steerability + persistence — J-space-
+#       inspired); promote head-Jacobian subspace to PRIMARY recon target.
+#     CHANGE E (gate work): B2 implemented as exact-match fact audit vs tick
+#       ground truth; ADD counterfactual flip-test (edit man-advantage/bomb
+#       state, re-encode through frozen WM, demand the text flips) as a
+#       co-equal causal gate leg.
+#     CHANGE F (before on-policy GRPO): checker feasibility gate (text->claim
+#       extractor AUC >= ~0.75 on pseudo-gold; CRPS/Brier scoring, not binary);
+#       reward-noise ICC gate (>= ~0.2 under single-draw future noise, else
+#       advantages are noise); one offline ReST/rejection-sampling round with
+#       the validated checker FIRST. Reward is GROUNDED-vs-actual-future
+#       (CHANGE A; bridge-design §5) — value-through-rollout = generator only.
 # ----------------------------------------------------------------------------
 # Machine notes: WSL 15GB cap; GPU = display GPU; workflow crashes = CLI-process
 # exits (NOT memory — see ~/.claude/skills/workflow-recover/SKILL.md; start

@@ -53,9 +53,13 @@ clause: the map set is part of "bit-identical except the schema").**
   rebuild without a passing gate (datasheet §7) and break the Knob-2 clause. (3) No coordinate
   scheme transfers absolute layout to an unseen map — that limitation is inherent to the OOD
   question, not to /3000. Conceded up front: absolute positions fingerprint the map; the claim is
-  scoped below that attack (see claim scope). **Egocentric gate (future work):** pilot only if
-  OOD coverage skill < 0 vs copy/const-vel at ALL horizons while the fine-tune anchor recovers —
-  that pattern would implicate coordinate-frame memorization specifically.
+  scoped below that attack (see claim scope). **Egocentric gate (future work; trigger SOFTENED
+  2026-07-18, CHANGE G — the ALL-horizons form could never fire on partial evidence):** pilot if
+  OOD coverage skill < 0 vs copy/const-vel at horizons ≥ 2s while the fine-tune anchor recovers —
+  that pattern would implicate coordinate-frame memorization specifically. (Note: displacements
+  are origin-invariant, so a translation-only egocentric frame would NOT break the dist head.)
+  Publication budget (~$20): the pinned nuke-holdout contingency + one additional holdout arm
+  run at paper time, not deferred to rebuttal.
 - **OOD decode (pre-registered): map one-hot ZEROED is primary** (global dims
   [10·ppd + 0 : 10·ppd + 7] := 0; v2 560–566, v3 650–656; de_overpass = MAP_VOCAB index 5).
   Zeros contribute nothing through the linear input projection, whereas SETTING the overpass bit

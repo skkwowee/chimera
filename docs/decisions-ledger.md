@@ -140,8 +140,10 @@ killed idea below is a thing that violated that bet or failed its own test.
   held-out decoder; `λ=0` for the milestone). Aux/RL legs (small annealed λ
   regularizer; Track-2 REINFORCE) are gated behind milestone success. In GRPO it is
   a **constraint-filter** (zero the advantage of completions below τ before
-  group-norm), NOT a summed reward — value-through-rollout stays the sole quality
-  signal.
+  group-norm), NOT a summed reward. AMENDED 2026-07-18 (CHANGE A): the quality
+  signal is the GROUNDED reward — claims scored vs the actual demo future
+  (CRPS/Brier) — NOT value-through-rollout, which is model-authored/circular and
+  is demoted to group generator (see bridge-design §5).
 - **Evidence (design-stage, gates defined):** it supplies the faithfulness leg
   **ablate-the-latent alone could not** — ablate proves the latent is USED, recon
   proves the OUTPUT TEXT *faithfully renders* it vs hallucinating past it; the two
@@ -243,8 +245,11 @@ yaw-shuffle test on the NEW canonical model shows the shortcut survives.
   inference* (live VOD → estimate tick-state → feed the same world model). A
   swappable front-end codec, not a core stage. Well-posed via paired VOD↔demo.
 - **GRPO supervises its own reasoning.** Group = sampled world-model rollouts
-  (not retrieval/RECALL); reward = value-through-rollout. No human reasoning
-  labels needed for RL — only the *bridge bootstrap* SFT needs some grounding.
+  (not retrieval/RECALL); reward = GROUNDED — verbalized claims scored against
+  the realized demo future (CRPS/Brier). Value-through-rollout generates the
+  group; it does not score it (circular — amended 2026-07-18, CHANGE A). No
+  human reasoning labels needed for RL — only the *bridge bootstrap* SFT needs
+  some grounding.
 - **The model is "world + pro-players," not pure physics.** It learns
   dynamics ∘ pro-policy. That's a feature for value/reasoning, a caveat for any
   future action-conditioned (counterfactual) variant.
