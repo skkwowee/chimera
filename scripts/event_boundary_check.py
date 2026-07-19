@@ -23,6 +23,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, dist_class, N_PLAYERS, auc  # noqa
+from _corpus import clean_blob  # noqa
 
 DEMO_DIR = Path("data/processed/demos")
 OFF_LO, OFF_HI = -32, 17          # offsets in frames (-4s .. +2s)
@@ -59,9 +60,11 @@ def main():
 
     curve_sum = torch.zeros(OFF_HI - OFF_LO); curve_n = torch.zeros(OFF_HI - OFF_LO)
     pos_scores, neg_scores, all_scores = [], [], []
+    pos_maps, neg_maps = [], []
     n_kills_used = rounds = 0
 
     blob = torch.load(args.val_pt, map_location="cpu", weights_only=False, mmap=True)
+    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
     for r, m in zip(blob["tensors"], blob["metas"]):
         if m.get("map_name") not in keep:
             continue
@@ -110,9 +113,9 @@ def main():
         kset = set(kf)
         for t in range(L - 1, T - k):
             if any((t < f2 <= t + k) for f2 in kset):
-                pos_scores.append(s[t])
+                pos_scores.append(s[t]); pos_maps.append(m["map_name"])
             elif not any((t - 16 <= f2 <= t + 24) for f2 in kset):
-                neg_scores.append(s[t])
+                neg_scores.append(s[t]); neg_maps.append(m["map_name"])
 
     allc = torch.cat(all_scores)
     print(f"rounds {rounds-1 if args.max_rounds and rounds>args.max_rounds else rounds}  "
@@ -137,6 +140,17 @@ def main():
           f"{auc(scores, labels):.3f}   (pos {len(pos)}, neg {len(neg)})")
     print(f"mean nats: kill-imminent {pos.mean():.1f} vs quiet {neg.mean():.1f} "
           f"({pos.mean()/neg.mean():.1f}x)")
+
+    # per-map breakdown (datasheet mandate: per-map, never pooled — mirrors decision_eval)
+    print(f"\nper-map detection:")
+    print(f"{'map':12s} {'pos':>6s} {'neg':>7s} {'AUC':>7s} {'imminent':>9s} {'quiet':>6s}")
+    for mp in sorted(set(pos_maps) | set(neg_maps)):
+        p = torch.tensor([v for v, mm in zip(pos_scores, pos_maps) if mm == mp])
+        ng = torch.tensor([v for v, mm in zip(neg_scores, neg_maps) if mm == mp])
+        sc = torch.cat([p, ng]); lb = torch.cat([torch.ones(len(p)), torch.zeros(len(ng))])
+        pm = p.mean().item() if len(p) else float("nan")
+        nm = ng.mean().item() if len(ng) else float("nan")
+        print(f"{mp:12s} {len(p):>6d} {len(ng):>7d} {auc(sc, lb):7.3f} {pm:8.1f} {nm:5.1f}")
 
 
 if __name__ == "__main__":

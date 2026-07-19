@@ -27,6 +27,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, dist_class, N_PLAYERS  # noqa
+from _corpus import clean_blob  # noqa
 
 BNAMES = ["stationary", "straight", "mild turn", "hard turn", "reversal"]
 THETA_EDGES = torch.tensor([20.0, 60.0, 120.0])
@@ -69,7 +70,9 @@ def main():
     centers = model.centers.cpu()                                     # [C,2] normalized
 
     blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
-    bid_all, cp_all, am_all, mn_all, md_all = [], [], [], [], []
+    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
+    maplist = sorted(keep)
+    bid_all, cp_all, am_all, mn_all, md_all, mapidx = [], [], [], [], [], []
     n_rounds = 0
     for r, m in zip(blob["tensors"], blob["metas"]):
         if m.get("map_name") not in keep:
@@ -123,9 +126,10 @@ def main():
                 am_all.append(e_am[sel])
                 mn_all.append(e_sm[sel].min(dim=1).values)
                 md_all.append(e_sm[sel].median(dim=1).values)
+                mapidx += [maplist.index(m["map_name"])] * int(sel.sum())
 
     bid = torch.cat(bid_all); cp = torch.cat(cp_all); am = torch.cat(am_all)
-    mn = torch.cat(mn_all); md = torch.cat(md_all)
+    mn = torch.cat(mn_all); md = torch.cat(md_all); mapidx = torch.tensor(mapidx)
     print(f"\nalive player-frame samples: {len(bid)}  (rounds: {n_rounds})\n")
     print(f"{'bucket':12s} {'n':>7s} {'copy':>7s} {'argmax':>8s} {'minADE-'+str(args.k):>9s} "
           f"{'medADE':>7s}  {'cover vs copy':>13s}")
@@ -140,6 +144,24 @@ def main():
     c, a_, mi, me = cp.mean(), am.mean(), mn.mean(), md.mean()
     print(f"{'ALL':12s} {len(bid):>7d} {c:6.0f}u {a_:7.0f}u {mi:8.0f}u {me:6.0f}u  "
           f"{(c-mi)/c*100:12.1f}%")
+
+    # per-map breakdown (datasheet mandate: per-map, never pooled — mirrors
+    # decision_eval): all buckets pooled, plus the headline turn+reversal cover
+    hi_sel = bid >= 3
+    print(f"\nper map (all buckets; turn+ = hard turn + reversal subset):")
+    print(f"{'map':12s} {'n':>7s} {'copy':>7s} {'argmax':>8s} {'minADE-'+str(args.k):>9s} "
+          f"{'medADE':>7s}  {'cover':>6s} {'n(turn+)':>9s} {'cover(turn+)':>12s}")
+    for mpi, mp in enumerate(maplist):
+        sel = mapidx == mpi
+        n = int(sel.sum())
+        if n == 0:
+            continue
+        c, a_, mi, me = cp[sel].mean(), am[sel].mean(), mn[sel].mean(), md[sel].mean()
+        hs = sel & hi_sel
+        hcov = ((cp[hs].mean() - mn[hs].mean()) / cp[hs].mean() * 100) if hs.any() else float("nan")
+        print(f"{mp:12s} {n:>7d} {c:6.0f}u {a_:7.0f}u {mi:8.0f}u {me:6.0f}u  "
+              f"{(c-mi)/c*100:5.1f}% {int(hs.sum()):>9d} {hcov:11.1f}%")
+
     print("\nread: minADE-K << copy on turn/reversal = the distribution COVERS the modes "
           "(the head knows the option set even when no point prediction can know the "
           "choice). medADE >> minADE = healthy spread, not collapsed.")

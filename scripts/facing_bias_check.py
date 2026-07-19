@@ -24,6 +24,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS  # noqa
+from _corpus import clean_blob  # noqa
 
 SMOOTH = 4
 MOVE_MIN_U = 25.0          # ignore near-stationary truth (direction undefined)
@@ -85,6 +86,7 @@ def main():
     n_rounds = n_frames = 0
 
     blob = torch.load(args.val_pt, map_location="cpu", weights_only=False, mmap=True)
+    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
     for r, m in zip(blob["tensors"], blob["metas"]):
         if m.get("map_name") not in keep:
             continue

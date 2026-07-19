@@ -41,6 +41,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS  # noqa
+from _corpus import clean_blob  # noqa
 
 MAPS = ["de_ancient","de_dust2","de_inferno","de_mirage","de_nuke","de_overpass","de_train"]
 BNAMES = ["stationary", "straight", "mild turn", "hard turn", "reversal"]
@@ -76,6 +77,7 @@ def fit_alpha(train_pt, keep, k, px, py, alive_i, L, max_rounds=50, stride=8):
     so alpha is fit on data the model trained on, never on val.
     """
     blob = load_blob(train_pt)
+    clean_blob(blob, tag="train")  # datasheet §5 D1/D2
     num = den = 0.0; used = 0
     for r, m in zip(blob["tensors"], blob["metas"]):
         if m.get("map_name") not in keep:
@@ -137,6 +139,7 @@ def main():
     print(f"damped-CV alpha = {alpha:.4f}  (LS fit on {a_rounds} train rounds, stride 8)")
 
     blob = load_blob(args.val_pt)
+    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
     # per alive-player-frame: bucket id, the 5 errors, map index
     bid_all, errs_all, mapidx = [], [], []
     n_rounds = 0

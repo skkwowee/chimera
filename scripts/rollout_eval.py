@@ -43,6 +43,7 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from train_world_model import build_model, N_PLAYERS, auc  # noqa
+from _corpus import clean_blob  # noqa
 
 XY_SCALE = 3000.0   # normalized coord -> game units (see featurization)
 
@@ -198,6 +199,8 @@ def main():
                     help="value-through-rollout mode: AUC of value logit vs winner per depth")
     ap.add_argument("--depths", default="0,1,2,4,8",
                     help="comma-sep rollout depths for --value-auc (0 = real window)")
+    ap.add_argument("--maps", default="",
+                    help="comma-sep map keep-set; eval only these maps (match the ckpt's training maps)")
     ap.add_argument("--geo", action="store_true",
                     help="geometry-gated decode: mask wall-infeasible displacement "
                          "classes via the .tri BVH (dist ckpts, drift mode)")
@@ -217,6 +220,15 @@ def main():
           f"per_player_dim={ppd}  cv_residual={cv_residual}")
 
     blob = torch.load(args.val_pt, map_location="cpu", weights_only=False)
+    clean_blob(blob, tag="val")  # datasheet §5 D1/D2
+    if args.maps:
+        keep = set(args.maps.split(","))
+        n0 = len(blob["metas"])
+        idx = [i for i, m in enumerate(blob["metas"]) if m.get("map_name") in keep]
+        for key, v in list(blob.items()):
+            if isinstance(v, list) and len(v) == n0:
+                blob[key] = [v[i] for i in idx]
+        print(f"[maps] kept {len(idx)}/{n0} rounds on {sorted(keep)}")
     assert blob["feature_dim"] == ck["feature_dim"], (blob["feature_dim"], ck["feature_dim"])
 
     if args.value_auc:
