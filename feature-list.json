@@ -5,7 +5,7 @@
     {
       "id": "W00",
       "name": "World-model state tensors ready",
-      "description": "597-d feature_schema_v2 tensors built and on disk. parse_demos.py parses .dem -> per-tick parquet (awpy); build_tick_sequences.py assembles round-scoped 597-d frames at 8 Hz (125 ms). State = 10 players x 56 per-player + 37 global. Output: data/processed/tick_sequences/{train,val}.pt (69 train / 12 val demos; 1471 + 262 rounds; 81 of 85 local demos parsed). Round-scoped: no attention across round resets; economy/score/round# carried as features.",
+      "description": "597-d feature_schema_v2 tensors built and on disk. parse_demos.py parses .dem -> per-tick parquet (awpy); build_tick_sequences.py assembles round-scoped 597-d frames at 8 Hz (125 ms). State = 10 players x 56 per-player + 37 global. Output: data/processed/tick_sequences/{train,val}.pt (historical first bake: 1471+262 rounds; current canonical = merged clean corpus 3,876/705, datasheet.md). Round-scoped: no attention across round resets; economy/score/round# carried as features.",
       "passes": true
     },
     {
@@ -63,7 +63,7 @@
       {
         "id": "F02",
         "name": "Demo data pipeline & viewer",
-        "description": "Parse pro demos with awpy into full-tick Parquet + metadata JSONs. Interactive demo viewer (cs2-demo-viewer) with radar, vision cones, kill lines, timeline scrubbing — KEPT and repurposed for visualizing world-model rollouts. 4 demos parsed in original scope (Furia vs Vitality: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).",
+        "description": "Parse pro demos with awpy into full-tick Parquet + metadata JSONs. Interactive demo viewer (cs2-demo-viewer) with radar, vision cones, kill lines, timeline scrubbing — SUPERSEDED for rollout viz by in-repo viewer/gen_viewer.html (2026-07-18); cs2-demo-viewer dormant. 4 demos parsed in original scope (Furia vs Vitality: Mirage/Inferno/Nuke/Overpass, 83 rounds, 563 kills).",
         "passes": true
       },
       {

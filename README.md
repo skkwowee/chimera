@@ -7,7 +7,7 @@ Chimera learns Counter-Strike 2 by predicting the future. A causal spatiotempora
 > **Status (2026-06):** Phase 1 (world model) is **trained and measured** — a
 > per-player-token transformer with a distributional displacement head and a
 > co-trained value head, on v3 features (687-d), now retrained on a ~2.8×
-> merged corpus (3-map). Phase 2 (language bridge to Qwen3.6-35B) is the next
+> merged clean corpus (5-map canonical, overpass OOD holdout — see docs/datasheet.md). Phase 2 (language bridge to Qwen3.6-35B) is the next
 > build; Phase 3 (GRPO via world-model rollouts) reuses existing infra. The
 > prior VLM line ("See, Then Think") is **superseded and parked**.
 >
@@ -59,7 +59,7 @@ Training stages: templated grounding → contrastive commentary → **GRPO reaso
 
 Each step reads defined inputs, writes defined outputs, and validates itself. The harness state lives in `feature-list.json` (`passes` boolean per feature). World-model features below are all `passes=false` — none are built.
 
-- [x] **State tensors built.** 81 demos parsed to per-tick parquet via `scripts/parse_demos.py`; `scripts/build_tick_sequences.py` assembles 597-d `feature_schema_v2` tensors at `data/processed/tick_sequences/{train,val}.pt` (69 train / 12 val demos; 1,471 + 262 rounds). Round-scoped, 8 Hz.
+- [x] **State tensors built.** 81 demos parsed to per-tick parquet via `scripts/parse_demos.py`; `scripts/build_tick_sequences.py` assembles 597-d `feature_schema_v2` tensors at `data/processed/tick_sequences/{train,val}.pt` (historical first bake: 69/12 demos, 1,471+262 rounds; CURRENT canonical = merged clean corpus 3,876/705, 5-map train 3,573/641 + 367 overpass OOD — datasheet.md). Round-scoped, 8 Hz.
 - [ ] **Train the world model.** Causal spatiotemporal transformer, next-state prediction, round-scoped attention. Distributional head (discretize/GMM).
 - [ ] **Horizon sweep.** Train/evaluate across prediction horizons 125 ms → 2 s; characterize the inertia→strategy transition.
 - [ ] **Probe transfer eval.** Freeze the latent; train value/event probes on it; this — not prediction loss — is the model's score.
@@ -177,7 +177,7 @@ All models produce structured JSON with three sections:
 |---|---|
 | Raw demos | **85** local `.dem` files (~37 GB) in `data/demos/` |
 | Parsed | **81** parsed to per-tick parquet (`scripts/parse_demos.py`, awpy) |
-| World-model tensors | `data/processed/tick_sequences/{train,val}.pt` — 597-d `feature_schema_v2`, 8 Hz, round-scoped (69 train + 12 val demos; 1,471 + 262 rounds) |
+| World-model tensors | `data/processed/tick_sequences/{train,val}.pt` — 597-d `feature_schema_v2`, 8 Hz, round-scoped (historical; current = v2m/v3m merged clean corpus, see docs/datasheet.md) |
 
 Demos are ingested by a separate **HLTV → `.dem` → HuggingFace** zero-local-storage pipeline ([chimera-demo-pipeline](https://github.com/skkwowee/chimera-demo-pipeline)). The world-model data path is `parse_demos.py` (→ parquet) then `build_tick_sequences.py` (→ `.pt` tensors).
 
@@ -186,7 +186,7 @@ Demos are ingested by a separate **HLTV → `.dem` → HuggingFace** zero-local-
 Components that live in their own repositories:
 
 - **[chimera-demo-pipeline](https://github.com/skkwowee/chimera-demo-pipeline)** — HLTV scrape → demo download → tick-sequence build on HF, zero local storage. Hosts the parked commentary-grounding work.
-- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays; kept and repurposed for visualizing world-model rollouts.
+- **[cs2-demo-viewer](https://github.com/skkwowee/cs2-demo-viewer)** — Interactive Next.js viewer for CS2 demo replays. SUPERSEDED for rollout visualization by the in-repo viewer/gen_viewer.html (fan-of-K, 2026-07-18); repo dormant.
 - **[cs2-tools](https://github.com/skkwowee/cs2-tools)** — Python utilities for demo parsing, viewer data export, and screenshot capture (`pip install cs2-tools[parse]`)
 
 ## Project Structure

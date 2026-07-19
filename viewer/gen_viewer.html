@@ -207,7 +207,8 @@ function drawRollout(){
   document.getElementById('merrK').textContent = hasFan ? 'minADE-'+ro.K+' @ '+fmtMs(last.t_ms) : 'rollout';
   document.getElementById('merr').textContent =
     hasFan && last.minade!=null ? last.minade+'u' : '(drift trail)';
-  for(let p=0;p<10;p++){
+  const P = ro.sides ? ro.sides.length : 10;  // both formats emit sides; never assume 10
+  for(let p=0;p<P;p++){
     const ds = deathStep(ro,p);
     if(ds===0) continue;                       // dead at first step: draw nothing
     const steps = ro.steps.slice(0,ds);
@@ -355,6 +356,7 @@ function applyData(d, entry){
   document.getElementById('modeBtn').classList.remove('on');
   document.getElementById('modeBtn').style.display='none';
   document.getElementById('fanSrcBtn').style.display='none';
+  document.getElementById('fanSrcBtn').textContent='fan: model';
   H = fmtMs(d.meta.horizon_ms);                 // every horizon label derives from meta
   document.getElementById('tGen').textContent='gen +'+H;
   document.getElementById('tFut').textContent='truth +'+H;
