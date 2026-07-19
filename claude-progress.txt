@@ -5,6 +5,57 @@
 # >>> run STATE; that file tracks WHY. Add killed/refined ideas there, not here.
 
 # ============================================================================
+# 2026-07-18: METHODOLOGY RESET v2 — adversarial review + locked recipe.
+# READ THIS SECTION FIRST. The ORDERED RUNBOOK below is the source of truth for
+# what to do next in ANY session. Do steps IN ORDER; each has a done-check.
+# ============================================================================
+#
+# Context: two ultracode workflows ran 2026-07-18:
+#   docs/adversarial-review.md      — 24 confirmed findings (4 critical); R1 was
+#                                     blocked; criticals+majors FIXED same day
+#                                     (commits 3c3d8d0, ef349ac).
+#   docs/retrain-recipe.md          — Knobs 1-7 ALL LOCKED (details for 4-7 in
+#     + retrain-recipe-knobs4-7.md    that file). Committing = pre-registration.
+#   docs/datasheet.md               — corpus certification + defect registry
+#                                     D1-D6 (incl. BROKEN bomb_site label:
+#                                     derive site from plant POSITION).
+# Old wm_3map*/round-encoder runs = HISTORY (baselines only, never evaluated as
+# final). ~15GB superseded artifacts deleted. Phantom numbers purged from docs.
+#
+# --------------------------- ORDERED RUNBOOK (pre-R1) -----------------------
+# [1] PATCH CORPUS (CPU, ~1h, no demos needed). Write scripts/patch_corpus.py:
+#     recompute in-place on v2m/v3m blobs: (a) 4 bomb_state bits [carried from
+#     has_c4 per-player dim 14; planted from bomb_x/y!=0; site from plant
+#     POSITION (xy; z on nuke) NOT the broken metadata label], (b) round_time
+#     re-anchored at the in-tensor freeze->live phase transition + its /115 dim
+#     + 8 sinusoids, (c) v3 dim7 dist_to_bomb plant-gated (sentinel 1.0).
+#     VALIDATE: re-bake a few rounds from LOCAL demos with the fixed builders
+#     and diff vs the patch (full re-bake impossible: ~65/92 matches HF-only).
+#     DONE-CHECK: patched blobs exist + validation diff report in outputs/.
+# [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
+#     .venv/bin/python scripts/fit_dist_edges.py  on the PATCHED train_v2m,
+#     5-map filtered. Update DIST_EDGES_U in train_world_model.py from output.
+#     DONE-CHECK: new edges committed + per-map quantiles in datasheet.
+# [3] TRAINER COMPLETION (code, no GPU): (a) DETACH value head (stop-grad,
+#     Knob 5 — NOT yet implemented; end-phase mask is), (b) scheduled sampling
+#     = one-step sample-and-swap w/ p-ramp (Knob 6 — NOT yet implemented),
+#     (c) tests/test_no_value_leak.py proving zero outcome gradient in trunk.
+#     DONE-CHECK: test passes; SS smoke shows p>0 path executing.
+# [4] COVERAGE HARNESS (code): extend rollout_eval.py to K sampled rollouts
+#     (minADE-K, frozen K/temperature) — doubles as the GRPO group generator.
+#     DONE-CHECK: sampled-coverage smoke on val runs.
+# [5] LOCAL SMOKE of the full canonical config (v2, seed 0, small steps).
+# [6] RUNS (pod, ~$45-85, ONLY on user go): 3 seeds x {v2,v3} + SS-off control
+#     = 7 runs; + round-encoder retrain on clean corpus (Knob 7, v6 config);
+#     + keystone WM data-scaling curve (reuses the 3 canonical v2 runs).
+# [7] GATES: keystone probes (pre-registered criteria in knobs4-7 doc §Knob 7),
+#     OOD overpass protocol (Knob 4), THEN bridge/GRPO ladder (L3-L5).
+# ----------------------------------------------------------------------------
+# Machine notes: WSL 15GB cap; GPU = display GPU; workflow crashes = CLI-process
+# exits (NOT memory — see ~/.claude/skills/workflow-recover/SKILL.md; start
+# sessions with `claude 2>>~/.claude/cli-stderr.log` to capture the next one).
+#
+# ============================================================================
 # 2026-06-09: THREE VERDICTS from the hardened eval battery (council-driven)
 # ============================================================================
 # Instruments: scripts/decision_eval.py (REWRITTEN — old version's buckets were
