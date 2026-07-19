@@ -1,0 +1,49 @@
+% Shared paper body — venue wrappers \input this file.
+% Content contract: paper/OUTLINE.md is the source of truth for claims/slots;
+% every bracketed slot names the runbook gate that fills it. No unrun numbers.
+
+\begin{abstract}
+% Draft anchored in established facts only — see OUTLINE.md §3 for the current
+% version. Result slots: [C1 keystone deltas — runbook [7]], [coverage minADE-K
+% vs fair baseline — runbook [4]/[6]], [OOD overpass — runbook [7]/Knob 4],
+% [bridge gates — runbook [7] D–E], [GRPO — runbook [7] F].
+TODO: paste from OUTLINE.md \S3 when slots begin to fill.
+\end{abstract}
+
+\section{Introduction}
+% OUTLINE §4.1 — game state as pretraining substrate; causal chain compressed;
+% C1–C3 with gates; motivating measurements (saturation, +0.008 circularity,
+% mode-averaging) framed as motivation, not results.
+
+\section{Related Work}
+% OUTLINE §4.2 — world models (Dreamer, DIAMOND); heads-on-latent (MuZero);
+% distributional prediction (C51, MultiPath/MTR, BeT); probing (Alain–Bengio,
+% Liu et al.); faithfulness/NLA lineage; games corpora (VPT, AlphaStar, MLMove).
+% Bib debt: 3 flagged entries in references.bib must be resolved or dropped.
+
+\section{Corpus}
+% OUTLINE §4.3 — datasheet §§1–5 compressed; defects found+fixed as evidence of
+% audit discipline; match-level split; per-map reporting mandate.
+
+\section{World Model}
+% OUTLINE §4.4 — architecture (11 tokens/frame, block-causal), objective
+% (500ms distributional, rollout-native), detached value head + leak test.
+
+\section{Pre-Registered Evaluation}
+% OUTLINE §4.5 — the probe protocol, six representations, G0/C1-REP/C1-SCALE
+% criteria verbatim from knobs4-7 §7e; res/d curve figure; coverage vs fair
+% stochastic baseline; OOD protocol with zeroed-one-hot control.
+
+\section{Results}
+% Result tables skeleton: OUTLINE §5. Every cell cites its runbook gate until filled.
+
+\section{Faithful Verbalization (Phase 2)}
+% OUTLINE §4.6 — bridge + four gate legs; pre-QLoRA referees; NLA lineage.
+
+\section{Grounded Improvement (Phase 3)}
+% OUTLINE §4.7 — GRPO with grounded reward; checker + ICC feasibility gates.
+
+\section{Limitations}
+% OUTLINE §6 — scope lines verbatim: pro-tier only, one patch era, layout-transfer
+% caveat under global coords, faithful-translation-not-advice, 8Hz cadence pending
+% audit. These ship as written; softening any of them violates the fidelity rule.

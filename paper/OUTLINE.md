@@ -8,7 +8,7 @@ nothing that has a canonical home: training decisions live in
 `docs/retrain-recipe.md` (+ `retrain-recipe-knobs4-7.md`), corpus facts in
 `docs/datasheet.md`, rationale in `docs/first-principles-plan.md`, and the
 phase-2/3 design in `docs/bridge-design.md`. The archived VLM-era draft
-(`main.tex`) is covered by `PIVOT_NOTES.md`.
+(`archive-vlm/main.tex`) is covered by `PIVOT_NOTES.md`.
 
 **Status: no headline result exists.** Every result slot below names the runbook
 gate ([1]–[7] in `claude-progress.txt`) that fills it. Until runbook [7] lands,

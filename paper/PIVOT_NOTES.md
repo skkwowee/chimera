@@ -1,19 +1,19 @@
 # main.tex Disposition — the VLM-Era Draft
 
-This note records what the archived VLM-era draft (`main.tex`) still contains of
+This note records what the archived VLM-era draft (`archive-vlm/main.tex`) still contains of
 value and what the world-model pivot superseded. Read it before touching
-`main.tex` or when deciding the fate of the standalone RECALL paper. The
+`archive-vlm/main.tex` or when deciding the fate of the standalone RECALL paper. The
 world-model paper's skeleton lives in `OUTLINE.md`; the NLA/bridge design that
 once drafted here is canonical in `docs/bridge-design.md`.
 
 ## Decision state
 
-The pivot made the world model the flagship paper (`OUTLINE.md`). `main.tex` is
+The pivot made the world model the flagship paper (`OUTLINE.md`). `archive-vlm/main.tex` is
 deliberately preserved untouched: it holds the project's two finished artifacts
 and is the source for a standalone RECALL methods paper. The recommendation
 stands — ship RECALL on its own timeline rather than demoting it to a
 lessons-learned subsection of a paper whose flagship results do not exist yet —
-but the standalone has not been written. Nothing real in `main.tex` was
+but the standalone has not been written. Nothing real in `archive-vlm/main.tex` was
 invalidated by the pivot; what died was the connective tissue (the two-phase-VLM
 thesis) and the never-run GRPO machinery.
 
