@@ -53,6 +53,35 @@ def greedy_generate(llm, soft, prompt_ids, prompt_attn, max_new, dev):
     return torch.stack(out_ids, dim=1)  # [B, max_new]
 
 
+def prompt_only(batch, pad, tok=None, targets=None):
+    """PER-ROW prompt-only ids, LEFT-padded (adversarial-review B1).
+
+    make_collate right-pads: labels are [-100]*len(prompt) + target + [-100]*pad,
+    so a row's prompt length is the index of the FIRST non -100 label (fallback:
+    the full attended length, for rows whose target was truncated away). The old
+    batch-max -100 count equals padded_len - min(target_len) and leaked most of
+    the gold target into the "prompt-only" slice. Left-padding puts every row's
+    last real prompt token at the final position, where greedy_generate reads
+    logits[:, -1]; pads are masked out via (pid != PAD).
+
+    If tok+targets are given (first batch of a shuffle=False loader), assert the
+    leak is gone: no gold answer string may survive in the decoded slice.
+    """
+    labels, ids = batch["labels"], batch["input_ids"]
+    is_tgt = labels != -100
+    pl = torch.where(is_tgt.any(1), is_tgt.int().argmax(1), batch["attn"].sum(1))
+    T = int(pl.max())
+    out = torch.full((ids.shape[0], T), pad, dtype=torch.long)
+    for j, L in enumerate(pl.tolist()):
+        out[j, T - L:] = ids[j, :L]
+    if tok is not None and targets is not None:
+        for j in range(out.shape[0]):
+            t = str(targets[j]).strip()
+            assert t and t not in tok.decode(out[j].tolist()), \
+                f"B1 leak: gold target found in prompt-only slice (row {j})"
+    return out
+
+
 def value_agreement(bridge, llm, tok, ds, dev, n=64, max_new=60, ablate=False):
     """Mean |stated% - true%| over examples whose generated text states a percent."""
     coll = make_collate(tok)
@@ -65,10 +94,11 @@ def value_agreement(bridge, llm, tok, ds, dev, n=64, max_new=60, ablate=False):
         grid = batch["grid"].to(dev); channels = batch["channels"].to(dev)
         # prompt-only ids = strip the label-unmasked target; rebuild prompt segment
         soft = bridge.soft_tokens(grid, channels, ablate=ablate)
-        # reuse input_ids up to first non -100 label as the prompt
-        pl = (batch["labels"] == -100).sum(1)  # prompt length per row (incl BOS+SEP)
-        T = int(pl.max())
-        pid = batch["input_ids"][:, :T].to(dev)
+        # per-row prompt slice (first non -100 label), left-padded — B1 fix;
+        # leak-check the first batch against the gold targets (shuffle=False)
+        first = total == batch["grid"].shape[0]
+        pid = prompt_only(batch, tok.PAD, tok=tok,
+                          targets=ds.target if first else None).to(dev)
         patt = (pid != tok.PAD).long()
         gen = greedy_generate(llm, soft, pid, patt, max_new, dev)
         for row in gen:

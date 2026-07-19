@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.bridge import LanguageBridge, NLADecoder, recon_loss, fraction_variance_explained  # noqa: E402
 from src.bridge.wm_interface import load_world_model  # noqa: E402
 from train_bridge import (SFTPairs, make_collate, build_stub_backend, build_qwen_backend)  # noqa: E402
-from eval_ablate import greedy_generate  # noqa: E402
+from eval_ablate import greedy_generate, prompt_only  # noqa: E402
 from src.bridge.featurizer import N_TOKENS  # noqa: E402
 
 
@@ -42,9 +42,16 @@ def generate_all(bridge, llm, tok, ds, dev, max_new, ablate):
     for batch in DataLoader(ds, batch_size=16, shuffle=False, collate_fn=make_collate(tok)):
         grid = batch["grid"].to(dev); channels = batch["channels"].to(dev)
         soft = bridge.soft_tokens(grid, channels, ablate=ablate)
-        pl = (batch["labels"] == -100).sum(1); T = int(pl.max())
-        pid = batch["input_ids"][:, :T].to(dev); patt = (pid != tok.PAD).long()
-        out.append(greedy_generate(llm, soft, pid, patt, max_new, dev).cpu())
+        # per-row prompt slice (first non -100 label), left-padded — B1 fix;
+        # leak-check the first batch against the gold targets (shuffle=False)
+        pid = prompt_only(batch, tok.PAD, tok=tok,
+                          targets=ds.target if not out else None).to(dev)
+        patt = (pid != tok.PAD).long()
+        gen = greedy_generate(llm, soft, pid, patt, max_new, dev).cpu()
+        # B4: blank everything from the first EOS on — post-EOS tokens are
+        # invisible in the decoded string (the firewall) and must not be scored
+        gen[(gen == tok.EOS).cumsum(1) > 0] = tok.PAD
+        out.append(gen)
     return torch.cat(out)
 
 
