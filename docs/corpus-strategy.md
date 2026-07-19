@@ -1,5 +1,15 @@
 # Corpus Strategy — Consolidated Verdict (2026-07-19)
 
+> **OWNER DECISIONS (2026-07-19):** #1 FACEIT application — REJECTED (tier-OOD
+> parked permanently; the paper answers the pro-only objection via scope wording;
+> HLTV tier-2/3 fallback also declined — quality bar is S-tier only). #2 paid
+> storage (HF PRO / B2) — REJECTED (no recurring spend; free HF stays primary;
+> cold-mirror trigger remains armed only on a storage-warning email). #4 upload
+> of the 5 unique local demos — REJECTED as standalone (folded into the pre-patch
+> snapshot instead). #8 archival scrape — APPROVED AMENDED: **S-tier only
+> (--stars 4)**, stage-1 only, launched 2026-07-19 (scripts_stier_loop.sh in the
+> demo-pipeline repo; 8/pass, 90-min pacing, 40-pass cap, STOP_SCRAPE to halt).
+
 Synthesized from six evaluated + red-teamed dimensions (source, cadence-representation, schema, scale, storage-provenance, split-ood). All recommendations below are the **post-attack amended** versions; the storage-provenance original was overturned on attack and is superseded here.
 
 ---
