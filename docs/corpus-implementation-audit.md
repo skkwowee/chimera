@@ -92,6 +92,7 @@ An **archive-centric evolution** of the existing hardened pipeline — not a rew
 ## 5. Prioritized change list, with costs
 
 **Sequencing gate: nothing lands until PID 31950 exits (~15:30 PDT today). First action after exit: `git add scripts_stier_loop.sh logs/` and commit as-is for the historical record.**
+*(Amended 2026-07-26: the log half of this prescription didn't weigh repo publicity — the raw scrape log was committed, then purged from history in the same week (deep-sweep-r2 §5.2). The loop script stays committed; the log is local-only + gitignored; the campaign summary survives in the loop-script commit message.)*
 
 ### Tier A — protects data / prevents silent loss (this week; items 1–8 are hard gates before any next campaign)
 

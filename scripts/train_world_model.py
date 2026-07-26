@@ -354,7 +354,8 @@ def evaluate(model, loader, device, pred_mask, freeze_col, end_col, max_batches=
         if "value" in out:
             keep = x[:, -1, end_col] < 0.5                       # O3: end-phase windows out of AUC
             if keep.any():
-                vlog.append(out["value"][keep, -1].float().cpu()); vlab.append(won[keep])
+                keep_cpu = keep.cpu()                            # won never leaves CPU in eval
+                vlog.append(out["value"][keep, -1].float().cpu()); vlab.append(won[keep_cpu])
     model.train()
     v_auc = auc(torch.cat(vlog), torch.cat(vlab)) if vlog else float("nan")
     if n == 0:
