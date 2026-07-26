@@ -312,3 +312,17 @@ state the corrected facts; this log exists for auditability.
 6. **Naive-VQ kill scope (§1).** The kill conclusion was first written broader
    than the test: the 423u result kills single-code-per-player VQ only, not
    learned codebooks in general.
+
+**2026-07-26 — R2 sweep decisions (deep-sweep-r2).**
+- **GRPO group semantics (A-R2.3):** group = G=16 completions from one
+  identical prompt (standard GRPO); the K=16 world-model rollouts are
+  foresight channels + the grounded reward's CRPS reference set, never the
+  group itself. Supersedes first-principles Card 10's "16 rollouts are the
+  group" wording (contradiction found by R2).
+- **Gate-statistics errata E1-E8** recorded in retrain-recipe-knobs4-7
+  §R2-ERRATA, all pre-registered before any [6] run exists.
+- **OPEN (owner):** (a) events-reparse scope — extend to all 92 matches vs
+  pre-register GRPO/ReST prompt-set restriction to event-covered train
+  matches (with count check); (b) MLMove disposition — incomparability
+  paragraph is mandatory paper work; a cheap learned baseline column
+  (per-player marginal head, same corpus) for T3 is yes/no undecided.

@@ -553,3 +553,78 @@ Stage 0 (harness shakedown) → RE fixture test → full-data six-way probe (set
 | Pod: keystone WM curve, 7 new runs | 14–21 GPU-h | $15–35 (or $0 as local v2 overnights, ~3–4 nights) |
 | Pod: co-trained twin (1 run, secondary) | 2–3 GPU-h | ~$5 |
 | **Total** | **~13–20 local h + ~28–44 pod GPU-h** | **≈ $45–85** (≈ $30–50 with curve run locally); pre-registered escalation (budget doubling) doubles the pod lines |
+
+---
+
+## §R2-ERRATA — Dated pre-registration amendments (2026-07-26, deep-sweep-r2)
+
+Locked text above stands as written; the entries below are dated errata that
+SUPERSEDE the corresponding clauses. All committed before any run they
+adjudicate (R1 not yet launched; no [6] pod run exists). Source: adversarial
+round-2 sweep (docs/deep-sweep-r2.md §2–3), which found five of six gate
+decision rules under-pinned.
+
+### E1. Knob 5d — dist-loss mask errata (supersedes the "same as the edge fit" clause)
+The edit-checklist formula pins the dist CE/refine mask to the edge fit's mask
+(alive-only, freeze-INCLUSIVE). Applied verbatim it re-admits the 17.5%
+freeze-phase frames into the dist CE, contradicting D3 and current code.
+**Errata:** dist CE + refine mask = alive(t) AND alive(t+k) AND NOT freeze(t).
+The edge FIT remains freeze-inclusive as run (stationary% absorbs freeze
+frames; interior edges unaffected) — disclosed, not a defect.
+Stale line anchors in the [3] edit checklist are void; match by content.
+
+### E2. C1 keystone CI — correlation unit (supersedes §7c/§7e CI construction)
+Primary bootstrap resampled rounds (n=641); the project's own doctrine makes
+the MATCH the correlation length and val holds 14 matches.
+**Errata:** the keystone gate passes only if BOTH CIs exclude 0: (a) the
+round-level paired bootstrap CI as written, AND (b) a match-cluster paired
+bootstrap CI (resample the 14 val matches with replacement, rounds move with
+their match). Disclosed caveat: at 14 clusters, percentile CIs undercover —
+use BCa or percentile-t; report both CIs in the gate table either way.
+
+### E3. C1-REP — gate statistic pinned (supersedes ambiguity in §7e)
+Gate value = the mean over 3 model seeds x 5 probe seeds of pooled val-ns AUC
+delta (probe-on-WM minus probe-on-baseline). Bootstrap resamples recompute
+exactly that mean. Comparator set: BOTH baselines (untrained-twin and
+rand_wm); pass requires the delta vs each baseline to carry the same positive
+sign in all 3 model seeds (floor FPR of the sign clause alone: 2^-3 per
+baseline = 12.5% — the CI requirement, not the sign clause, carries the gate).
+Weight-decay selection metric: pooled val-ns AUC on the probe-select split;
+the probe-select split manifest is committed before [6] (see runbook [pre-6]).
+
+### E4. Knob 2/6 — v2->v3 canonical-promotion rule (previously unwritten)
+v3 is promoted to canonical iff ALL of: (a) per-seed paired delta > 0 in all
+3 seed pairs; (b) seed-mean delta >= +0.02; (c) match-cluster paired CI (E2b
+construction) excludes 0. Otherwise v2 remains canonical regardless of point
+estimates. (Writes down the adversarial-review T3 fix, which never landed in
+either recipe doc.)
+
+### E5. Knob 6 — SS-vs-TF gate statistic + branch pinning (previously 10 uncorrected cells)
+Statistic: per-map paired delta (SS-on seed-mean minus TF control) on rollout
+minADE-16 at depth 20, aggregated as the mean over the 5 train maps, with a
+match-cluster paired bootstrap CI. SS is declared harmful iff the aggregate CI
+lies entirely on the degradation side. Branch pinning: a "drop SS" outcome
+applies to REPORTING only — the canonical R1 checkpoint remains SS-on as
+pre-declared; a full TF matrix rerun is a budgeted contingency (~doubles pod
+line 1), not an implicit promise.
+
+### E6. Knob 4 — OOD zeroed-ID control criterion (supersedes "degrades beyond bootstrap CI")
+The old wording spans 25 CIs with no aggregation rule (fires trivially or
+never). **Errata:** paired per-round minADE-16 at depths {10, 20}; the control
+is CONFOUNDED iff >= 2/5 maps' paired CIs lie entirely on the degradation
+side at either depth.
+
+### E7. Knob 4 — OOD probe-transfer scope (supersedes the claim-scope sentence)
+The 64-round val-overpass point (~2-3 series) has SE(AUC) ~ 0.06; deltas of
++0.02-0.05 are invisible there, and no rule said which of the 6 curve points
+carries the claim. **Errata:** the probe-transfer claim rides the n=303
+(train-side overpass) point only, as a paired delta with its CI printed,
+REPORTED-NOT-GATED. The claim-scope paragraph's assertion of the win is
+softened accordingly; a second-holdout arm remains the budgeted upgrade path.
+
+### E8. Power/MDE disclosure (new requirement, CPU-only)
+Before [6]: simulate paired-bootstrap MDE under 14-match clustering for every
+gate margin; record MDE next to each gate in the gate table. C1-SCALE's
++0.01+CI construction has an effective bar ~2xSE ~ 0.02+ — its failure branch
+likely fires from underpower, so the +2-seed escalation is pre-committed iff
+its MDE > 0.01.

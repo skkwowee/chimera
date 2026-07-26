@@ -433,3 +433,59 @@ latent precompute + templated SFT-set generator → pod QLoRA run →
 ablate-the-latent + recon-fidelity (separate held-out decoder). Keep the world
 model, SFT-set generation, and the Step-0 capacity sweep on the 4090; reserve
 the pod for QLoRA only.
+
+---
+
+## Amendments R2 (2026-07-26, deep-sweep-r2) — pre-registered before any bridge spend
+
+### A-R2.1 State-as-text baseline arm (R2-B3 — co-equal, non-negotiable)
+New eval arm alongside latent-on / latent-off / latent-shuffled: frozen Qwen
+given the SAME frames/history as a templated TEXTUAL state rendering (no
+latents, no training), scored on the identical battery (value-agreement,
+fact audit, CRPS vs realized future). The bridge's headline claim is dead
+unless latent-on beats state-as-text — latent-off alone proves only that
+Qwen can't see, not that latents are the best way to show it. Prompting-only;
+cheapest decisive control in the program.
+
+### A-R2.2 Head-Jacobian recon target — written as math (amendment D's PRIMARY, previously a phrase)
+Target subspace: stack per-sample value-head Jacobians dv/dz (1x512 rows) and
+the dist-head row space over a FIXED, committed val draw (n pre-registered in
+the capacity-probe config); SVD the stack; keep the top-k right singular
+vectors (k pre-registered from the sweep's knee, recorded before QLoRA).
+Recon loss = cosine + MSE on the k projected coordinates (not raw pooled-512).
+Recomputed at whichever tap layer the sweep selects. Implementation:
+nla_capacity_probe.py extended to emit the projection matrix as an artifact;
+the separately-trained decoder consumes it.
+
+### A-R2.3 GRPO group semantics — decision (contradiction resolved)
+first-principles Card 10 said "the 16 rollouts are the group"; §5 here said
+G=16 completions. DECIDED: the group = G=16 COMPLETIONS sampled from one
+identical prompt (standard GRPO semantics); the K=16 world-model rollouts
+enter only as (a) foresight channels in the prompt/latent interface and
+(b) the CRPS reference set inside the grounded reward. Card 10's wording is
+superseded. (Recorded in decisions-ledger.)
+
+### A-R2.4 Readability leg — pre-registered protocol (last gate leg without one)
+Metric: perplexity ratio vs base-Qwen on generated commentary, accepted band
+pre-registered at [0.8, 2.5] (outside = reject: memorized-template regime low,
+degenerate/steganographic regime high); plus a blinded 3-way rubric (n=30
+fixed samples, majority rule: readable-and-specific / readable-generic /
+degenerate). Steganography kill-criterion #3 now has a firing instrument.
+
+### A-R2.5 CHANGE-E leg 5 — decoder-side semantic-sensitivity probes
+On the trained (frozen) decoder, CPU-only: fact-flip probe (falsify one
+grounded claim in the text; recon error MUST move) and paraphrase probe
+(meaning-preserving rewrite; recon error must NOT move).
+Pass rule: |d recon(flip)| >> |d recon(paraphrase)| ~ 0 (thresholds recorded
+with the first decoder checkpoint, before any GRPO step). Converts the
+unfireable trigger phrase into a scheduled co-equal leg.
+
+### A-R2.6 Grounded-GRPO trainer build line + budget (previously no step built it)
+New explicit step between CHANGE F and on-policy GRPO: build the manual-loop
+trainer (soft-prefix generate + claim scorer + recon-tau filter + KL-to-SFT),
+CPU-smokeable end-to-end on a stub batch; measure sec/step on the pod class
+and convert to a $ budget BEFORE go. The claim schema one-pager (types,
+extractor, CRPS distribution semantics, ICC replicate protocol) is a hard
+precondition (runbook [pre-6]; R2-B4). infra-plan's "existing scripts stand"
+row is VOID — the VLM-era GRPO/SFT stack is archived per preflight B12 +
+R2-B4a; nothing from it is load-bearing here.

@@ -23,6 +23,10 @@
 # final). ~15GB superseded artifacts deleted. Phantom numbers purged from docs.
 #
 # --------------------------- ORDERED RUNBOOK (pre-R1) -----------------------
+# BLOB GUARDRAIL (reworded 2026-07-26, deep-sweep-r2): val-side blobs only,
+# one at a time, torch.load(mmap=True); train blobs (3-10GB) FORBIDDEN in
+# agents/sessions. (All val _p1 blobs are 1.77-2.04GB — the old "700MB" figure
+# is stale; the val/train distinction is the real rule.)
 # [1] PATCH CORPUS (CPU, ~1h, no demos needed). Write scripts/patch_corpus.py:
 #     recompute in-place on v2m/v3m blobs: (a) 4 bomb_state bits [carried from
 #     has_c4 per-player dim 14; planted from bomb_x/y!=0; site from plant
@@ -55,6 +59,12 @@
 #     in corpus_manifest.json; [2]-[7] then run on _p2 (defaults updated in the
 #     same commit — do not leave _p1 defaults pointing at a superseded corpus).
 #     Same validation pattern as [1] (sample diff vs fixed-builder re-bake).
+#     ADDED 2026-07-26 (deep-sweep-r2, D8): (d) crop end-phase frames beyond
+#     round_end + 7s (r12 half-boundary rounds carry up to ~60s of dead
+#     halftime frames; r24 truncation disclosed, non-boundary rounds pad 7.0s
+#     exactly); (e) clamp bomb_age at explosion/defuse (cap 1.0 normalized —
+#     currently overflows to 2.27x on r12 rounds). [2]'s quantile fit must not
+#     ingest the tail frames.
 #     DONE-CHECK: _p2 blobs + manifest entry + validation report committed.
 # [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
 #     .venv/bin/python scripts/fit_dist_edges.py  on the P2 train_v2m blob,
@@ -70,6 +80,16 @@
 #     gradient-identical to value_weight=0, so keeping the head + proving it
 #     with the gradient rail beats banning the head.
 #     DONE-CHECK: test passes; SS smoke shows p>0 path executing.
+#     R2 ADDITIONS (2026-07-26): evaluate() CUDA device bug FIXED (won indexed
+#     via CPU mask — R2-B1); before coding (a)/(b), read the KNOB 5d MASK
+#     ERRATA + stale-anchor note in knobs4-7 §R2-ERRATA (the locked checklist
+#     formula verbatim would re-admit 17.5% freeze frames into the dist CE);
+#     add a fixture-scoped --no-clean flag (loud print) so the 7a RE fixture
+#     can load old blobs.
+# [3b] CUDA SMOKE GATE (NEW, deep-sweep-r2): 30 steps on the 4090 incl. at
+#     least one evaluate() pass, BEFORE any pilot/pod run. CI is CPU-only and
+#     structurally cannot see device bugs; R2-B1 died exactly at first eval.
+#     DONE-CHECK: 30-step CUDA run completes incl. eval, loss finite.
 # [4] COVERAGE HARNESS (code): extend rollout_eval.py to K sampled rollouts
 #     (minADE-K, frozen K/temperature) — doubles as the GRPO group generator.
 #     CHANGE B (first-principles-plan): MUST ship with (i) the fair stochastic
@@ -78,7 +98,20 @@
 #     trajectory-coherence metric (mode-switch rate of depth-10/20 rollouts vs
 #     matched real trajectories) — the only instrument that sees mode-dithering.
 #     DONE-CHECK: sampled-coverage smoke on val runs incl. baseline column.
+#     R2/PREFLIGHT ADDITIONS: (iii) the 64Hz-truth column (corpus-strategy §2
+#     row 13, pre-registered — do not build the harness without it); (iv) cheap
+#     joint-coherence interaction control (inference-only): decode with cross-
+#     player attention masked (or per-player marginal sampler) on coverage +
+#     coherence; if gap ~ 0, soften "10 coupled agents" wording BEFORE review.
 # [5] LOCAL SMOKE of the full canonical config (v2, seed 0, small steps).
+# [pre-6] PRE-REGISTRATION SITTING (doc-level, MUST precede any [6] launch —
+#     unfixable honestly after results exist): knobs4-7 §R2-ERRATA holds the
+#     amendments (C1 cluster-CI conjunction, C1-REP statistic pinning, v2->v3
+#     promotion rule, SS-vs-TF statistic + branch, OOD zeroed-ID criterion,
+#     OOD probe-transfer scope). Remaining tasks: power/MDE simulation (CPU
+#     afternoon; record MDE per gate; +2-seed escalation pre-committed if
+#     C1-SCALE MDE > 0.01); commit the probe-select split manifest; grounded-
+#     GRPO claim schema one-pager (R2-B4, per amendment F's own sequencing).
 # [6] RUNS (pod, ~$45-85, ONLY on user go): 3 seeds x {v2,v3} + SS-off control
 #     = 7 runs; + round-encoder retrain on clean corpus (Knob 7, v6 config);
 #     + keystone WM data-scaling curve (reuses the 3 canonical v2 runs);
@@ -103,6 +136,18 @@
 #       advantages are noise); one offline ReST/rejection-sampling round with
 #       the validated checker FIRST. Reward is GROUNDED-vs-actual-future
 #       (CHANGE A; bridge-design §5) — value-through-rollout = generator only.
+#     R2 ADDITIONS (2026-07-26, bridge-design §Amendments-R2 — all
+#     pre-registered BEFORE bridge spend): state-as-text baseline arm
+#     (A-R2.1, co-equal, non-negotiable); head-Jacobian target as math +
+#     nla_capacity_probe emits projection matrix (A-R2.2); group semantics
+#     DECIDED G=16 completions (A-R2.3); readability leg protocol (A-R2.4);
+#     CHANGE-E leg 5 fact-flip/paraphrase probes (A-R2.5); NEW step between
+#     CHANGE F and on-policy GRPO: build + CPU-smoke the manual-loop trainer,
+#     measured sec/step -> $ budget before go (A-R2.6). CHANGE-F PRECONDITION:
+#     val kills side-files + event_boundary_check hard-fail + AUC recompute
+#     (pipeline Tier-B #11) must be done or its gates cannot honestly run.
+#     OPEN OWNER DECISIONS (decisions-ledger 2026-07-26): events-reparse
+#     scope (all 92 vs restricted prompt set); MLMove learned-baseline column.
 # ----------------------------------------------------------------------------
 # Machine notes: WSL 15GB cap; GPU = display GPU; workflow crashes = CLI-process
 # exits (NOT memory — see ~/.claude/skills/workflow-recover/SKILL.md; start

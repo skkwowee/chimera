@@ -71,7 +71,7 @@ Nothing else is pre-[1]. In particular: metrics emit, provenance stamping, pod s
 | GPU / integration CI | Impossible on free runners; redundant with [5]'s local smoke. |
 | Local pre-push hooks as the sole guardrail | Pre-commit was configured when the bomb-bit bug shipped — skippable "automatic" is not automatic. |
 | `weights_only=False` remediation | Self-produced blobs; pickle security is not a forcing function here. |
-| Pod-side fixes for `weights_only`, GRPO script refresh, RunPod MCP auto-provisioning | [7] is gated behind [6]; existing incident-hardened scripts stand. |
+| Pod-side fixes for `weights_only`, GRPO script refresh, RunPod MCP auto-provisioning | [7] is gated behind [6]. ~~existing incident-hardened scripts stand~~ VOID 2026-07-26: the VLM-era GRPO/SFT stack is archived (preflight B12 + R2-B4a); the grounded-GRPO trainer is a NEW build per bridge-design A-R2.6. |
 
 ---
 
