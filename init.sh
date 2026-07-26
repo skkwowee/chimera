@@ -1,55 +1,44 @@
 #!/bin/bash
-# Quick environment setup for chimera project
-# Run this at the start of a new session to verify everything works.
+# Chimera session bootstrap. Run at the start of a new session.
+# Uses .venv/bin/python explicitly (never `source activate` — activate scripts
+# hardcode the venv's creation path and break when the repo moves; preflight B0).
 set -e
 
 cd "$(dirname "$0")"
+PY=.venv/bin/python
 
 echo "=== Chimera project init ==="
 
-# Python venv
-if [ ! -d .venv ]; then
-  python3 -m venv .venv
+# Venv: must exist and be import-healthy. We do NOT silently reinstall —
+# a broken venv should be rebuilt deliberately from the lock (see below).
+if [ ! -x "$PY" ]; then
+  echo "  .venv missing/broken. Rebuild from lock:"
+  echo "    uv venv && uv sync --frozen && uv add --dev pytest"
+  exit 1
 fi
-source .venv/bin/activate
-
-# Python deps (skip if already installed)
-python3 -c "import polars, pyarrow, awpy" 2>/dev/null || {
-  echo "Installing Python deps..."
-  uv pip install -q -r requirements.txt
-  uv pip install -q -e .
+"$PY" -c "import polars, pyarrow, awpy, torch" 2>/dev/null || {
+  echo "  venv imports failing. Rebuild from lock: uv venv && uv sync --frozen"
+  exit 1
 }
 
-# Ensure output dirs exist
 mkdir -p data/processed/demos
 
-# Quick health checks
 echo ""
 echo "=== Health checks ==="
-python3 -c "import polars; print(f'  polars {polars.__version__}')"
-python3 -c "import pyarrow; print(f'  pyarrow {pyarrow.__version__}')"
-python3 -c "import awpy; print(f'  awpy {awpy.__version__}')"
-python3 -c "import cs2_tools; print(f'  cs2-tools ok')" 2>/dev/null || echo "  cs2-tools: NOT INSTALLED"
+"$PY" - <<'EOF'
+import polars, pyarrow, awpy, torch
+from importlib.metadata import version as v
+print(f"  polars {polars.__version__} | pyarrow {pyarrow.__version__} | awpy {awpy.__version__}")
+print(f"  torch {torch.__version__} | cuda: {torch.cuda.is_available()}")
+dp = v("demoparser2")
+assert tuple(map(int, dp.split("."))) >= (0, 41, 3), f"demoparser2 {dp} < 0.41.3 floor"
+print(f"  demoparser2 {dp} (>=0.41.3 floor OK)")
+EOF
 ls data/processed/demos/*_ticks.parquet 2>/dev/null | wc -l | xargs -I{} echo "  {} parquet files in data/processed/demos/"
-
-# HF Hub auth (optional — only needed for push/pull)
-python3 -c "from huggingface_hub import HfApi; HfApi().whoami(); print('  HF Hub: authenticated')" 2>/dev/null || echo "  HF Hub: not logged in (run: huggingface-cli login)"
+"$PY" -c "from huggingface_hub import HfApi; HfApi().whoami(); print('  HF Hub: authenticated')" 2>/dev/null || echo "  HF Hub: not logged in (run: huggingface-cli login)"
 
 echo ""
-echo "=== SFT workflow ==="
-echo "1. Pull data:       python scripts/data.py pull --all"
-echo "2. Capture screenshots (per map):"
-echo "     cs2-capture data/captures/<map>/capture_plan.json"
-echo "3. Push to Hub:     python scripts/data.py push --captures"
-echo "4. Clean local:     python scripts/data.py clean --all"
-echo "5. Pull for train:  python scripts/data.py pull"
-echo "6. Train:           python scripts/train_sft.py"
-echo ""
-echo "Data management:"
-echo "  python scripts/data.py status         # local/remote data counts"
-echo "  python scripts/data.py pull            # labels + screenshots only"
-echo "  python scripts/data.py pull --all      # also demos, processed, captures"
-echo "  python scripts/data.py push --captures # assemble + upload to Hub"
-echo "  python scripts/data.py clean           # remove raw/, labeled/, .hf_cache/"
-echo "  python scripts/data.py clean --all     # remove everything including demos/"
-echo ""
+echo "=== Where to start ==="
+echo "READ FIRST: top of claude-progress.txt — the ORDERED RUNBOOK with done-checks."
+echo "Then docs/preflight-report.md §5 — the merged Phase 0-9 execution checklist."
+echo "Recipe is LOCKED (docs/retrain-recipe.md, Knobs 1-7); no GPU/pod spend without explicit owner go."

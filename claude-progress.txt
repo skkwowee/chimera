@@ -48,9 +48,18 @@
 #     (suite 23p/1s/1xf); validation PASS (clock PASS-with-caveat; D7
 #     tick-dropout disclosure added to datasheet+manifest); defaults
 #     flipped to _p1; HF push of patched blobs = last step. NEXT: [2].
+# [1b] P2 BLOB PATCH (OWNER DECISION 2026-07-25: run BEFORE [2], not deferred —
+#     preflight B6a). corpus-audit §5.B item 3: dropped-bomb bomb_x/y from
+#     carrier position at has_c4 falling edge; steamid/name meta enrichment;
+#     `place` sidecar for the 81 local stems. Outputs *_p2.pt + lineage restamp
+#     in corpus_manifest.json; [2]-[7] then run on _p2 (defaults updated in the
+#     same commit — do not leave _p1 defaults pointing at a superseded corpus).
+#     Same validation pattern as [1] (sample diff vs fixed-builder re-bake).
+#     DONE-CHECK: _p2 blobs + manifest entry + validation report committed.
 # [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
-#     .venv/bin/python scripts/fit_dist_edges.py  on the PATCHED train_v2m,
-#     5-map filtered. Update DIST_EDGES_U in train_world_model.py from output.
+#     .venv/bin/python scripts/fit_dist_edges.py  on the P2 train_v2m blob,
+#     5-map filtered (preflight B4: script needs the --maps filter first).
+#     Update DIST_EDGES_U in train_world_model.py from output.
 #     DONE-CHECK: new edges committed + per-map quantiles in datasheet.
 # [3] TRAINER COMPLETION (code, no GPU): (a) DETACH value head (stop-grad,
 #     Knob 5 — NOT yet implemented; end-phase mask is), (b) scheduled sampling
