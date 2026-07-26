@@ -14,9 +14,9 @@ Every dimension independently re-confirms patch-in-place as the correct immediat
 
 1. **Hard precondition — pre-patch snapshot.** The merged train/val v2m+v3m blobs (~28 GB) plus `split_manifest_v2.json` are the *actual* single-copy irreversible asset (WSL disk only, nothing on HF) — and [1] mutates them in place. Snapshot before patching (local copy minimum; HF/B2 preferred); archive the patched blobs and manifest after.
 2. **Patch lineage stamping.** `patch_corpus.py` must write {script sha, transforms, blob sha256 pre/post, date} into the blobs and the new corpus manifest — otherwise the exact tensors R1 trains on become provenance orphans.
-3. **Widened validation plus a join-key assertion.** Validate against at least one HF-era match (download, re-bake with the v2.1 builder, diff) in addition to at least one local-era match — the 143 HF-era stems have never been locally verified. Add the two-line check that every blob meta carries `match_id` and the set equals the 92 split-manifest keys. This diff doubles as the v2.1 builder's correctness certificate — which is why no stage-2 baking of anything new happens until [1] validates.
+3. **Widened validation plus a join-key assertion.** Validate against at least one HF-era match (download, re-bake with the v2.1 builder, diff) in addition to at least one local-era match — the 143 HF-era stems have never been locally verified. Add the two-line check that every blob meta carries `match_id` and the set equals the 92 split-manifest keys. This diff doubles as the v2.1 builder's correctness certificate, so no stage-2 baking of anything new happens until [1] validates.
 
-Bonus synergy: [1]'s validation reads the same local 64-tick parquets the aliasing audit needs — run both in one session.
+[1]'s validation reads the same local 64-tick parquets the aliasing audit needs — run both in one session.
 
 ---
 

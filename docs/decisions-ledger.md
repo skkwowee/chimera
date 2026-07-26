@@ -182,7 +182,7 @@ is not.
   the text preserve enough to rebuild the latent," with no answer key — so it
   sidesteps the "where do correct descriptions come from / is the teacher LLM
   stable enough to read raw ticks" problem. (LLMs are bad at tick state; that
-  is *why* the world model exists. The NLA loop needs no teacher.) Caveats it
+  is *why* the world model exists.) Caveats it
   must carry: reconstruction-faithful is not good reasoning — it certifies
   information preservation only; GRPO owns reasoning quality, templated
   grounding owns format and vocabulary. Never report fidelity bare — pair it

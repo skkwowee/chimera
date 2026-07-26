@@ -101,7 +101,6 @@ def cmd_status(args: argparse.Namespace) -> None:
     if HF_CACHE.exists():
         print(f"  data/.hf_cache/ {cache_mb:.1f} MB")
 
-    # Remote
     hub = config.get("hub", {})
     dataset_repo = hub.get("dataset_repo")
     if dataset_repo:
@@ -165,11 +164,9 @@ def cmd_pull(args: argparse.Namespace) -> None:
 
     print(f"Pulling dataset from {repo_id}...")
 
-    # Clone/pull via git (single operation, no per-file rate limits)
     _git_clone_or_pull(repo_id, HF_CACHE)
     cache_path = HF_CACHE
 
-    # Copy labels → data/labeled/
     src_labels = cache_path / "labels"
     if src_labels.exists():
         LABELED.mkdir(parents=True, exist_ok=True)
@@ -184,7 +181,6 @@ def cmd_pull(args: argparse.Namespace) -> None:
     else:
         print("  No labels/ directory in remote dataset")
 
-    # Copy screenshots → data/raw/
     src_screenshots = cache_path / "screenshots"
     if src_screenshots.exists():
         RAW.mkdir(parents=True, exist_ok=True)
@@ -203,13 +199,11 @@ def cmd_pull(args: argparse.Namespace) -> None:
     else:
         print("  No screenshots/ directory in remote dataset")
 
-    # Copy manifest if present
     src_manifest = cache_path / "manifest.jsonl"
     if src_manifest.exists():
         shutil.copy2(src_manifest, DATA / "manifest.jsonl")
         print("  Copied manifest.jsonl → data/")
 
-    # --all: copy demos, processed, captures
     if args.all:
         for dirname in ("demos", "processed", "captures"):
             src = cache_path / dirname
@@ -243,14 +237,12 @@ def _assemble_captures():
         if not map_dir.is_dir():
             continue
 
-        # Labels
         labels_src = map_dir / "labels"
         if labels_src.exists():
             for f in labels_src.glob("*.json"):
                 shutil.copy2(f, LABELED / f.name)
                 total_labels += 1
 
-        # Screenshots (check both raw/ and screenshots/)
         screenshots_src = map_dir / "raw"
         if not screenshots_src.exists():
             screenshots_src = map_dir / "screenshots"
@@ -323,7 +315,6 @@ def cmd_push(args: argparse.Namespace) -> None:
 
     config = _load_config()
 
-    # Handle --model separately
     if args.model:
         repo_id = _get_repo(args, config, "model_repo")
         _push_model(args.model, repo_id)
@@ -331,11 +322,9 @@ def cmd_push(args: argparse.Namespace) -> None:
 
     repo_id = _get_repo(args, config, "dataset_repo")
 
-    # Assemble from captures if requested
     if args.captures:
         _assemble_captures()
 
-    # Check we have something to upload
     label_count = _count_files(LABELED, ("*.json",))
     screenshot_count = _count_files(RAW, ("*.png", "*.jpg", "*.jpeg", "*.webp"))
 
@@ -347,7 +336,6 @@ def cmd_push(args: argparse.Namespace) -> None:
     create_repo(repo_id, repo_type="dataset", private=False, exist_ok=True)
     print(f"Pushing dataset to {repo_id}...")
 
-    # Upload labels
     if label_count > 0:
         print(f"  Uploading {label_count} labels...")
         api.upload_folder(
@@ -358,7 +346,6 @@ def cmd_push(args: argparse.Namespace) -> None:
             allow_patterns=["*.json"],
         )
 
-    # Upload screenshots
     if screenshot_count > 0:
         print(f"  Uploading {screenshot_count} screenshots...")
         api.upload_folder(
@@ -369,7 +356,6 @@ def cmd_push(args: argparse.Namespace) -> None:
             allow_patterns=["*.png", "*.jpg", "*.jpeg", "*.webp"],
         )
 
-    # Upload manifest if present
     manifest = DATA / "manifest.jsonl"
     if manifest.exists():
         print("  Uploading manifest.jsonl...")
@@ -380,7 +366,6 @@ def cmd_push(args: argparse.Namespace) -> None:
             repo_type="dataset",
         )
 
-    # --all: upload demos, processed, captures
     if args.all:
         for dirname, patterns in [
             ("demos", ["*.dem"]),
@@ -400,7 +385,6 @@ def cmd_push(args: argparse.Namespace) -> None:
                         repo_type="dataset",
                     )
 
-    # Upload dataset card
     card = _generate_dataset_card(repo_id, label_count, screenshot_count)
     api.upload_file(
         path_or_fileobj=card.encode(),
@@ -431,7 +415,6 @@ def _push_model(model_path: str | Path, repo_id: str) -> None:
         repo_type="model",
     )
 
-    # Upload training config if found nearby
     for config_path in [
         model_path / "training_config.json",
         model_path.parent / "training_config.json",
@@ -446,7 +429,6 @@ def _push_model(model_path: str | Path, repo_id: str) -> None:
             )
             break
 
-    # Model card
     card = f"""---
 license: mit
 library_name: transformers
@@ -526,16 +508,13 @@ def main():
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    # status
     sub.add_parser("status", help="Show local and remote data counts")
 
-    # pull
     pull_p = sub.add_parser("pull", help="Download dataset from Hub")
     pull_p.add_argument("--repo", help="Override dataset repo ID")
     pull_p.add_argument("--subset", type=int, help="Pull only first N samples")
     pull_p.add_argument("--all", action="store_true", help="Also pull demos/, processed/, captures/")
 
-    # push
     push_p = sub.add_parser("push", help="Upload dataset or model to Hub")
     push_p.add_argument("--repo", help="Override repo ID")
     push_p.add_argument(
@@ -551,7 +530,6 @@ def main():
         help="Also upload demos/, processed/, captures/",
     )
 
-    # clean
     clean_p = sub.add_parser("clean", help="Remove local data copies")
     clean_p.add_argument(
         "--all", action="store_true",

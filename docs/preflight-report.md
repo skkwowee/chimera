@@ -5,7 +5,7 @@
 
 ## 1. Verdict: **GO-WITH-FIXES**
 
-The program is structurally sound — corpus [1] is genuinely closed and mirrored, both test suites are green, the machine (disk/RAM/GPU/HF) is GO — but the runbook as written fails on first invocation at [2] (edge fit leaks the OOD holdout), and a cluster of stale-default/doc-drift seams would let [4], [6], and [7] silently run on the unpatched corpus or the archived VLM trainer. Every fix is cheap (the entire pre-flight fix budget is ~4–6 hours of local work, no GPU spend); nothing found invalidates the locked recipe or requires re-opening [1].
+The program is structurally sound — corpus [1] is closed and mirrored, both test suites are green, the machine (disk/RAM/GPU/HF) is GO — but the runbook as written fails on first invocation at [2] (edge fit leaks the OOD holdout), and a cluster of stale-default/doc-drift seams would let [4], [6], and [7] silently run on the unpatched corpus or the archived VLM trainer. Every fix is cheap (fix budget ~4–6 hours of local work, no GPU spend); nothing found invalidates the locked recipe or requires re-opening [1].
 
 ---
 

@@ -2,7 +2,7 @@
 
 Operational guide for provisioning/driving RunPod GPUs for the Phase-2 bridge SFT
 and Phase-3 GRPO runs. Read this **before** touching the RunPod MCP. Cost and the
-JP region-lock are the two things that bite — both are covered below.
+JP region-lock are the two things that bite.
 
 ## TL;DR guardrails (do these every time)
 
@@ -41,7 +41,7 @@ volume:
 - **Phase-3 GRPO**: world model (19M) + Qwen co-resident; checkpoints can likewise
   live on HF. The JP volume is convenient persistence, not a requirement.
 
-So: reserve the AP-JP-1 volume for things that genuinely need fast local persistence;
+Reserve the AP-JP-1 volume for work that genuinely needs fast local persistence;
 otherwise stage through HF and provision in whatever region has the GPU.
 
 ## GPU selection for 35B-A3B QLoRA
@@ -62,7 +62,7 @@ Snapshot (global stock, 2026-06-18 — re-query before relying on it):
 
 **Recommendation:** default to **H100 SXM 80GB** (high stock, no Blackwell toolchain
 surprises). Keep **RTX PRO 6000 (96GB)** and **A100 80GB** as ladder fallbacks. Only
-reach for H200/B200 if a run actually needs >80 GB. The FP8 Qwen repo variant
+reach for H200/B200 if a run needs >80 GB. The FP8 Qwen repo variant
 (`bridge-design.md` §2.3) is the memory fallback if 4-bit QLoRA won't fit.
 
 ## Intent → MCP tool (+ guardrail)

@@ -1,8 +1,8 @@
 # Chimera — Session Progress
 
 # >>> WHY decisions were made (killed/kept/eval-traps/the Line in the Sand):
-# >>> see docs/decisions-ledger.md — the canonical rationale. THIS file tracks
-# >>> run STATE; that file tracks WHY. Add killed/refined ideas there, not here.
+# >>> see docs/decisions-ledger.md. THIS file tracks run STATE; that file
+# >>> tracks WHY. Add killed/refined ideas there, not here.
 
 # ============================================================================
 # 2026-07-18: METHODOLOGY RESET v2 — adversarial review + locked recipe.
@@ -75,8 +75,8 @@
 #     Knob 5 — NOT yet implemented; end-phase mask is), (b) scheduled sampling
 #     = one-step sample-and-swap w/ p-ramp (Knob 6 — NOT yet implemented),
 #     (c) tests/test_no_value_leak.py — PORTED 2026-07-18, verified RED against
-#     the current attached head (the test detects the live leak; flips green
-#     when (a) lands). Gradient-based on purpose: detachment makes the trunk
+#     the current attached head (flips green when (a) lands).
+#     Gradient-based on purpose: detachment makes the trunk
 #     gradient-identical to value_weight=0, so keeping the head + proving it
 #     with the gradient rail beats banning the head.
 #     DONE-CHECK: test passes; SS smoke shows p>0 path executing.

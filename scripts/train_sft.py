@@ -270,7 +270,6 @@ def main():
     # Resolve save_merged: --no-save-merged overrides the default
     save_merged = not args.no_save_merged
 
-    # Create config from args
     config = CS2SFTConfig(
         model_name=args.model_name,
         torch_dtype=args.dtype,
@@ -305,17 +304,14 @@ def main():
     print(f"Output: {config.output_dir}")
     print()
 
-    # Create trainer
     trainer = CS2SFTTrainer(config)
 
-    # Dry run: just load model and check memory
     if args.dry_run:
         print("Dry run: loading model to check VRAM usage...")
         trainer.load_model()
         print("\nDry run complete. Model loaded successfully.")
         return
 
-    # Benchmark: time forward+backward steps and estimate total training time
     if args.benchmark is not None:
         import time
 
@@ -343,7 +339,6 @@ def main():
         assert trainer.processor is not None, "processor must be loaded"
         assert trainer.train_dataset is not None, "train_dataset must be prepared"
 
-        # Build a batch from the first sample
         batch = trainer._vision_data_collator([trainer.train_dataset[0]])
         batch = {k: v.to(trainer.model.device) for k, v in batch.items()}
 
@@ -356,7 +351,6 @@ def main():
         trainer._print_memory_usage()
         print()
 
-        # Warmup
         print("Warmup step...")
         trainer.model.train()
         out = trainer.model(**batch)
@@ -369,7 +363,6 @@ def main():
         print(f"VRAM after first step: {vram_after:.2f}GB allocated, {vram_reserved:.2f}GB reserved")
         print()
 
-        # Timed steps
         times = []
         for i in range(n_steps):
             torch.cuda.synchronize()
@@ -400,11 +393,9 @@ def main():
         print(f"Inference speed:  ~{1/avg:.2f} samples/sec")
         return
 
-    # Load and prepare data
     print("Loading data...")
 
     if args.dataset:
-        # Load pre-built dataset from build_sft_dataset.py
         import json as _json
         import random as _random
 
@@ -421,7 +412,6 @@ def main():
             records = _json.load(f)
         print(f"Loaded {len(records)} records from {dataset_path}")
 
-        # Shuffle and split
         _random.seed(args.seed)
         _random.shuffle(records)
         split_idx = int(len(records) * args.train_ratio)
@@ -439,7 +429,6 @@ def main():
                 separators=(",", ":"),
             )
 
-            # Find the screenshot image
             img_dir = rec.get("image_dir", "")
             screenshot_id = rec.get("screenshot_id", "")
             img_path = None
@@ -492,10 +481,8 @@ def main():
     print(f"Val: {len(val_data)} samples")
     print()
 
-    # Prepare data for trainer
     trainer.prepare_data(train_data, val_data)
 
-    # Evaluation only
     if args.eval_only:
         print("Evaluation only mode...")
         trainer.load_model()
@@ -503,7 +490,6 @@ def main():
         print("\nEvaluation complete.")
         return
 
-    # Set seeds for reproducibility
     import random
 
     import numpy as np
@@ -526,7 +512,6 @@ def main():
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGHUP, _signal_handler)
 
-    # Train with error handling
     output_path = Path(args.output) / "final_model"
     try:
         log.info("Starting training...")
@@ -574,7 +559,6 @@ def main():
             log.error("Failed to save crash checkpoint: %s", traceback.format_exc())
         sys.exit(1)
 
-    # Final summary
     log.info("=" * 60)
     log.info("Training complete!")
     log.info("=" * 60)

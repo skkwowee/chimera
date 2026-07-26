@@ -352,11 +352,9 @@ def _encode_player_block_vectorized(
     if df.height == 0:
         return out
 
-    # Reindex onto kept_ticks via a left-join on tick
     tick_lookup = pl.DataFrame({"tick": kept_ticks.astype(np.int32)})
     aligned = tick_lookup.join(df, on="tick", how="left")
 
-    # Vectorized normalizations on the aligned columns
     x = (aligned["X"].fill_null(0.0).to_numpy() / 3000.0).astype(np.float32)
     y = (aligned["Y"].fill_null(0.0).to_numpy() / 3000.0).astype(np.float32)
     z = (aligned["Z"].fill_null(0.0).to_numpy() / 500.0).astype(np.float32)
@@ -387,10 +385,9 @@ def _encode_player_block_vectorized(
     out[:, i] = np.log1p(eq) / 10.0; i += 1
     out[:, i] = (hp > 0).astype(np.float32); i += 1
 
-    # Inventory features (still per-tick Python — there's no vectorized way to
-    # categorize variable-length string lists). But polars already returned a
-    # plain Python list, so this is just the list iteration cost, not the heavy
-    # row-by-row dict access.
+    # Inventory stays per-tick Python: no vectorized way to categorize
+    # variable-length string lists. polars returns a plain list, so this is
+    # list-iteration cost only.
     has_c4 = np.zeros(T, dtype=np.float32)
     primary_idx = np.full(T, WEAPON_CAT_IDX["other"], dtype=np.int32)
     secondary_idx = np.full(T, WEAPON_CAT_IDX["other"], dtype=np.int32)
@@ -478,8 +475,7 @@ def compute_event_labels(
     ev_ticks = np.array([e[0] for e in events], dtype=np.int64)
     ev_types = np.array([e[1] for e in events], dtype=np.int8)
 
-    # For each kept tick, np.searchsorted finds the index of the first event
-    # at or after that tick. Then check if it's within horizon.
+    # First event at or after each kept tick, then horizon check.
     idxs = np.searchsorted(ev_ticks, kept_ticks, side="left")
     T = len(kept_ticks)
     labels = np.full(T, NONE_EVENT_IDX, dtype=np.int8)

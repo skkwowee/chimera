@@ -85,7 +85,7 @@ An **archive-centric evolution** of the existing hardened pipeline — not a rew
 | **Filter trust failure** | **ALREADY FIRED** | 4 sub-4★ leaks + ~34% CS:GO-era contamination; date_unix null 358/358 | None client-side | Detected only by this audit; no test catches an all-null column |
 | **Silent data loss (dual-commit windows)** | MEDIUM per-campaign | Upload-vs-manifest gap: re-download → 3 flakes → blacklist + orphaned HF storage invisible to `process` (iterates demo_mf.entries only, process.py:580). Bake-side twin: archive committed pre-build but parsed_files persisted only on success (process.py:332-334) | Per-match manifest pushes limit loss to one match | Only via a reconcile that doesn't exist yet |
 
-**Cross-cutting problem:** every row except HF quota shares one answer — *we would not notice*. No health check, no NEEDS_ATTENTION sentinel, no end-of-campaign report, and the single best early-warning signal (per-attempt non-200s) is deliberately silent. The meta-lesson runs deeper: a fix flagged "land now, ~6 lines" never landed, and §2-row-1 carried actions went silently incomplete. The structural answer is machine-checked numbers (substrate-coverage %, date-null-rate) in health output — a slipped fix must show up as a red line, not a memory.
+**Cross-cutting problem:** every row except HF quota shares one answer — *we would not notice*. No health check, no NEEDS_ATTENTION sentinel, no end-of-campaign report, and the single best early-warning signal (per-attempt non-200s) is deliberately silent. The meta-lesson: a fix flagged "land now, ~6 lines" never landed, and §2-row-1 carried actions went silently incomplete. The structural answer is machine-checked numbers (substrate-coverage %, date-null-rate) in health output — a slipped fix must show up as a red line, not a memory.
 
 ---
 
@@ -152,4 +152,4 @@ Event-ledger rewrite · SourceAdapter/Faceit (reverse: actual HLTV ban) · Inbox
 - **Acquisition:** 1.4% stars-leak rate needs manual verification; if chrome124 has aged out, the first symptom is a completed campaign with processed=0; STOP_SCRAPE latency ~2h forecloses fast reaction to Cloudflare pushback.
 - **Demos → tensors:** `parsed/` is empty, so 50 matches ≈ ~55–60 GB re-download + 9–18 CPU-h of awpy parsing, landing on a free-tier repo already at ~450 GB — and the archives written would still be props-v1.
 
-**Timeline verdict:** babysat, ~5–8 days end-to-end — comfortably inside 3 weeks, *if the matches exist on HLTV*. Unattended, any register row fires silently and the deadline is gone. That gap is precisely what Tier A closes.
+**Timeline verdict:** babysat, ~5–8 days end-to-end — comfortably inside 3 weeks, *if the matches exist on HLTV*. Unattended, any register row fires silently and the deadline is gone. Tier A closes exactly that gap.

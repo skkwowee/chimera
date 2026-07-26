@@ -29,7 +29,7 @@ Heads beyond the v1 Huber regression:
     refine offset). Fixes regression mode-averaging: stationary jitter, hard-turn
     means landing between modes, jitter feedback in closed-loop rollout. Decode via
     model.gen_residual() (argmax or sampled class) — eval scripts use it everywhere.
-TODO (next iterations, intentionally not in v1):
+TODO (deferred beyond v1):
   - Categorical-vs-continuous split head (one-hot dims want cross-entropy).
 
 Usage:
@@ -414,8 +414,7 @@ def main():
     dev = torch.device(args.device)
     print(f"loading {args.train_pt} ...")
     # load_corpus = mmap + clean_blob + --maps keep-set; tensors stay file-backed.
-    # In --smoke, train_pt == val_pt (val reuse): two mmap loads of the same file
-    # cost ~nothing, so the reuse behavior is preserved.
+    # In --smoke, train_pt == val_pt: two mmap loads of one file cost ~nothing.
     train_blob = load_corpus(args.train_pt, maps=args.maps or None, tag="train")
     val_blob = load_corpus(args.val_pt, maps=args.maps or None, tag="val")
     fdim = train_blob["feature_dim"]

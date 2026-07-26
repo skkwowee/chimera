@@ -81,7 +81,6 @@ def parse_one(dem_path: Path, force: bool = False) -> tuple[str, bool, str]:
                 json.dumps(df.to_dicts(), default=str, indent=2)
             )
 
-        # Header (dict)
         (OUT_DIR / f"{stem}_header.json").write_text(
             json.dumps(d.header, default=str, indent=2)
         )

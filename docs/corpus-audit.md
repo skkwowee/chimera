@@ -1,6 +1,6 @@
 # Chimera Corpus Audit — Does the Corpus Capture What Its Consumers Need?
 
-**Scope:** the live corpus `train/val_{v2m,v3m}_p1.pt` as loaded by `scripts/train_world_model.py:393-394` via `scripts/_corpus.py:23-55`. All claims code-cited; findings below survived adversarial refutation unless marked otherwise. Date: 2026-07-20.
+**Scope:** the live corpus `train/val_{v2m,v3m}_p1.pt` as loaded by `scripts/train_world_model.py:393-394` via `scripts/_corpus.py:23-55`. All claims code-cited; findings survived adversarial refutation unless marked otherwise. Date: 2026-07-20.
 
 ---
 
@@ -63,7 +63,7 @@ Six stages transform HLTV `.dem` files into the live blobs:
 
 ## 3. THE VERDICT: does it capture the necessary features?
 
-**Overall: the corpus is a validated, honest substrate for the locked R1 next-state scope, and INSUFFICIENT as-is for two of its five consumers.** The core blocks (position/aim/hp/econ/alive/bomb-post-patch) are literature-validated and patch-verified. The failures are concentrated where the project's own thesis lives: perception-gated decisions and adjudicable language.
+**Overall: the corpus is a validated, honest substrate for the locked R1 next-state scope, and INSUFFICIENT as-is for two of its five consumers.** The core blocks (position/aim/hp/econ/alive/bomb-post-patch) are literature-validated and patch-verified. The failures concentrate where the project's thesis lives: perception-gated decisions and adjudicable language.
 
 | Consumer | Rating | One-line reason |
 |---|---|---|

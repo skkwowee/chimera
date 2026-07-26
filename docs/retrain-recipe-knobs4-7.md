@@ -34,7 +34,7 @@ none seen in training) form the OOD eval set, evaluated on the canonical model i
 Applies identically to both schema arms (v2 and v3 — Knob-2 validity clause: the map set
 is part of "bit-identical except the schema").**
 
-**Holdout choice (ex-ante, documented before the run).** Overpass is (i) the cheapest
+**Holdout choice (documented before the run).** Overpass is (i) the cheapest
 holdout (303 rounds = 7.8% of clean train vs nuke's 14%) and (ii) a mid-complexity,
 mostly-planar layout — so the OOD row measures *layout novelty*, not the verticality
 confound. Nuke stays in training deliberately: it is the Z-outlier, the model needs that

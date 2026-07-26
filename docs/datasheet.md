@@ -16,7 +16,7 @@ decisions live in the retrain recipe.
   `tick_sequences/<match_id>/{train,val}.pt`. HF also holds 224 raw `.dem` files
   (109.7 GB) under `demos/`, covering all 92 matches — verified, so a full re-bake
   from raw demos is possible. (Raw demos and per-match tick_sequences blobs are
-  distinct things; do not conflate them.)
+  distinct; do not conflate them.)
 - **Split provenance:** 70 HF-pipeline matches + 22 local matches. Local rounds with
   no HF tick-blob overlap are back-filled as `local-<team-pair>` pseudo-matches
   (same mechanism).
@@ -57,8 +57,8 @@ most often invalidates sports-ML papers. Manifest:
 | de_train | 16 | 0 |
 | **total** | **4043** | **770** |
 
-Mirage + dust2 are ≈ 50% of the corpus. Cross-map metrics must therefore be
-reported per-map, never pooled — a pooled average is dominated by mirage and hides
+Mirage + dust2 are ≈ 50% of the corpus. Cross-map metrics must be reported
+per-map, never pooled — a pooled average is dominated by mirage and hides
 transfer failure.
 
 ## 4b. Feature-schema audit — PASS with notes

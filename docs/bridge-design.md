@@ -1,9 +1,9 @@
 # Language Bridge & Grounded GRPO (Phases 2–3)
 
-This document is the design for everything bridge-side: connecting the frozen
-world-model latent to Qwen3.6-35B-A3B (Phase 2), the NLA faithfulness gate that
-certifies the generated text, and the grounded GRPO reward (Phase 3). Read it
-before building or evaluating any bridge component. *Why* each stage exists is
+The design for everything bridge-side: connecting the frozen world-model
+latent to Qwen3.6-35B-A3B (Phase 2), the NLA faithfulness gate that certifies
+the generated text, and the grounded GRPO reward (Phase 3). Read it before
+building or evaluating any bridge component. *Why* each stage exists is
 `first-principles-plan.md`; world-model training decisions are `retrain-recipe.md`.
 
 **Goal.** Connect the *frozen* world-model latent to Qwen3.6-35B-A3B so the LLM
@@ -44,8 +44,7 @@ The world model emits, per frame, a contextualized token grid `[B, L, 11, 512]`
 
 - **Single-moment reasoning** ("what's happening here / what should X do"):
   feed one frame's 11 tokens. Preserve the per-player structure — do not
-  mean-pool to one vector; the LLM should be able to attend to individual
-  players.
+  mean-pool to one vector, so the LLM can attend to individual players.
 - **Round/sequence reasoning** ("narrate this round / why did CT lose"):
   feed the event-latents selected by the adaptive clock (surprise-gated,
   `decisions-ledger.md` §2) — ~10–30 event frames × 11 tokens. This is the
@@ -63,7 +62,7 @@ the resampler.
 ### Interface B — what text comes out
 
 Free-form tactical reasoning conditioned on a task prompt. The text channel is
-ordinary Qwen output; nothing special. Example prompts: "Assess this moment for
+ordinary Qwen output. Example prompts: "Assess this moment for
 the CT side.", "What is the T-side's best play?", "Narrate the key events of
 this round."
 
@@ -80,7 +79,7 @@ Three trainable pieces; the world model and the Qwen base are frozen.
    variable-length latent-token sequence → M fixed soft tokens in `d_llm` (Qwen
    hidden; read from config at build time). Handles both single-moment (11 in)
    and event-sequence (K×11 in) with the same M out. 2–4 layers. Standard
-   Flamingo/IDEFICS component; well-trodden.
+   Flamingo/IDEFICS component.
 3. **Injection into Qwen — start LLaVA-style, upgrade to Flamingo if needed.**
    - **v1 (default): soft-prompt prefix.** Prepend the M soft tokens to the
      text embedding sequence; train QLoRA (4-bit base — required to fit 35B on
@@ -102,12 +101,11 @@ reconstructor (decoder half) is a separate module trained separately — §2b.
 
 ## 2b. The reconstructor (decoder half — the NLA bottleneck-is-text)
 
-The bridge above is only the encoder of the NLA: latent → text. Closing the loop
-means adding a text-only decoder `R` that reconstructs the frozen world-model
-latent from Qwen's *generated* reasoning. Reconstruction fidelity then answers
-the question ablate-the-latent cannot: not "does the bridge *use* the latent"
-but "does the output text *faithfully render* it, or embellish past it?" — the
-Qwen-embellishment risk the bridge alone misses.
+The bridge above is the NLA's encoder: latent → text. Closing the loop adds a
+text-only decoder `R` that reconstructs the frozen world-model latent from
+Qwen's *generated* reasoning. Reconstruction fidelity then answers the question
+ablate-the-latent cannot: not "does the bridge *use* the latent" but "does the
+output text *faithfully render* it, or embellish past it?"
 
 **What it reconstructs (the target `z`).** The pooled-512 latent
 `z = h.mean(dim=2) ∈ R^512` — the *exact* vector the value head consumes in
@@ -184,10 +182,9 @@ discriminative probe on the text).
 This is the council's "implement ablate-the-latent first" requirement, and the
 single test that distinguishes this bridge from the Era-1 failure.
 
-**Eval #2 — recon-fidelity.** Ablate and recon are orthogonal and complementary;
-recon subsumes nothing. A bridge can *pass* ablate (it uses the latent) yet
-*fail* recon (Qwen embellishes detail not in the latent); ablate alone is blind
-to exactly that embellishment. Keep both.
+**Eval #2 — recon-fidelity.** Ablate and recon are orthogonal: a bridge can
+*pass* ablate (it uses the latent) yet *fail* recon (Qwen embellishes detail
+not in the latent), and ablate alone is blind to that. Keep both.
 
 | Eval | Question | Role |
 |---|---|---|
@@ -284,8 +281,7 @@ reasoning quality; the recon objective only certifies faithfulness. Two
 optional, hedged uses of recon as a *training signal* (never the reported
 metric, which always comes from a separate decoder):
 - **Phase 2a-0 (optional warm-start, not milestone-critical):** label-free
-  recon pretrain of featurizer+resampler+QLoRA against the decoder. Listed for
-  completeness; the milestone does not depend on it.
+  recon pretrain of featurizer+resampler+QLoRA against the decoder.
 - **Phase 2a aux (optional, only after ablate passes):**
   `L = CE_template + λ·L_recon`, λ small (0.05–0.1), annealed down, decoder
   frozen during this (no collusion). Recon then acts as a regularizer keeping

@@ -41,7 +41,7 @@
 ### Performance (the accuracy enabler)
 
 - Root cause of days-long bakes: awpy 2.0.2's VisibilityChecker is 100% pure Python (one-tri-per-leaf BVH, no batching); ~2–4ms/ray on real maps × ~66M rays ≈ 73h — the observed "days". The ~1.5GB/map is Python object overhead (~550B/tri).
-- **cs2-nav 0.3.18 (Rust, drop-in API mirror; the checker awpy's own PR #382 adopts)**: 5.8µs/ray (~400–700x), **100.0000% agreement** with awpy-baked LOS in val_v3m_p1.pt on 122,627 rays / 62,817 alive player-frames / 3 maps — ray-for-ray identical on this sample. Memory is NOT better (~450–500B/tri; inferno ~1.2–1.4GB) so `--workers 1` stands; it just no longer costs anything (66M rays ≈ 6.4 min of ray time; full v3-class bake ≈ 1–1.5h end-to-end vs 3+ days).
+- **cs2-nav 0.3.18 (Rust, drop-in API mirror; the checker awpy's own PR #382 adopts)**: 5.8µs/ray (~400–700x), **100.0000% agreement** with awpy-baked LOS in val_v3m_p1.pt on 122,627 rays / 62,817 alive player-frames / 3 maps — ray-for-ray identical on this sample. Memory is NOT better (~450–500B/tri; inferno ~1.2–1.4GB) so `--workers 1` stands; ray time is no longer a cost (66M rays ≈ 6.4 min of ray time; full v3-class bake ≈ 1–1.5h end-to-end vs 3+ days).
 - Consequence: corpus-strategy's v5 trigger cost line "3–6 CPU-days" is mispriced by ~50–100x post-swap, and multi-ray/crouch/smoke upgrades become affordable (5–10x rays still < 1 day).
 
 ### Certification state
@@ -49,7 +49,7 @@
 - The 91.2% kill-agreement number has **no committed script** — it exists only as prose in build_v3_features.py:18 and retrain-recipe.md:71. Unreproducible, no per-map breakdown, conflates wallbangs (3.95%) and smoke-blind kills (8.68%) with geometry error.
 - The V1a spotted-flag cross-check (retrain-recipe.md:78) was specced and **never run**. Spotted is radar bookkeeping with hysteresis → per-frame equality is the wrong score; onset-alignment is the right protocol (§6).
 - infra-plan.md:47 already REQUIRES a "≥99.9% agreement cert" for the armed embreex swap — the battery below is the missing instrument that trigger presupposes.
-- The radar viewer cannot adjudicate 3D eye-lines; a screenshot gold set is not actually possible as specced.
+- The radar viewer cannot adjudicate 3D eye-lines; a screenshot gold set is not possible as specced.
 
 ---
 

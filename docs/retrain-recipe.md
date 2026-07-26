@@ -54,7 +54,7 @@ coverage.
 **Decision: train both v2 and v3 under the identical recipe; v2 is
 canonical-by-default, v3 is the ablation arm.**
 
-The v2-vs-v3 run is the long-overdue perception deconfound: every prior
+The v2-vs-v3 run is the perception deconfound: every prior
 checkpoint was 687-d, no v2 baseline ever existed, and the "v3 hurt value"
 claim was confounded with the data jump. **Validity clause:** the two runs must
 be bit-identical except the schema — same seed, same clean corpus, same rollout
@@ -69,7 +69,7 @@ state).
 
 Perception grounding stays on awpy (VisibilityChecker, .tri physics mesh,
 eye+64, 53° half-FOV, distance-gated 3500u; 91.2% kill-agreement). Alternatives
-were considered and rejected as not-guaranteed-better: VRF plus our own
+rejected as not-guaranteed-better: VRF plus our own
 raycaster (same paradigm, new bug surface), engine TraceRay (a better ruler for
 the same narrow single-ray question; no smokes/doors), the demo `spotted` flag
 as truth (radar bookkeeping with hysteresis). No accessible oracle for "what a

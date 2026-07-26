@@ -2,7 +2,7 @@
 
 This is the canonical home for infrastructure decisions taken at the runbook-[1] boundary: what gets built before the corpus patch, what waits behind named triggers, and what is rejected. It synthesizes five red-teamed dimensions (blob-format, tracking, native-accel, config-runs, pod-automation/test-ci) and the sheriff's verdicts of 2026-07-19. The bar every item passed: *materially harder to add later* or *accelerates a known runbook step* — never "nice to have."
 
-**One cross-cutting correction before the lists:** three dimensions independently claimed lineage/manifest work inside [1]. It is ONE artifact. The sha256 pre/post is computed once, written once into `corpus_manifest.json` by `patch_corpus.py`, and consumed three ways: by the HF push, by the provenance stamp, and by `check_lineage()`. Same for tests — the patch validator and the permanent invariant suite are the same functions in the same file. Budget it once.
+**One cross-cutting correction:** three dimensions independently claimed lineage/manifest work inside [1]. It is ONE artifact. The sha256 pre/post is computed once, written once into `corpus_manifest.json` by `patch_corpus.py`, and consumed three ways: by the HF push, by the provenance stamp, and by `check_lineage()`. Same for tests — the patch validator and the permanent invariant suite are the same functions in the same file. Budget it once.
 
 **The organizing asymmetry:** the container format on disk is *not* materially harder to change later (mmap'd `.pt` already solves the only measured pain, and `load_corpus()` makes any future swap a 1-file change) — but metadata written into the blobs, provenance stamped into checkpoints, and metrics emitted during the $45–85 pod runs **cannot be recreated after the fact**. So: change the loading discipline and the embedded metadata now; change the bytes-on-disk never — until a rewrite happens for other reasons.
 
@@ -21,7 +21,7 @@ Sequencing is load-bearing: the validator and `load_corpus()` are written FIRST,
 | 5 | **`scripts/push_blobs_hf.py` / `pull_blobs_hf.py`** | Push patched v2m/v3m train+val + `corpus_manifest.json` to `skkwowee/chimera-cs2` (e.g. `tick_sequences_v2.1/`); pull side asserts sha256 from the manifest so a pod refuses to train on a stale/truncated blob. One motion = offsite copy of the single-copy asset + canonical pod input for all 7 [6] runs + integrity check. Push runs as [1]'s final done-check line. | ~1h + upload wall-clock | `pull_blobs_hf.py` on a clean dir reproduces local sha256s |
 | 6 | **Checkpoint naming paragraph** in `retrain-recipe.md` | HF model repo `skkwowee/chimera-wm`, layout `runs/r1-{v2\|v3}-s{0,1,2}/` plus `r1-v2-ssoff-s0`, `r1-re-v6`, `r1-sup-ceiling`; each dir: `best.pt`, `best_ns.pt`, `train.log`, `run_meta.json`. Naming-in-doc costs nothing; naming-after-the-fact means renaming artifacts mid-analysis. | ~10 min | Paragraph committed |
 
-Nothing else is pre-[1]. In particular: metrics emit, provenance stamping, pod scripts, and the W&B mirror were all argued into [1] by their respective dimensions and all belong to the free [2]–[5] window (the only [1]-coupled field any of them needs — blob sha256 — comes from the manifest).
+Nothing else is pre-[1]. In particular: metrics emit, provenance stamping, pod scripts, and the W&B mirror were all argued into [1] and all belong to the free [2]–[5] window (the only [1]-coupled field any of them needs — blob sha256 — comes from the manifest).
 
 ---
 
@@ -43,7 +43,7 @@ Nothing else is pre-[1]. In particular: metrics emit, provenance stamping, pod s
 
 | Change | Trigger | Cost class | Notes |
 |---|---|---|---|
-| **safetensors / per-match shards + manifest** | Next corpus write that is already a full rewrite (v4/v5 bake, full re-parse, or routine streaming to pods) | ~2h at that point | Mechanical, not archaeological, precisely because [1] stamped `match_id` into every meta and `load_corpus()` is the single call site to swap. Not before: a 14-consumer format migration is maximum-subtle-bug surface at the minimum-tolerance moment. |
+| **safetensors / per-match shards + manifest** | Next corpus write that is already a full rewrite (v4/v5 bake, full re-parse, or routine streaming to pods) | ~2h at that point | Mechanical, not archaeological, because [1] stamped `match_id` into every meta and `load_corpus()` is the single call site to swap. Not before: a 14-consumer format migration is maximum-subtle-bug surface at the minimum-tolerance moment. |
 | **embreex raycaster swap** (awpy `is_visible` → batched embree) | Any full re-bake trigger firing (v5 bake, anubis rebuild, 16Hz ablation) | ~0.5 day + ≥99.9% agreement cert vs awpy on sample matches | Days→minutes for the raycast phase. NOT before [1]: a changed LOS backend would contaminate the patch-vs-rebake diff that certifies the v2.1 builder. Arm it now with one line on the datasheet's re-bake TODO so a future session doesn't default to days of pure-Python raycasts. |
 | **Trackio swap-in** | W&B free-tier terms tighten | ~0 (one-line import; API-compatible) | HF-native, local-first, zero ToS ambiguity — loses only the MCP conversational layer. |
 | **Gate-thresholds-as-tests** ([7] keystone/OOD) | [4]'s minADE-K output schema stabilizes | ~1h | Encode the pre-registered knobs-4–7 thresholds as a test reading `outputs/`, skip-if-absent. |

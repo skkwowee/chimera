@@ -362,7 +362,6 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # Resolve reward mode
     mode = REWARD_MODES[args.reward_mode]
     reward_fns = mode["functions"]
     reward_weights = args.reward_weights if args.reward_weights is not None else list(mode["weights"])
@@ -372,7 +371,6 @@ def main():
               + f"mode '{args.reward_mode}', got {len(reward_weights)}")
         sys.exit(1)
 
-    # Create config from args
     config = CS2GRPOConfig(
         model_name=args.model_name,
         sft_adapter=args.sft_adapter or [],
@@ -415,22 +413,18 @@ def main():
     print(f"Output: {config.output_dir}")
     print()
 
-    # Create trainer
     trainer = CS2GRPOTrainer(config)
     trainer.set_reward_functions(reward_fns)
 
-    # Dry run: just load model and check memory
     if args.dry_run:
         print("Dry run: loading model to check VRAM usage...")
         trainer.load_model()
         print("\nDry run complete. Model loaded successfully.")
         return
 
-    # Load and prepare data
     print("Loading data...")
 
     if args.data:
-        # Load from pre-built JSONL file
         import json as json_mod
         import random as random_mod
 
@@ -448,7 +442,6 @@ def main():
 
         print(f"Loaded {len(all_samples)} samples from {data_path}")
 
-        # Split into train/val
         random_mod.seed(args.seed)
         random_mod.shuffle(all_samples)
         split_idx = int(len(all_samples) * args.train_ratio)
@@ -462,7 +455,6 @@ def main():
             print(f"Error: Labels directory not found: {labels_dir}")
             sys.exit(1)
 
-        # Convert labeled data to GRPO format
         grpo_items = convert_labeled_to_grpo_format(
             screenshots_dir=screenshots_dir,
             labels_dir=labels_dir,
@@ -476,7 +468,6 @@ def main():
 
         print(f"Found {len(grpo_items)} labeled samples")
 
-        # Create train/val split
         train_data, val_data = create_grpo_dataset(
             grpo_items,
             train_ratio=args.train_ratio,
@@ -501,11 +492,9 @@ def main():
         if not src_path.exists():
             print(f"Error: --source file not found: {src_path}")
             sys.exit(1)
-        # Load and key source records by their `idx` (= line number in the
-        # ORIGINAL --data JSONL). We re-link by re-reading --data in original
-        # order to get prompt → idx, then sample → prompt → idx → source.
-        # Labels-path samples (--labels without --data) can't be linked because
-        # the source idx refers to --data line numbers; we error out above.
+        # Source records are keyed by `idx` (= line number in the ORIGINAL
+        # --data JSONL). Re-link by re-reading --data in original order:
+        # sample → prompt → idx → source. Labels-path samples can't be linked.
         if not args.data:
             print(
                 "Error: --source requires --data. The source JSONL is keyed by "
@@ -555,14 +544,11 @@ def main():
         print(f"Merged source metadata into {n_merged}/{total} samples "
               f"(missing entries get no same-round masking)")
 
-    # Prepare data for trainer
     trainer.prepare_data(train_data, val_data)
 
-    # Build RECALL index if using recall reward mode
     if args.reward_mode == "recall":
         trainer.build_recall_index(train_data)
 
-    # Evaluation only
     if args.eval_only:
         print("Evaluation only mode...")
         trainer.load_model()
@@ -570,7 +556,6 @@ def main():
         print("\nEvaluation complete.")
         return
 
-    # Set seeds for reproducibility
     import random
 
     import numpy as np
@@ -580,14 +565,12 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
 
-    # Train
     print("Starting training...")
     if args.manual:
         trainer.train_manual(resume_from=args.resume)
     else:
         trainer.train(resume_from=args.resume)
 
-    # Save model
     output_path = Path(args.output) / "final_model"
     print(f"\nSaving model to {output_path}...")
     trainer.save_model(
@@ -595,7 +578,6 @@ def main():
         save_merged=args.save_merged,
     )
 
-    # Final evaluation
     eval_data = None
     if args.max_eval_samples is not None and trainer.val_dataset is not None:
         eval_data = list(trainer.val_dataset)[: args.max_eval_samples]

@@ -9,8 +9,8 @@ PY=.venv/bin/python
 
 echo "=== Chimera project init ==="
 
-# Venv: must exist and be import-healthy. We do NOT silently reinstall —
-# a broken venv should be rebuilt deliberately from the lock (see below).
+# Venv must exist and be import-healthy. No silent reinstall —
+# a broken venv is rebuilt deliberately from the lock.
 if [ ! -x "$PY" ]; then
   echo "  .venv missing/broken. Rebuild from lock:"
   echo "    uv venv && uv sync --frozen && uv add --dev pytest"

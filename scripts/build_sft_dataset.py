@@ -396,7 +396,6 @@ def curate_dataset(records: list[dict], max_5v5_full: int) -> list[dict]:
             # Not 5v5 full health and no special rule — keep it
             always_keep.append(rec)
 
-    # Downsample 5v5 full-health
     random.seed(42)
     kept_5v5 = random.sample(maybe_keep, min(max_5v5_full, len(maybe_keep)))
     print(
@@ -474,7 +473,6 @@ def build_output_record(rec: dict) -> dict:
     gs_raw = raw.get("game_state", {})
     meta = raw.get("metadata", {})
 
-    # Filter game_state to SFT keep fields only
     gs_filtered = {k: v for k, v in gs_raw.items() if k in SFT_KEEP_FIELDS}
 
     # Generate templated analysis/advice (pass full gs for round_num etc.)
@@ -665,18 +663,14 @@ def main():
     print(f"[INFO] Output:       {output_path}")
     print(f"[INFO] Report:       {report_path}")
 
-    # 1. Load all labels
     records = load_labels(captures_dir)
 
-    # 2. Compute coverage before curation
     coverage_before = build_coverage_stats(records)
     print(f"[INFO] Alive-cell coverage before: {len(coverage_before['alive_cell'])} distinct cells")
     print(f"[INFO] Zero-sample cells before: {len(coverage_before['gap_cells'])}")
 
-    # 3. Curate
     curated_records = curate_dataset(records, args.max_5v5_full_health)
 
-    # 4. Compute coverage after curation
     coverage_after = build_coverage_stats(curated_records)
     underrepresented = find_underrepresented(coverage_after, args.min_per_alive_cell)
     if underrepresented:
@@ -691,17 +685,14 @@ def main():
     else:
         print("[INFO] All alive-cell combinations have at least 1 sample after curation.")
 
-    # 5. Build output records (filter game_state + generate analysis/advice)
     print("[INFO] Generating templated analysis/advice for each sample...")
     output_records = [build_output_record(r) for r in curated_records]
 
-    # 6. Write output JSON
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(output_records, f, indent=2)
     print(f"[INFO] SFT dataset written to {output_path} ({len(output_records)} samples)")
 
-    # 7. Write coverage report
     write_coverage_report(
         path=report_path,
         total_input=len(records),
@@ -712,7 +703,6 @@ def main():
         min_per_cell=args.min_per_alive_cell,
     )
 
-    # 8. Print summary to stdout
     print()
     print("=" * 50)
     print("  Build complete")
