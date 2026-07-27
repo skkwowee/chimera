@@ -1,7 +1,7 @@
 {
-  "venvPath": "/home/soone/chimera",
+  "venvPath": "/home/soone/projects/chimera",
   "venv": ".venv",
-  "extraPaths": ["/home/soone/chimera"],
+  "extraPaths": ["/home/soone/projects/chimera"],
   "include": ["src", "scripts"],
   "typeCheckingMode": "standard",
   "reportMissingTypeArgument": "warning",

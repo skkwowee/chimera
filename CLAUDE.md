@@ -5,13 +5,14 @@ CS2 in-game tactical reasoning via a world-model pipeline: HLTV demos → tick s
 **language bridge** → **grounded GRPO**. Bet: learn the game by predicting it,
 then attach language. Post-2026-07-18 reset: every stage is gated + pre-registered.
 
-**Env:** `.venv/bin/python`. Local GPU: RTX 4090. WSL2 RAM: 15 GB until the next
-`wsl --shutdown`, then 22 GB (+8 GB swap, `.wslconfig` written 2026-07-18); keep
+**Env:** `.venv/bin/python`. Local GPU: RTX 4090. WSL2 RAM: `.wslconfig`
+(22 GB + 8 GB swap, written 2026-07-18) is LIVE — `free -h` shows 21Gi; keep
 bakes `--workers 1` regardless. Pods (RunPod) only for the 35B bridge/GRPO.
 
 ## Read first (in this order)
 - `claude-progress.txt` **top section** — the ORDERED RUNBOOK [1]–[7] with
   done-checks; determines what to do next in any session.
+- `docs/execution-checklist.md` — the merged live execution order.
 - `docs/retrain-recipe.md` (+ `retrain-recipe-knobs4-7.md`) — Knobs 1–7 LOCKED,
   pre-registered. Do not unlock without evidence hitting a written switch trigger.
 - `docs/first-principles-plan.md` — WHY each stage exists (5-whys causal chain,

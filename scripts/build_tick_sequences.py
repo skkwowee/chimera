@@ -838,7 +838,7 @@ def main() -> None:
     print(f"Total demos: {len(parqs)} (train: {len(train_parqs)}, val: {len(val_parqs)})")
     print(f"Schema: {SCHEMA_VERSION} (builder {prov['builder_commit'] or 'unknown'}"
           f"{'+dirty' if prov['builder_dirty'] else ''})")
-    print(f"Downsample: {args.downsample}x (8Hz from 64Hz)")
+    print(f"Downsample: {args.downsample}x ({64 // args.downsample}Hz from 64Hz)")
     print(f"Feature dim: {TOTAL_DIM} ({N_PLAYERS}×{PER_PLAYER_DIM} player + {GLOBAL_DIM} global)")
     print(f"Output dir: {OUT_DIR}")
     print()
@@ -910,7 +910,7 @@ def main() -> None:
         "builder_commit": prov["builder_commit"],
         "builder_dirty": prov["builder_dirty"],
         "downsample": args.downsample,
-        "tickrate_hz": 8,
+        "tickrate_hz": 64 // args.downsample,
         "feature_dim": TOTAL_DIM,
         "n_players": N_PLAYERS,
         "per_player_dim": PER_PLAYER_DIM,
