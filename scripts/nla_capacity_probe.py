@@ -98,9 +98,9 @@ def truncate_k(z, mu, Vt, k):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="outputs/wm_3map_dist_v3m/h8_mt/best.pt")
-    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m.pt")
-    ap.add_argument("--maps", default="de_mirage,de_dust2,de_inferno")
+    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
+    ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke")
     ap.add_argument("--max-rounds", type=int, default=120)
     ap.add_argument("--stride", type=int, default=8)
     ap.add_argument("--batch", type=int, default=128)

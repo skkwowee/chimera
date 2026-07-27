@@ -49,9 +49,9 @@ def load_ckpt(path):
 @torch.no_grad()
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="outputs/wm_3map_dist/h8_mt/best_ns.pt")
-    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3.pt")
-    ap.add_argument("--maps", default="de_mirage,de_dust2,de_inferno")
+    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
+    ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke")
     ap.add_argument("--k", type=int, default=16, help="samples per frame")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--stride", type=int, default=4)

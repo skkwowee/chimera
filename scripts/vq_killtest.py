@@ -52,8 +52,8 @@ class VQVAE(nn.Module):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pt", default="data/processed/tick_sequences/val_v3.pt")
-    ap.add_argument("--maps", default="de_mirage,de_dust2,de_inferno")
+    ap.add_argument("--pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
+    ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke")
     ap.add_argument("--codebook", type=int, default=1024)
     ap.add_argument("--d", type=int, default=128)
     ap.add_argument("--steps", type=int, default=4000)

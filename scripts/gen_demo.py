@@ -39,8 +39,8 @@ def load_ckpt(path):
 @torch.no_grad()
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="outputs/wm_3map/h8_mt/best_ns.pt")
-    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3.pt")
+    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
     ap.add_argument("--round", type=int, default=None, help="round index (default: first long enough)")
     ap.add_argument("--frame", type=int, default=None, help="anchor frame t (default: mid-round)")
     ap.add_argument("--rollout", type=int, default=8, help="autoregressive steps to show drift")

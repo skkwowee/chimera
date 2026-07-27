@@ -34,6 +34,16 @@ Then bake the delta + assemble v3m (ONE BVH at a time — do not raise workers):
 Usage:
   smoke: python scripts/merge_hf_tick_sequences.py --limit-matches 3
   full:  python scripts/merge_hf_tick_sequences.py
+
+RE-BAKE SEAM NOTE (2026-07-26): the root-level blobs this script reads by
+fixed name — train.pt/val.pt (backfill_local inputs) and train_v3.pt/val_v3.pt
+(v3 reuse index) — were moved to data/processed/tick_sequences/_superseded/
+when the *_p1 generation went live. On a re-run as-is the script only WARNs,
+skips back-fill, and dumps every round into v3_todo (full 687-d recompute).
+Before any re-bake/merge, MOVE the four blobs back to the tick_sequences root
+(`mv` — a rename, never a load; train.pt/train_v3.pt are TRAIN-side blobs and
+per the blob guardrail must never be torch.load'ed locally — any run that
+must load them stays pod-side). Dormant while corpus step [1] stays closed.
 """
 from __future__ import annotations
 

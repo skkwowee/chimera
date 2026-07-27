@@ -104,11 +104,11 @@ def fit_probe(Xtr, ytr, Xva, epochs=300, lr=0.05, wd=1e-3, device="cpu"):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="outputs/world_model/h8/best.pt")
-    ap.add_argument("--train-pt", default="data/processed/tick_sequences/train.pt")
-    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val.pt")
+    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--train-pt", default="data/processed/tick_sequences/train_v2m_p1.pt")
+    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v2m_p1.pt")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    ap.add_argument("--maps", default="",
+    ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke",
                     help="comma-sep map keep-set; probe only these maps (match the ckpt's training maps)")
     args = ap.parse_args()
 

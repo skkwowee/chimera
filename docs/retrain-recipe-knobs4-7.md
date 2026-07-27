@@ -334,7 +334,7 @@ saturation point."
   split, 582-d schema); it survives only as motivation history. The Knob-4 OOD baselines
   use the retrained clean-corpus RE from this trainer.
 - Port `scripts/_archive/train_round_encoder.py` → `scripts/train_round_encoder.py`.
-  Changes only: load `train_v2m.pt`/`val_v2m.pt`; apply `_corpus.clean_blob` (D1/D2);
+  Changes only: load `train_v2m_p1.pt`/`val_v2m_p1.pt`; apply `_corpus.clean_blob` (D1/D2);
   apply the Knob-4 5-map filter; add `--matches-manifest` filter keyed on
   `meta["match_id"]`. Config = v6 verbatim
   (`outputs/round_encoder/v6_81demos/config.json`: d_model 512, 4 layers, 8 heads, d_ff
@@ -514,7 +514,7 @@ Stage 0 (harness shakedown) → RE fixture test → full-data six-way probe (set
    `best_ns.pt` (the Phase-3/bridge reader; rollout_eval/GRPO read this head, not an
    in-run head) (Knob 5a).
 8. **`scripts/train_round_encoder.py`** — restore from `_archive/`, add `clean_blob` +
-   5-map filter + `--matches-manifest`, defaults → `train_v2m.pt`/`val_v2m.pt`; log the
+   5-map filter + `--matches-manifest`, defaults → `train_v2m_p1.pt`/`val_v2m_p1.pt`; log the
    event-head skip loudly (Knob 7a).
 9. **RE fixture test** — reproduce v6 val forward-MSE on old `train.pt`/`val.pt` within
    noise; port drift blocks all clean runs (Knob 7a).

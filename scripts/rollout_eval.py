@@ -195,15 +195,15 @@ def value_auc_eval(model, blob, L, k, cv_residual, args):
 @torch.no_grad()
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="outputs/world_model/h8/best.pt")
-    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3.pt")
+    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
     ap.add_argument("--steps", type=int, default=5, help="rollout steps (each = horizon k)")
     ap.add_argument("--n", type=int, default=400, help="rollout samples / anchors")
     ap.add_argument("--value-auc", action="store_true",
                     help="value-through-rollout mode: AUC of value logit vs winner per depth")
     ap.add_argument("--depths", default="0,1,2,4,8",
                     help="comma-sep rollout depths for --value-auc (0 = real window)")
-    ap.add_argument("--maps", default="",
+    ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke",
                     help="comma-sep map keep-set; eval only these maps (match the ckpt's training maps)")
     ap.add_argument("--geo", action="store_true",
                     help="geometry-gated decode: mask wall-infeasible displacement "

@@ -61,7 +61,7 @@ def onehot_name(vals, names):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--pt", default="data/processed/tick_sequences/val_v3.pt")
+    ap.add_argument("--pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
     ap.add_argument("--round", type=int, default=0)
     ap.add_argument("--frame", type=int, default=None)
     ap.add_argument("--player", type=int, default=None, help="dump ALL 65 dims for this slot (0-9)")

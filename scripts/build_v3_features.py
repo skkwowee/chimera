@@ -29,6 +29,14 @@ the rounds listed in v3_todo.json, copy every other round's 687-d tensor from
 existing v3 blobs, save the assembled result. WSL: keep --workers 1 (one BVH).
   python scripts/build_v3_features.py --src .../train_v2m.pt --out .../train_v3m.pt \
       --todo .../v3_todo.json --reuse .../train_v3.pt,.../val_v3.pt --workers 1
+
+RE-BAKE SEAM NOTE (2026-07-26): every input named above — train_v2m/val_v2m,
+the --reuse train_v3.pt/val_v3.pt, and the bare-split-mode {split}.pt /
+{split}_v3.pt derived at the tick_sequences root — now lives in
+data/processed/tick_sequences/_superseded/. Before a re-bake, `mv` the needed
+blobs back to the root (rename only — train-side blobs must never be
+torch.load'ed locally per the blob guardrail; loads stay pod-side) or pass
+explicit _superseded/ paths via --src/--reuse. Dormant while [1] stays closed.
 """
 from __future__ import annotations
 

@@ -178,9 +178,9 @@ def build_target(rng, pct, fut4, top_classes, alive):
 # --------------------------------------------------------------------- generation
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default="outputs/wm_3map_dist_v3m/h8_mt/best.pt")
-    ap.add_argument("--split", default=str(DATA / "train_v3m.pt"))
-    ap.add_argument("--maps", default="de_mirage,de_dust2,de_inferno")
+    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--split", default=str(DATA / "train_v3m_p1.pt"))
+    ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke")
     ap.add_argument("--out", default="data/processed/bridge_sft/train_single.pt")
     ap.add_argument("--max-pairs", type=int, default=30000)
     ap.add_argument("--per-round", type=int, default=12, help="max anchors sampled per round")
