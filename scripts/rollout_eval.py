@@ -195,7 +195,8 @@ def value_auc_eval(model, blob, L, k, cv_residual, args):
 @torch.no_grad()
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--ckpt", required=True,
+                    help="WM checkpoint, R1 outputs only (retired defaults removed 2026-07-26)")
     ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
     ap.add_argument("--steps", type=int, default=5, help="rollout steps (each = horizon k)")
     ap.add_argument("--n", type=int, default=400, help="rollout samples / anchors")

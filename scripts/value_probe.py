@@ -104,7 +104,8 @@ def fit_probe(Xtr, ytr, Xva, epochs=300, lr=0.05, wd=1e-3, device="cpu"):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--ckpt", required=True,
+                    help="WM checkpoint, R1 outputs only (retired defaults removed 2026-07-26)")
     ap.add_argument("--train-pt", default="data/processed/tick_sequences/train_v2m_p1.pt")
     ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v2m_p1.pt")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")

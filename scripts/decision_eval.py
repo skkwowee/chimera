@@ -105,7 +105,8 @@ def fit_alpha(train_pt, keep, k, px, py, alive_i, L, max_rounds=50, stride=8):
 @torch.no_grad()
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", required=True, help="WM checkpoint (retired wm_3map*/world_model defaults removed 2026-07-26 — R1 outputs only)")
+    ap.add_argument("--ckpt", required=True,
+                    help="WM checkpoint, R1 outputs only (retired defaults removed 2026-07-26)")
     ap.add_argument("--val-pt", default="data/processed/tick_sequences/val_v3m_p1.pt")
     ap.add_argument("--train-pt", default="data/processed/tick_sequences/train_v3m_p1.pt")
     ap.add_argument("--maps", default="de_ancient,de_dust2,de_inferno,de_mirage,de_nuke")
