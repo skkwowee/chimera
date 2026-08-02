@@ -234,7 +234,8 @@ grounding claim.
   SFT. Cheap, decouples the two models, makes the SFT dataset reproducible.
 - **GRPO (Phase 3):** the world model must run on the pod — rollouts are
   generated live from the policy's chosen states and can't be precomputed.
-  World model (19M) + Qwen (QLoRA) co-resident. `scripts/pod_setup_grpo.sh`
+  World model (19M) + Qwen (QLoRA) co-resident. `pod_setup_grpo.sh` (repo root,
+  the doc-canonical copy per pod-runbook.md; the `scripts/` duplicate is archived)
   handles the toolchain (kernel/CUDA matching — the 14h-for-40-steps lesson).
 
 ---

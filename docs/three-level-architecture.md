@@ -31,6 +31,12 @@
 > current central design doc. The per-level *evaluation discipline*
 > (probe transfer, σ_s, ablate-the-signal) carries over unchanged and is
 > still load-bearing.
+>
+> **2026-07-26:** the VLM-era code paths named in the body below
+> (`scripts/train_sft.py`, `scripts/train_grpo.py`, `src/training/*`,
+> `scripts/run_grpo_smoke.sh`, …) were archived and now live under
+> `scripts/_archive/` and `src/_archive/` (preflight B12). The body text
+> is left as the dated record it already was.
 
 Organizing principle for chimera. Treats "look at the game", "understand what
 just happened", and "say what to do" as three different learning problems with
