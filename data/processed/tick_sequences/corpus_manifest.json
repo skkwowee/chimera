@@ -28,6 +28,11 @@
    "sha256": "1c9e8554a09c49d0c11a8cc557c6c2426213e2828cff87f06203b5431b2fe97a",
    "bytes": 10661742149,
    "sha256_source": "2a165efc25dfe9c075b8718ba87c9972a9c9f8b248192d978daaf45b89f70328"
+  },
+  "val_v2m_p2.pt": {
+   "sha256": "6ba87c3b428183369cc753e60d8022f736d52422e507059ac12b7b95fb90e9e8",
+   "bytes": 1785644431,
+   "sha256_source": "68fa23f8ef4ec1b176cda9299a617665129852101cff12acbfab59a15da68980"
   }
  },
  "patch_lineage": [
@@ -80,6 +85,37 @@
    "sha256_post": "1c9e8554a09c49d0c11a8cc557c6c2426213e2828cff87f06203b5431b2fe97a",
    "date": "2026-07-19",
    "blob": "train_v3m_p1.pt"
+  },
+  {
+   "script": "scripts/patch_corpus_p2.py",
+   "script_sha": "863b5ff227e6e55bdeb02684aa0df93277bfc25b",
+   "transforms": [
+    "dropped_bomb_xy_from_c4_falling_edge",
+    "metadata_identity_enrichment_source_keyed",
+    "place_ids_sidecar_source_keyed",
+    "end_phase_cap_7s(D8)",
+    "bomb_age_clamp_1(D8)"
+   ],
+   "sha256_pre": "68fa23f8ef4ec1b176cda9299a617665129852101cff12acbfab59a15da68980",
+   "sha256_post": "6ba87c3b428183369cc753e60d8022f736d52422e507059ac12b7b95fb90e9e8",
+   "date": "2026-08-09",
+   "blob": "val_v2m_p2.pt",
+   "report": {
+    "tensor": {
+     "drop_events": 1848,
+     "dropped_frames": 140965,
+     "invalid_drop_sources": 0,
+     "bomb_age_clamped": 10507,
+     "frames_cropped": 7294,
+     "rounds_cropped": 46
+    },
+    "sidecar": {
+     "verified_rounds": 111,
+     "source_unavailable_rounds": 635,
+     "source_key_mismatch_rounds": 24,
+     "verified_stems": 5
+    }
+   }
   }
  ],
  "split": {
@@ -106,6 +142,20 @@
   "note": "datasheet \u00a75 D1/D2; NEVER baked into blob bytes"
  },
  "datasheet": "docs/datasheet.md",
+ "p2_status": {
+  "required_blobs": [
+   "val_v2m_p2.pt",
+   "train_v2m_p2.pt",
+   "val_v3m_p2.pt",
+   "train_v3m_p2.pt"
+  ],
+  "completed_blobs": [
+   "val_v2m_p2.pt"
+  ],
+  "complete": false,
+  "canonical": false,
+  "note": "canonical only after all blobs and fresh-builder validation diff pass"
+ },
  "tick_dropout_disclosure": {
   "rule": "rounds where kept frames < 99% of (last_tick-first_tick)/downsample",
   "flagged_rounds": 921,

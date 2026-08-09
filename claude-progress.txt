@@ -113,6 +113,13 @@
 #     DONE-CHECK: _p2 blobs + manifest entry + validation report committed.
 #     Provenance: preflight §5 B6a (owner decision 2026-07-25); (d)/(e) =
 #     deep-sweep-r2 §7, D8 (2026-07-26).
+#     STATE 2026-08-09 (PARTIAL, NOT CANONICAL): P2 writer + fixtures landed;
+#     val_v2m_p2 local artifact passes post-write invariants/hash. Tensor report:
+#     46 rounds / 7,294 tail frames cropped; 10,507 bomb-age values clamped.
+#     Falling-edge drop inference vs 222 verified local bomb events: precision
+#     0.982, recall 0.987, median xy error 1.22u. Still required: val_v3m + both
+#     train blobs on quiet machine, fresh-builder local/HF diff, then one atomic
+#     defaults flip. corpus_manifest.p2_status remains complete=false/canonical=false.
 # [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
 #     .venv/bin/python scripts/fit_dist_edges.py  on the P2 train_v2m blob,
 #     5-map filtered (preflight B4: script needs the --maps filter first).

@@ -19,8 +19,9 @@ build_tick_sequences.py / build_v3_features.py after the D3/D4/D6 fixes
       frames are exactly 0, values live in [0, ~2] (normalized /115s), and the
       clock is monotone non-decreasing within a round.
   D6 fix — v3 derived dim 7 (dist_to_bomb, per-player index 56+7=63) is
-      plant-gated: wherever bomb_x AND bomb_y are 0 (pre-plant) it carries the
-      1.0 sentinel, never distance-to-origin.
+      plant-gated: wherever neither planted_a nor planted_b is set it carries
+      the 1.0 sentinel, never distance-to-origin. P2 may carry a nonzero bomb
+      position while the C4 is dropped, so coordinates are not a plant signal.
 
 On PRE-patch blobs (no "patch_lineage" key) the D3/D4/D6 checks FAIL — that is
 the point: the validator pre-exists the mutation, so "patched correctly" is
@@ -167,7 +168,7 @@ def check_round_time(blob: dict, schema: dict | None = None) -> list[str]:
 
 def check_dim7_plant_gated(blob: dict, schema: dict | None = None) -> list[str]:
     """D6 fixed semantics (v3 only): derived dim 7 (dist_to_bomb) == 1.0
-    sentinel on every frame where bomb_x/y are both zero (pre-plant)."""
+    sentinel on every frame without a planted bomb-state bit."""
     lay = _layout(blob, schema)
     if lay["ppd"] <= RAW_PPD:
         return ["check_dim7_plant_gated: blob has no derived block "
@@ -178,7 +179,8 @@ def check_dim7_plant_gated(blob: dict, schema: dict | None = None) -> list[str]:
     n_frames = n_rounds = 0
     example = ""
     for i, t in enumerate(blob["tensors"]):
-        pre_plant = (t[:, gs + G_BOMB_X].abs() <= EPS) & (t[:, gs + G_BOMB_Y].abs() <= EPS)
+        bomb_state = t[:, gs + G_BOMB_STATE:gs + G_BOMB_STATE + 4] > BIT
+        pre_plant = ~(bomb_state[:, 2] | bomb_state[:, 3])
         if not bool(pre_plant.any()):
             continue
         d7 = t[:, lay["dim7_cols"]]                     # [T, 10]
