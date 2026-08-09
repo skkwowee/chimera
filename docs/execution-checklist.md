@@ -41,21 +41,21 @@ deep-sweep-r2, "rb" = claude-progress runbook.
 
 - [ ] 1b.1 Run p2 patch on _p1 blobs — full merged scope: (a) dropped-bomb bomb_x/y from carrier position at has_c4 falling edge; (b) steamid/name meta enrichment; (c) `place` sidecar for the 81 local stems; **(d) crop end-phase frames beyond round_end + 7s; (e) clamp bomb_age at explosion/defuse (cap 1.0 normalized)** — [2]'s quantile fit must not ingest the tail frames. Same validation pattern as [1] (sample diff vs fixed-builder re-bake); lineage restamp; flip defaults _p1 → _p2 in the same commit → **DONE-CHECK: _p2 blobs + manifest entry + validation report committed**. *(rb [1b] + r2 §7 [1b] merged; corpus-audit §5.B.3)*
   - [x] D8 datasheet entry (r12 tail + bomb_age overflow + r24 truncation, quantified) — done 2026-07-26 (commit 9c969cb)
-  - [x] P2 writer + fixture certificate — `patch_corpus_p2.py` writes new files atomically, source-keys identity/place joins to reject stem collisions, and carries dedicated P2 invariants; full suite 29p/1s/1xf + ruff green (2026-08-09).
+  - [x] P2 writer + fixture certificate — `patch_corpus_p2.py` writes new files atomically, source-keys identity/place joins to reject stem collisions, and carries dedicated P2 invariants; full suite green (2026-08-09).
   - [x] `val_v2m_p2.pt` and `val_v3m_p2.pt` local artifacts + manifest lineage — both cover 770/770 rounds and pass post-write legacy/P2 invariants plus manifest/blob/script hash checks; each removes 7,294 excess tail frames across 46 rounds and clamps 10,507 bomb-age values. Drop inference checked against 222 source-keyed local events: precision 0.982, recall 0.987, median xy error 1.22 game units (`validate_p2_drop_inference.py`). **Partial only; not canonical.**
   - [ ] Remaining for 1b.1: generate both train blobs on the quiet machine; run the required fresh-builder local-era + HF-era diff; flip live defaults together; only then set `p2_status.complete/canonical` and tick 1b.1.
 
 ## Phase 2 — Runbook [2]: dist edges (QUIET MACHINE — loads 8.7GB train blob)
 
-- [ ] 2.1 [B2] Add 5-map filter (`de_ancient,de_dust2,de_inferno,de_mirage,de_nuke`) + `assert kept_rounds == 3573` to fit_dist_edges.py; add argparse so `--help` works. *(pf §5 2.1)*
+- [x] 2.1 [B2] Add 5-map filter (`de_ancient,de_dust2,de_inferno,de_mirage,de_nuke`) + `assert kept_rounds == 3573` to fit_dist_edges.py; add argparse so `--help` works. `--help`, filter/default, round-count, and OOD-holdout guards are test-covered. *(pf §5 2.1)* — done 2026-08-09
 - [ ] 2.2 Run fit on the **_p2** train blob; commit new `DIST_EDGES_U` **and** [B3] `OPEN_RING_MAG_U` (replacing both 700.0 literals: train_world_model.py + gen_bridge_sft.py; stamp into ckpt meta) in one commit → **DONE: edges + open-ring mag committed, per-map quantiles in datasheet, no overpass row in fit set**. *(pf §5 2.2 + rb [1b] corpus supersession)*
 
 ## Phase 3 — Runbook [3]: trainer completion (code, no GPU)
 
 - [x] 3.0 [pre-3] Knobs errata commit before the [3] edit: Knob 5d mask errata (mask = alive(t) ∧ alive(t+k) ∧ ¬freeze(t); edge-fit stationary% stays freeze-inclusive) + stale line anchors voided (match by content). *(r2 §7 [pre-3]; knobs4-7 §R2-ERRATA E1; commit 9c969cb)* — done 2026-07-26
 - [x] 3.0b [R2-B1] evaluate() CUDA device fix (`won` indexed via CPU mask, train_world_model.py:357) → repro'd, fixed, suite green 23p/1s/1xf. *(r2 §7 [3] first add; commit b421973)* — done 2026-07-26
-- [ ] 3.1 Implement detach/SS per locked recipe **applying errata E1's mask, not the verbatim checklist formula**; + fixture-scoped `--no-clean` flag (loud print) so the 7a RE fixture can load old blobs → **`test_no_value_leak` flips xfail→pass; suite fully green; SS smoke shows p>0 path executing**. *(pf §5 3.1 + r2 §7 [3] merged; rb [3])*
-- [ ] 3.2 Write pinned canonical v2 + v3 commands (blobs, `--maps`, `--dist-head`, seed, `--ss-pmax`) into retrain-recipe.md → **DONE: exact runnable commands with blobs + `--maps` exist in-repo**. *(pf §5 3.2 = pf §4.2)*
+- [x] 3.1 Implement detach/SS per locked recipe **applying errata E1's mask, not the verbatim checklist formula**; + fixture-scoped `--no-clean` flag (loud print) so the 7a RE fixture can load old blobs → `test_no_value_leak` now passes, E1/dead-decode rails are covered, and a forced-p>0 sample-and-swap smoke passes; full suite 40p/1s + ruff green. *(pf §5 3.1 + r2 §7 [3] merged; rb [3])* — done 2026-08-09
+- [x] 3.2 Write pinned canonical v2 + v3 commands (blobs, `--maps`, `--dist-head`, seed, `--ss-pmax`) into retrain-recipe.md → exact runnable commands and the SS-off delta are in-repo, explicitly gated on P2 train blobs + fitted distance constants. *(pf §5 3.2 = pf §4.2)* — done 2026-08-09
 - [ ] 3b NEW GATE: 30-step CUDA smoke on the 4090 incl. ≥1 evaluate() pass, BEFORE any pilot/pod run (CI is CPU-only, cannot see device bugs) → **DONE-CHECK: 30-step CUDA run completes incl. eval, loss finite**. *(r2 §7 [3b]; rb [3b])*
 
 ## Phase 4 — Runbook [4]: coverage harness

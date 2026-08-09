@@ -138,3 +138,35 @@ Each run directory contains `best_ns.pt`, `last.pt`, `train.log`, and
 `run_meta.json` (argv, resolved args, seed, git sha, config hash, corpus blob
 sha256s from the manifest). Named here, before any artifact exists, so nothing
 gets renamed mid-analysis.
+
+## Pinned canonical launch commands
+
+These commands are runnable only after Phase 1b has produced and validated both
+P2 train blobs and Phase 2 has committed the refitted distance constants. Seed 0
+is the downstream canonical arm; paired seeds 1 and 2 change only `--seed` and
+the corresponding `--out` suffix.
+
+```bash
+uv run python scripts/train_world_model.py \
+  --arch player --horizon 4 --window 96 --d-model 512 --layers 6 --heads 8 \
+  --batch 64 --lr 3e-4 --steps 25000 --warmup 1000 --crops-per-round 32 \
+  --eval-every 500 --dist-head --ss-pmax 0.5 --seed 0 --device cuda \
+  --maps de_ancient,de_dust2,de_inferno,de_mirage,de_nuke \
+  --train-pt data/processed/tick_sequences/train_v2m_p2.pt \
+  --val-pt data/processed/tick_sequences/val_v2m_p2.pt \
+  --out outputs/runs/r1-v2-s0
+```
+
+```bash
+uv run python scripts/train_world_model.py \
+  --arch player --horizon 4 --window 96 --d-model 512 --layers 6 --heads 8 \
+  --batch 64 --lr 3e-4 --steps 25000 --warmup 1000 --crops-per-round 32 \
+  --eval-every 500 --dist-head --ss-pmax 0.5 --seed 0 --device cuda \
+  --maps de_ancient,de_dust2,de_inferno,de_mirage,de_nuke \
+  --train-pt data/processed/tick_sequences/train_v3m_p2.pt \
+  --val-pt data/processed/tick_sequences/val_v3m_p2.pt \
+  --out outputs/runs/r1-v3-s0
+```
+
+The pre-registered teacher-forcing control is the v2 command with
+`--ss-pmax 0 --out outputs/runs/r1-v2-ssoff-s0`; no other argument changes.

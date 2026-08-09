@@ -7,8 +7,6 @@ representation, never injected into it). A string-grep cannot certify this
 backprop the value loss ALONE and assert that no parameter outside the value
 head receives a gradient.
 
-EXPECTED RED until the stop-grad detach lands in train_world_model.py ([3a]).
-
 Run: .venv/bin/python -m pytest tests/test_no_value_leak.py -q
 """
 from __future__ import annotations
@@ -16,15 +14,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from train_world_model import build_model
 
 
-@pytest.mark.xfail(strict=True, reason="runbook [3a]: value head not yet detached "
-                   "— this marker MUST be removed in the same commit as the detach")
 def test_no_value_leak():
     torch.manual_seed(0)
     model = build_model("player", feature_dim=597, d_model=64, layers=2, heads=2,

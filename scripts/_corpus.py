@@ -20,7 +20,7 @@ import torch
 EXCLUDED_MAPS = frozenset({"de_anubis", "de_train"})
 
 
-def load_corpus(path, *, maps=None, tag=None):
+def load_corpus(path, *, maps=None, tag=None, clean=True):
     """THE corpus reader — every script that reads a tick-sequence blob goes
     through here (infra-plan §1 item 1).
 
@@ -40,10 +40,15 @@ def load_corpus(path, *, maps=None, tag=None):
           filters ALL parallel per-round lists in lockstep (value_probe's
           _mfilter pattern). None/empty = keep all maps.
     tag:  label for log lines; defaults to the file's basename.
+    clean: apply the D1/D2 defect exclusions. Disabling this is fixture-only and
+           intentionally loud; production callers should keep the default.
     """
     tag = tag or os.path.basename(str(path))
     blob = torch.load(path, map_location="cpu", weights_only=False, mmap=True)
-    clean_blob(blob, tag=tag)  # datasheet §5 D1/D2
+    if clean:
+        clean_blob(blob, tag=tag)  # datasheet §5 D1/D2
+    else:
+        print(f"[corpus {tag}] WARNING: defect exclusions DISABLED (--no-clean fixture mode)")
     if maps:
         keep = set(maps.split(",")) if isinstance(maps, str) else set(maps)
         n0 = len(blob["metas"])

@@ -9,12 +9,14 @@ Rule (pinned in docs/retrain-recipe.md):
   - open-ring representative magnitude = median of the top sextile
     (replaces the hardcoded 700u that was fit for k=8).
 
-Alive mask matches the training loss: alive at BOTH t and t+k.
+The fit uses alive at BOTH t and t+k and deliberately remains freeze-inclusive;
+training's dist-loss mask additionally excludes freeze(t) per erratum E1.
 Output: the six edges (rounded to integer game units) + per-map quantiles
 for the datasheet. CPU-only, minutes.
 """
 from __future__ import annotations
 
+import argparse
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -28,13 +30,61 @@ K = 4                    # 500 ms at 8 Hz
 XY_NORM = 3000.0
 FLOOR_U = 8.0            # stationary threshold, absolute (not horizon-scaled)
 ALIVE_DIM = 13           # per_player_layout index of "alive"
-TRAIN_PT = "data/processed/tick_sequences/train_v2m_p1.pt"  # patched corpus (runbook [1])
+TRAIN_PT = "data/processed/tick_sequences/train_v2m_p1.pt"  # superseded by _p2 after runbook [1b]
+CANONICAL_MAPS = (
+    "de_ancient",
+    "de_dust2",
+    "de_inferno",
+    "de_mirage",
+    "de_nuke",
+)
+EXPECTED_ROUNDS = 3573
 
 
-def main():
-    path = sys.argv[1] if len(sys.argv) > 1 else TRAIN_PT
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "train_pt",
+        nargs="?",
+        default=TRAIN_PT,
+        help="clean train corpus blob (use train_v2m_p2.pt for the canonical fit)",
+    )
+    parser.add_argument(
+        "--maps",
+        default=",".join(CANONICAL_MAPS),
+        help="comma-separated fit maps; defaults to the locked five-map ID set",
+    )
+    parser.add_argument(
+        "--expected-rounds",
+        type=int,
+        default=EXPECTED_ROUNDS,
+        help="hard guard after cleaning/map filtering (0 disables for diagnostics)",
+    )
+    return parser.parse_args(argv)
+
+
+def validate_fit_scope(metas, maps: str, expected_rounds: int) -> set[str]:
+    kept_rounds = len(metas)
+    if expected_rounds:
+        assert kept_rounds == expected_rounds, (
+            f"fit corpus has {kept_rounds} rounds after cleaning/map filter; "
+            f"expected {expected_rounds}"
+        )
+    requested_maps = set(maps.split(","))
+    actual_maps = {m.get("map_name") for m in metas}
+    assert actual_maps <= requested_maps, (actual_maps, requested_maps)
+    assert "de_overpass" not in actual_maps, "OOD holdout leaked into distance-edge fit"
+    return actual_maps
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    path = args.train_pt
     print(f"loading {path} ...")
-    blob = load_corpus(path, tag="fit_dist_edges")
+    blob = load_corpus(path, maps=args.maps, tag="fit_dist_edges")
+    kept_rounds = len(blob["metas"])
+    actual_maps = validate_fit_scope(blob["metas"], args.maps, args.expected_rounds)
+    print(f"fit rounds: {kept_rounds:,}; maps: {sorted(actual_maps)}")
     ppd = blob.get("per_player_dim", 56)
     per_map = defaultdict(list)
     mags_all = []
@@ -62,9 +112,15 @@ def main():
     print(f"open-ring representative magnitude = {open_med:.0f}u (median of top sextile)")
     print("\nper-map mover quantiles (1/6..5/6):")
     for mp in sorted(per_map):
-        v = np.concatenate(per_map[mp]); v = v[v >= FLOOR_U]
-        print(f"  {mp:14s} n={len(v):>10,}  " +
-              " ".join(f"{x:6.0f}" for x in np.quantile(v, [1/6, 2/6, 3/6, 4/6, 5/6])))
+        v = np.concatenate(per_map[mp])
+        v = v[v >= FLOOR_U]
+        print(
+            f"  {mp:14s} n={len(v):>10,}  "
+            + " ".join(
+                f"{x:6.0f}"
+                for x in np.quantile(v, [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6])
+            )
+        )
 
 
 if __name__ == "__main__":

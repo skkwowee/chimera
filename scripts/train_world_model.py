@@ -57,6 +57,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _corpus import load_corpus
 
 DATA_DIR = Path("data/processed/tick_sequences")
+CANONICAL_MAPS = frozenset(
+    {"de_ancient", "de_dust2", "de_inferno", "de_mirage", "de_nuke"}
+)
+CANONICAL_TRAIN_ROUNDS = 3573
+CANONICAL_VAL_ROUNDS = 641
 
 
 # --------------------------------------------------------------------------- data
@@ -147,6 +152,7 @@ N_PLAYERS = 10   # frame is player-major: n_players x per_player_dim, then globa
 RAW_PPD = 56     # raw per-player dims; dims [RAW_PPD:ppd] are derived perception
                  # (input-only: masked out of every loss, so head outputs there
                  # are UNTRAINED — decode must zero them or rollouts feed noise)
+ALIVE_DIM = 13   # per-player layout index; used by dist loss/decode safety masks
 
 # ---- distributional displacement head (classify-then-refine over player xy) ----
 # Ring edges in GAME UNITS (xy norm = units/3000). Class 0 = stationary (<8u);
@@ -185,9 +191,8 @@ class WorldModelPlayers(nn.Module):
     """MLMove-style FACTORED model: each player is its own token + a global token,
     with attention over BOTH players (relational) and time (causal). Per-player
     heads predict each player's own next-k residual; a global head the global part.
-    A VALUE head on the per-frame latent predicts P(CT wins) — co-trained with
-    next-state so the latent RETAINS outcome structure (the fix for the v2 value-
-    probe failure, where pure next-state compressed value away).
+    A detached VALUE head monitors whether the next-state latent linearly retains
+    P(CT wins); stop-grad prevents outcome supervision from shaping the trunk.
 
     per_player_dim is read from the data schema (v2=56, v3=65 with the derived
     visibility/perception dims), so the same model handles either feature book.
@@ -261,7 +266,7 @@ class WorldModelPlayers(nn.Module):
         pres = self.player_head(h[:, :, :P, :]).reshape(x.shape[0], L, self.player_block)
         gres = self.global_head(h[:, :, P, :])
         residual = torch.cat([pres, gres], dim=-1)
-        value = self.value_head(h.mean(dim=2)).squeeze(-1)              # [B,L] P(CT win) logit
+        value = self.value_head(h.detach().mean(dim=2)).squeeze(-1)     # [B,L] P(CT win) logit
         out = {"residual": residual, "value": value}
         if self.dist:
             do = self.dist_head(h[:, :, :P, :])                         # [B,L,P,C*3]
@@ -276,10 +281,13 @@ class WorldModelPlayers(nn.Module):
         use it unconditionally on any checkpoint."""
         if not self.dist:
             res = self.forward(x)
+            B, L_, _ = res.shape
+            res = res.clone()
+            players = res[..., :self.player_block].reshape(B, L_, self.n_players, self.ppd)
             if self.ppd > RAW_PPD:                       # freeze input-only derived dims
-                B, L_, _ = res.shape
-                res = res.clone()
-                res[..., :self.player_block].reshape(B, L_, self.n_players, self.ppd)[..., RAW_PPD:] = 0
+                players[..., RAW_PPD:] = 0
+            alive = x[..., :self.player_block].reshape(B, L_, self.n_players, self.ppd)[..., ALIVE_DIM] > 0.5
+            players[..., 0:2].masked_fill_(~alive.unsqueeze(-1), 0)
             return res
         h, L = self._grid(x)
         P = self.n_players
@@ -297,6 +305,8 @@ class WorldModelPlayers(nn.Module):
         off_c = off.gather(-2, cls[..., None, None].expand(*cls.shape, 1, 2)).squeeze(-2)
         pres = pres.clone()
         pres[..., 0:2] = self.centers[cls] + off_c
+        alive = x[..., :self.player_block].reshape(x.shape[0], L, P, self.ppd)[..., ALIVE_DIM] > 0.5
+        pres[..., 0:2].masked_fill_(~alive.unsqueeze(-1), 0)
         if self.ppd > RAW_PPD:                           # freeze input-only derived dims
             pres[..., RAW_PPD:] = 0
         pres = pres.reshape(x.shape[0], L, self.player_block)
@@ -329,6 +339,71 @@ def auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
     if npos == 0 or nneg == 0:
         return float("nan")
     return (ranks[pos].sum().item() - npos * (npos + 1) / 2) / (npos * nneg)
+
+
+def scheduled_sampling_probability(step: int, p_max: float = 0.5) -> float:
+    """Locked Knob-6 ramp: off through step 2k, linear to p_max at 15k."""
+    if step < 2000:
+        return 0.0
+    if step >= 15000:
+        return p_max
+    return p_max * (step - 2000) / (15000 - 2000)
+
+
+@torch.no_grad()
+def sample_and_swap_context(
+    model,
+    x: torch.Tensor,
+    horizon: int,
+    probability: float,
+    *,
+    swap_generator: torch.Generator,
+    decode_generator: torch.Generator,
+    use_amp: bool = False,
+) -> tuple[torch.Tensor, int]:
+    """Replace context frame i with the sampled prediction made at i-horizon.
+
+    The first ``horizon`` positions remain real. Sampling is whole-frame and
+    independently Bernoulli per batch/position. Returned frames are detached;
+    the subsequent teacher-forced pass is the only differentiable forward.
+    """
+    if probability <= 0.0:
+        return x, 0
+    if not 0.0 <= probability <= 1.0:
+        raise ValueError(f"scheduled-sampling probability must be in [0,1], got {probability}")
+    if horizon <= 0 or horizon >= x.shape[1]:
+        raise ValueError(f"horizon must be in [1,{x.shape[1] - 1}], got {horizon}")
+
+    with torch.autocast(device_type=x.device.type, enabled=use_amp):
+        sampled_residual = model.gen_residual(
+            x,
+            sample=True,
+            temperature=1.0,
+            generator=decode_generator,
+        )
+    generated = x[:, :-horizon] + sampled_residual[:, :-horizon]
+    swap = torch.rand(
+        generated.shape[:2],
+        device=x.device,
+        generator=swap_generator,
+    ) < probability
+    x_ss = x.clone()
+    x_ss[:, horizon:] = torch.where(swap.unsqueeze(-1), generated, x[:, horizon:])
+    return x_ss, int(swap.sum().item())
+
+
+def dist_loss_mask(
+    x_real: torch.Tensor,
+    y_real: torch.Tensor,
+    per_player_dim: int,
+    freeze_col: int,
+) -> torch.Tensor:
+    """E1 mask: alive(t) AND alive(t+k) AND NOT freeze(t)."""
+    shape = (*x_real.shape[:2], N_PLAYERS, per_player_dim)
+    alive_t = x_real[..., : N_PLAYERS * per_player_dim].reshape(shape)[..., ALIVE_DIM] > 0.5
+    alive_tk = y_real[..., : N_PLAYERS * per_player_dim].reshape(shape)[..., ALIVE_DIM] > 0.5
+    live_t = x_real[..., freeze_col] < 0.5
+    return alive_t & alive_tk & live_t.unsqueeze(-1)
 
 
 @torch.no_grad()
@@ -378,8 +453,8 @@ def main():
     ap.add_argument("--warmup", type=int, default=500)
     ap.add_argument("--crops-per-round", type=int, default=32)
     ap.add_argument("--eval-every", type=int, default=500)
-    ap.add_argument("--value-weight", type=float, default=0.3,
-                    help="weight of the value (P CT-win) loss co-trained with next-state")
+    ap.add_argument("--ss-pmax", type=float, default=0.5,
+                    help="scheduled-sampling maximum probability (0 = teacher-forcing control)")
     ap.add_argument("--maps", default="",
                     help="comma-sep map_name filter, e.g. de_mirage,de_dust2,de_inferno (empty=all)")
     ap.add_argument("--cv-residual", action="store_true",
@@ -396,8 +471,14 @@ def main():
     ap.add_argument("--out", default="outputs/world_model")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--smoke", action="store_true", help="tiny CPU sanity run on val.pt")
+    ap.add_argument("--no-clean", action="store_true",
+                    help="fixture-only: disable corpus defect exclusions (prints a loud warning)")
     args = ap.parse_args()
     assert not (args.dist_head and args.cv_residual), "--dist-head and --cv-residual are mutually exclusive"
+    assert 0.0 <= args.ss_pmax <= 1.0, "--ss-pmax must be in [0,1]"
+    assert not (args.cv_residual and args.ss_pmax > 0), (
+        "scheduled sampling is pinned for the dist-head recipe; pass --ss-pmax 0 with --cv-residual"
+    )
 
     if args.smoke:
         args.d_model, args.layers, args.heads = 128, 2, 4
@@ -415,8 +496,29 @@ def main():
     print(f"loading {args.train_pt} ...")
     # load_corpus = mmap + clean_blob + --maps keep-set; tensors stay file-backed.
     # In --smoke, train_pt == val_pt: two mmap loads of one file cost ~nothing.
-    train_blob = load_corpus(args.train_pt, maps=args.maps or None, tag="train")
-    val_blob = load_corpus(args.val_pt, maps=args.maps or None, tag="val")
+    train_blob = load_corpus(
+        args.train_pt,
+        maps=args.maps or None,
+        tag="train",
+        clean=not args.no_clean,
+    )
+    val_blob = load_corpus(
+        args.val_pt,
+        maps=args.maps or None,
+        tag="val",
+        clean=not args.no_clean,
+    )
+    requested_maps = set(args.maps.split(",")) if args.maps else set()
+    if requested_maps == CANONICAL_MAPS and not args.smoke and not args.no_clean:
+        assert len(train_blob["metas"]) == CANONICAL_TRAIN_ROUNDS, (
+            f"canonical train filter kept {len(train_blob['metas'])} rounds; "
+            f"expected {CANONICAL_TRAIN_ROUNDS}"
+        )
+        assert len(val_blob["metas"]) == CANONICAL_VAL_ROUNDS, (
+            f"canonical val filter kept {len(val_blob['metas'])} rounds; "
+            f"expected {CANONICAL_VAL_ROUNDS}"
+        )
+        assert not any(m.get("map_name") == "de_overpass" for m in train_blob["metas"])
     fdim = train_blob["feature_dim"]
     assert fdim == val_blob["feature_dim"]
     ppd = train_blob.get("per_player_dim", 56)
@@ -433,8 +535,10 @@ def main():
     va_ds = RoundWindows(val_blob["tensors"], val_blob["metas"], args.window, args.horizon, args.crops_per_round)
     print(f"feature_dim={fdim} per_player={ppd}  horizon={args.horizon} ({args.horizon*125}ms)  "
           f"window={args.window}  train_rounds={len(tr_ds.rounds)} (dropped {tr_ds.dropped}) "
-          f"val_rounds={len(va_ds.rounds)}  value_weight={args.value_weight}")
+          f"val_rounds={len(va_ds.rounds)}  detached_value_weight=1.0  ss_pmax={args.ss_pmax}")
     dl_gen = torch.Generator(); dl_gen.manual_seed(args.seed)
+    ss_swap_gen = torch.Generator(device=dev); ss_swap_gen.manual_seed(args.seed + 1_000_003)
+    ss_decode_gen = torch.Generator(device=dev); ss_decode_gen.manual_seed(args.seed + 2_000_003)
     def _winit(wid):
         ws = torch.initial_seed() % 2**32
         random.seed(ws); np.random.seed(ws)
@@ -484,8 +588,13 @@ def main():
 
     out = Path(args.out) / f"h{args.horizon}_mt"
     out.mkdir(parents=True, exist_ok=True)
-    best_v, best_ns = float("-inf"), float("inf")   # value peaks early, position late ->
-                                                    # save BOTH (best.pt = value, best_ns.pt = next-state)
+    retired_best = out / "best.pt"
+    if retired_best.exists():
+        raise FileExistsError(
+            f"retired value-selected checkpoint exists at {retired_best}; "
+            "archive it or choose a fresh --out directory"
+        )
+    best_ns = float("inf")
     step = 0
     t0 = time.time()
     data_iter = iter(tr_ld)
@@ -496,12 +605,24 @@ def main():
             data_iter = iter(tr_ld)
             x, y, x_prev, won = next(data_iter)
         x, y, x_prev, won = x.to(dev), y.to(dev), x_prev.to(dev), won.to(dev)
+        x_real = x
+        ss_p = scheduled_sampling_probability(step, args.ss_pmax)
+        x, ss_swaps = sample_and_swap_context(
+            model,
+            x_real,
+            args.horizon,
+            ss_p,
+            swap_generator=ss_swap_gen,
+            decode_generator=ss_decode_gen,
+            use_amp=use_amp,
+        )
         true_res = y - x
         # cv_base = const-velocity residual; in --cv-residual the head learns the
         # correction on top of it (pred_residual = cv_base + head), so straight
         # frames cost ~0 and the head spends capacity only on tactics.
         cv_base = (args.horizon * (x - x_prev)) if args.cv_residual else 0.0
-        live_m = x[..., freeze_col] < 0.5     # [B,L] D3: freeze frames are immobile — out of ns losses
+        # Every supervision mask reads real frames, never generated SS context.
+        live_m = x_real[..., freeze_col] < 0.5  # [B,L] D3: freeze frames are out of ns losses
         with torch.autocast(device_type=dev.type, enabled=use_amp):
             o = model.heads(x)
             pred_res = o["residual"] + cv_base
@@ -512,7 +633,7 @@ def main():
             if args.dist_head:
                 d_true = true_res[..., xy_idx]                           # [B,L,P,2]
                 cls = dist_class(d_true)                                 # [B,L,P]
-                pm = live_m.unsqueeze(-1).expand_as(cls)                 # [B,L,P]
+                pm = dist_loss_mask(x_real, y, ppd, freeze_col)          # [B,L,P]
                 if pm.any():
                     ce_loss = F.cross_entropy(o["dist_logits"][pm].float(), cls[pm])
                     off = o["dist_off"].gather(
@@ -526,10 +647,10 @@ def main():
             v_tgt = won.unsqueeze(1).expand_as(o["value"])
             # O3: end-phase frames trivially label the winner — out of value loss.
             # Freeze frames stay in (freeze-time value is legitimate).
-            keep_v = x[..., end_col] < 0.5
+            keep_v = x_real[..., end_col] < 0.5
             v_all = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt, reduction="none")
             v_loss = (v_all * keep_v).sum() / keep_v.sum().clamp(min=1)
-            loss = ns_loss + args.value_weight * v_loss
+            loss = ns_loss + v_loss
         opt.zero_grad(set_to_none=True)
         scaler.scale(loss).backward()
         scaler.unscale_(opt)
@@ -548,17 +669,19 @@ def main():
                     if args.dist_head else "")
             print(f"step {step:6d}  ns {ns_loss.item():.4f} {comp}v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
-                  f"VALUE_AUC {vauc:.3f}  lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
+                  f"VALUE_AUC {vauc:.3f}  ss_p {ss_p:.3f} swaps {ss_swaps}  "
+                  f"lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
             meta = {"model": model.state_dict(), "args": vars(args), "seed": args.seed,
-                    "feature_dim": fdim, "per_player_dim": ppd,
-                    "val_ns": m, "value_auc": vauc, "step": step}
-            if not math.isnan(vauc) and vauc > best_v:
-                best_v = vauc; torch.save(meta, out / "best.pt")           # best VALUE
+                     "feature_dim": fdim, "per_player_dim": ppd,
+                     "val_ns": m, "value_auc": vauc, "step": step}
             if m < best_ns:
                 best_ns = m; torch.save(meta, out / "best_ns.pt")          # best NEXT-STATE
-    print(f"done. best value_AUC {best_v:.3f} (best.pt)  best val_ns {best_ns:.4f} (best_ns.pt)")
-    print("GATE: this VALUE_AUC must beat the raw-feature / v2-latent baseline "
-          "(run scripts/value_probe.py) — that's the test the v2 latent FAILED.")
+            if step % 2500 == 0:
+                torch.save(meta, out / f"snapshot_{step:06d}.pt")
+            if step == args.steps:
+                torch.save(meta, out / "last.pt")
+    print(f"done. best val_ns {best_ns:.4f} (best_ns.pt); final checkpoint last.pt")
+    print("VALUE_AUC is detached monitoring only; checkpoint selection uses val_ns exclusively.")
 
 
 if __name__ == "__main__":

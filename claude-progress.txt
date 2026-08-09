@@ -123,27 +123,23 @@
 #     defaults flip. corpus_manifest.p2_status remains complete=false/canonical=false.
 # [2] FIT DIST EDGES (CPU, minutes, QUIET MACHINE — loads 8.7GB train blob).
 #     .venv/bin/python scripts/fit_dist_edges.py  on the P2 train_v2m blob,
-#     5-map filtered (preflight B4: script needs the --maps filter first).
+#     5-map filtered. STATE 2026-08-09: argparse + canonical map default +
+#     3,573-round/OOD guards landed and are test-covered; numeric fit still waits
+#     for train_v2m_p2 on the quiet machine.
 #     Update DIST_EDGES_U in train_world_model.py from output.
 #     DONE-CHECK: new edges committed + per-map quantiles in datasheet.
 #     Provenance: preflight §5 (B4).
-# [3] TRAINER COMPLETION (code, no GPU): (a) DETACH value head (stop-grad,
-#     Knob 5 — NOT yet implemented; end-phase mask is), (b) scheduled sampling
-#     = one-step sample-and-swap w/ p-ramp (Knob 6 — NOT yet implemented),
-#     (c) tests/test_no_value_leak.py — PORTED 2026-07-18, verified RED against
-#     the current attached head (flips green when (a) lands).
-#     Before coding (a)/(b), read the KNOB 5d MASK ERRATA + stale-anchor note
-#     in knobs4-7 §R2-ERRATA (the locked checklist formula verbatim would
-#     re-admit 17.5% freeze frames into the dist CE); add a fixture-scoped
-#     --no-clean flag (loud print) so the 7a RE fixture can load old blobs
-#     (superseded generations live in data/processed/tick_sequences/_superseded/,
-#     reachable via explicit path only).
+# [3] TRAINER COMPLETION (code, no GPU): DONE 2026-08-09. Detached value head;
+#     fixed BCE weight 1.0; one-step sample-and-swap with locked p-ramp and named
+#     RNGs; real-frame E1 mask (alive(t) AND alive(t+k) AND NOT freeze(t));
+#     dead-player xy decode zeroing; val-ns-only checkpoint selection; snapshots
+#     + last.pt; fixture-scoped loud --no-clean; pinned v2/v3 + SS-off commands.
+#     test_no_value_leak is green and a forced-p>0 SS path is test-covered.
 #     Gradient-based on purpose: detachment makes the trunk
 #     gradient-identical to value_weight=0, so keeping the head + proving it
 #     with the gradient rail beats banning the head.
-#     STATE: evaluate() CUDA device bug FIXED (won indexed via CPU mask —
-#     R2-B1, fixed 2026-07-26).
-#     DONE-CHECK: test passes; SS smoke shows p>0 path executing.
+#     STATE: CPU suite 40 passed / 1 skipped, ruff green. evaluate() CUDA device
+#     bug remains fixed (won indexed via CPU mask — R2-B1, fixed 2026-07-26).
 #     Provenance: preflight §5; R2-B1 fix + --no-clean = deep-sweep-r2 §7
 #     (2026-07-26); mask errata = knobs4-7 §R2-ERRATA.
 # [3b] CUDA SMOKE GATE (NEW, deep-sweep-r2): 30 steps on the 4090 incl. at
