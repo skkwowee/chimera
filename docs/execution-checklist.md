@@ -56,7 +56,7 @@ deep-sweep-r2, "rb" = claude-progress runbook.
 - [x] 3.0b [R2-B1] evaluate() CUDA device fix (`won` indexed via CPU mask, train_world_model.py:357) → repro'd, fixed, suite green 23p/1s/1xf. *(r2 §7 [3] first add; commit b421973)* — done 2026-07-26
 - [x] 3.1 Implement detach/SS per locked recipe **applying errata E1's mask, not the verbatim checklist formula**; + fixture-scoped `--no-clean` flag (loud print) so the 7a RE fixture can load old blobs → `test_no_value_leak` now passes, E1/dead-decode rails are covered, and a forced-p>0 sample-and-swap smoke passes; full suite 40p/1s + ruff green. *(pf §5 3.1 + r2 §7 [3] merged; rb [3])* — done 2026-08-09
 - [x] 3.2 Write pinned canonical v2 + v3 commands (blobs, `--maps`, `--dist-head`, seed, `--ss-pmax`) into retrain-recipe.md → exact runnable commands and the SS-off delta are in-repo, explicitly gated on P2 train blobs + fitted distance constants. *(pf §5 3.2 = pf §4.2)* — done 2026-08-09
-- [ ] 3b NEW GATE: 30-step CUDA smoke on the 4090 incl. ≥1 evaluate() pass, BEFORE any pilot/pod run (CI is CPU-only, cannot see device bugs) → **DONE-CHECK: 30-step CUDA run completes incl. eval, loss finite**. *(r2 §7 [3b]; rb [3b])*
+- [x] 3b NEW GATE: 30-step CUDA smoke on the 4090 incl. ≥1 evaluate() pass, BEFORE any pilot/pod run (CI is CPU-only, cannot see device bugs) → 30/30 steps completed on the local RTX 4090 with dist head, evals at steps 15/30, finite val loss (0.0200 → 0.0124), and only `best_ns.pt`/`last.pt` emitted. Smoke metrics are device validation, not quality evidence. *(r2 §7 [3b]; rb [3b])* — done 2026-08-09
 
 ## Phase 4 — Runbook [4]: coverage harness
 
