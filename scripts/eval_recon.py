@@ -35,7 +35,6 @@ from train_bridge import SFTPairs, build_qwen_backend, build_stub_backend, make_
 from src.bridge import LanguageBridge, NLADecoder, fraction_variance_explained, recon_loss
 from src.bridge.featurizer import N_TOKENS
 from src.bridge.wm_interface import load_world_model
-from src.evaluation.metrics import binary_auc
 
 
 @torch.no_grad()
@@ -60,7 +59,12 @@ def generate_all(bridge, llm, tok, ds, dev, max_new, ablate):
 
 
 def auc(scores, labels):
-    return binary_auc(scores.detach().float().cpu().numpy(), labels.detach().cpu().numpy())
+    order = torch.argsort(scores); ranks = torch.empty_like(order, dtype=torch.float)
+    ranks[order] = torch.arange(1, len(scores) + 1, dtype=torch.float)
+    pos = labels > 0.5; npos = int(pos.sum()); nneg = len(labels) - npos
+    if npos == 0 or nneg == 0:
+        return float("nan")
+    return (ranks[pos].sum().item() - npos * (npos + 1) / 2) / (npos * nneg)
 
 
 def main():

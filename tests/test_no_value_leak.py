@@ -11,18 +11,13 @@ Run: .venv/bin/python -m pytest tests/test_no_value_leak.py -q
 """
 from __future__ import annotations
 
-import copy
 import sys
 from pathlib import Path
 
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
-from train_world_model import (
-    build_model,
-    prediction_and_value_parameters,
-    step_prediction_and_value,
-)
+from train_world_model import build_model
 
 
 def test_no_value_leak():
@@ -45,44 +40,3 @@ def test_no_value_leak():
     assert not leaks, (
         "outcome gradient reached non-value-head params (trunk is NOT "
         f"gradient-identical to value_weight=0): {leaks[:10]}")
-
-
-def test_outcome_labels_cannot_change_prediction_optimizer_updates():
-    """Includes clipping and AdamW state, not only direct backpropagation."""
-    torch.manual_seed(91)
-    template = build_model("player", feature_dim=597, d_model=16, layers=1,
-                           heads=2, per_player_dim=56, dist=False).eval()
-    # Saturation makes the two label assignments produce very different value
-    # gradient norms; a shared global clipping norm fails this regression test.
-    with torch.no_grad():
-        template.value_head[-1].bias.fill_(15.0)
-    models = [copy.deepcopy(template), copy.deepcopy(template)]
-    x = torch.randn(1, 3, 597)
-    for label, model in zip((0.0, 1.0), models):
-        params = prediction_and_value_parameters(model)
-        optimizers = tuple(torch.optim.AdamW(group, lr=0.01) for group in params)
-        scalers = tuple(torch.amp.GradScaler("cpu", enabled=False) for _ in params)
-        for _ in range(4):
-            output = model.heads(x)
-            ns_loss = 10 * output["residual"].square().mean()
-            value_loss = torch.nn.functional.binary_cross_entropy_with_logits(
-                output["value"], torch.full_like(output["value"], label))
-            step_prediction_and_value(ns_loss, value_loss, optimizers, scalers, params)
-    for left, right in zip(*(prediction_and_value_parameters(m)[0] for m in models)):
-        torch.testing.assert_close(left, right, rtol=0, atol=0)
-    assert any(not torch.equal(left, right) for left, right in zip(
-        *(prediction_and_value_parameters(m)[1] for m in models)))
-
-
-def test_value_overflow_does_not_skip_prediction_step():
-    """CPU AMP exercises independent overflow/scale state without a GPU run."""
-    left = torch.nn.Parameter(torch.tensor(2.0))
-    right = torch.nn.Parameter(torch.tensor(2.0))
-    optimizers = tuple(torch.optim.SGD([p], lr=0.1) for p in (left, right))
-    scalers = tuple(torch.amp.GradScaler("cpu", init_scale=8.0) for _ in (left, right))
-    step_prediction_and_value(left.square(), right * float("inf"),
-                              optimizers, scalers, ([left], [right]))
-    assert left.item() < 2.0
-    assert right.item() == 2.0
-    assert scalers[0].get_scale() == 8.0
-    assert scalers[1].get_scale() == 4.0

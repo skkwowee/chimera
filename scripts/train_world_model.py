@@ -41,8 +41,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import hashlib
-import json
 import math
 import random
 import sys
@@ -56,10 +54,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _corpus import load_corpus
-
-from src.evaluation.metrics import binary_auc
 
 DATA_DIR = Path("data/processed/tick_sequences")
 CANONICAL_MAPS = frozenset(
@@ -80,8 +75,7 @@ class RoundWindows(Dataset):
     const-velocity baseline).
     """
 
-    def __init__(self, tensors, metas, window: int, horizon: int, crops_per_round: int,
-                 *, fixed_seed: int | None = None):
+    def __init__(self, tensors, metas, window: int, horizon: int, crops_per_round: int):
         self.window = window
         self.horizon = horizon
         need = window + horizon + 1
@@ -91,32 +85,6 @@ class RoundWindows(Dataset):
         self.won = [1.0 if (m.get("winner") == "ct") else 0.0 for _, m in keep]
         self.crops_per_round = crops_per_round
         self.dropped = len(tensors) - len(self.rounds)
-        self.fixed_seed = fixed_seed
-        self.starts = None
-        if fixed_seed is not None:
-            # Dedicated generator: construction and access never consume the
-            # training RNG, regardless of worker count or evaluation frequency.
-            generator = torch.Generator().manual_seed(fixed_seed)
-            self.starts = tuple(
-                1 + int(torch.randint(
-                    self.rounds[i % len(self.rounds)].shape[0] - window - horizon,
-                    (1,), generator=generator).item())
-                for i in range(len(self))
-            )
-
-    def crop_policy(self):
-        """Checkpoint provenance for the fixed, input-order-specific crop plan."""
-        return {
-            "version": 1,
-            "policy": "fixed_per_index" if self.starts is not None else "random_per_access",
-            "seed": self.fixed_seed,
-            "window": self.window,
-            "horizon": self.horizon,
-            "crops_per_round": self.crops_per_round,
-            "round_lengths": [len(r) for r in self.rounds],
-            "starts_sha256": None if self.starts is None else hashlib.sha256(
-                json.dumps(self.starts, separators=(",", ":")).encode()).hexdigest(),
-        }
 
     def __len__(self):
         return len(self.rounds) * self.crops_per_round
@@ -130,37 +98,11 @@ class RoundWindows(Dataset):
         L, k = self.window, self.horizon
         hi = r.shape[0] - (L + k)
         # start >= 1 so the const-velocity baseline can read crop[i-1] at i=0
-        start = (self.starts[idx] if self.starts is not None else
-                 1 + int(torch.randint(0, hi, (1,)).item()))
+        start = 1 + int(torch.randint(0, hi, (1,)).item()) if hi > 0 else 1
         x = r[start : start + L]                     # [L, F]
         y = r[start + k : start + k + L]             # [L, F]  (frame t+k)
         x_prev = r[start - 1 : start - 1 + L]        # [L, F]  (for const-velocity)
         return x, y, x_prev, torch.tensor(self.won[ri], dtype=torch.float32)
-
-
-def prediction_and_value_parameters(model):
-    """Disjoint optimizer/clip/scaler domains preserve the detached-head contract."""
-    value = list(model.value_head.parameters())
-    value_ids = {id(p) for p in value}
-    prediction = [p for p in model.parameters() if id(p) not in value_ids]
-    return prediction, value
-
-
-def step_prediction_and_value(ns_loss, value_loss, optimizers, scalers, parameters):
-    """Independent AMP overflow decisions, clipping and optimizer state per domain.
-
-    The value head must consume a detached latent. A shared scaler or clipping
-    norm would let outcome labels alter prediction updates despite that detach.
-    """
-    for optimizer in optimizers:
-        optimizer.zero_grad(set_to_none=True)
-    for loss, scaler in zip((ns_loss, value_loss), scalers):
-        scaler.scale(loss).backward()
-    for optimizer, scaler, params in zip(optimizers, scalers, parameters):
-        scaler.unscale_(optimizer)
-        nn.utils.clip_grad_norm_(params, 1.0)
-        scaler.step(optimizer)
-        scaler.update()
 
 
 # ----------------------------------------------------------------------- model
@@ -388,8 +330,15 @@ def huber(pred, target):
 
 
 def auc(scores: torch.Tensor, labels: torch.Tensor) -> float:
-    """Shared tie-aware AUC; safe for detached CPU or CUDA monitor tensors."""
-    return binary_auc(scores.detach().float().cpu().numpy(), labels.detach().cpu().numpy())
+    """Rank-based AUC (Mann-Whitney)."""
+    order = torch.argsort(scores)
+    ranks = torch.empty_like(order, dtype=torch.float)
+    ranks[order] = torch.arange(1, len(scores) + 1, dtype=torch.float)
+    pos = labels > 0.5
+    npos = int(pos.sum().item()); nneg = len(labels) - npos
+    if npos == 0 or nneg == 0:
+        return float("nan")
+    return (ranks[pos].sum().item() - npos * (npos + 1) / 2) / (npos * nneg)
 
 
 def scheduled_sampling_probability(step: int, p_max: float = 0.5) -> float:
@@ -517,8 +466,6 @@ def main():
                          "(stationary + 6 rings x 16 dirs) + per-class refine offset. Fixes "
                          "regression mode-averaging (stationary jitter, between-mode means).")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--validation-seed", type=int, default=0,
-                    help="fixed crop plan seed, independent of model/training seed")
     ap.add_argument("--train-pt", default=str(DATA_DIR / "train_v3m_p1.pt"))
     ap.add_argument("--val-pt", default=str(DATA_DIR / "val_v3m_p1.pt"))
     ap.add_argument("--out", default="outputs/world_model")
@@ -585,13 +532,11 @@ def main():
     assert _ph.max() <= 1.0 and ((_ph.sum(1) - 1.0).abs() < 1e-4).all(), "phase one-hot layout mismatch"
 
     tr_ds = RoundWindows(train_blob["tensors"], train_blob["metas"], args.window, args.horizon, args.crops_per_round)
-    va_ds = RoundWindows(val_blob["tensors"], val_blob["metas"], args.window,
-                         args.horizon, args.crops_per_round, fixed_seed=args.validation_seed)
+    va_ds = RoundWindows(val_blob["tensors"], val_blob["metas"], args.window, args.horizon, args.crops_per_round)
     print(f"feature_dim={fdim} per_player={ppd}  horizon={args.horizon} ({args.horizon*125}ms)  "
           f"window={args.window}  train_rounds={len(tr_ds.rounds)} (dropped {tr_ds.dropped}) "
           f"val_rounds={len(va_ds.rounds)}  detached_value_weight=1.0  ss_pmax={args.ss_pmax}")
     dl_gen = torch.Generator(); dl_gen.manual_seed(args.seed)
-    val_dl_gen = torch.Generator().manual_seed(args.validation_seed)
     ss_swap_gen = torch.Generator(device=dev); ss_swap_gen.manual_seed(args.seed + 1_000_003)
     ss_decode_gen = torch.Generator(device=dev); ss_decode_gen.manual_seed(args.seed + 2_000_003)
     def _winit(wid):
@@ -602,7 +547,7 @@ def main():
                        generator=dl_gen, worker_init_fn=_winit)
     va_ld = DataLoader(va_ds, batch_size=args.batch, shuffle=False,
                        num_workers=0 if args.smoke else 2,
-                       generator=val_dl_gen, worker_init_fn=_winit)
+                       generator=dl_gen, worker_init_fn=_winit)
 
     model = build_model(args.arch, fdim, args.d_model, args.layers, args.heads,
                         per_player_dim=ppd, dist=args.dist_head).to(dev)
@@ -631,17 +576,15 @@ def main():
     n_params = sum(p.numel() for p in model.parameters())
     print(f"arch={args.arch}  model params: {n_params/1e6:.1f}M  device={dev}")
 
-    parameter_groups = prediction_and_value_parameters(model)
-    optimizers = tuple(torch.optim.AdamW(params, lr=args.lr, weight_decay=0.01)
-                       for params in parameter_groups)
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     def lr_at(step):
         if step < args.warmup:
             return step / max(1, args.warmup)
         prog = (step - args.warmup) / max(1, args.steps - args.warmup)
         return 0.5 * (1 + math.cos(math.pi * min(1.0, prog)))
-    schedulers = tuple(torch.optim.lr_scheduler.LambdaLR(opt, lr_at) for opt in optimizers)
+    sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_at)
     use_amp = dev.type == "cuda"
-    scalers = tuple(torch.amp.GradScaler("cuda", enabled=use_amp) for _ in optimizers)
+    scaler = torch.cuda.amp.GradScaler(enabled=use_amp)
 
     out = Path(args.out) / f"h{args.horizon}_mt"
     out.mkdir(parents=True, exist_ok=True)
@@ -707,9 +650,14 @@ def main():
             keep_v = x_real[..., end_col] < 0.5
             v_all = F.binary_cross_entropy_with_logits(o["value"].float(), v_tgt, reduction="none")
             v_loss = (v_all * keep_v).sum() / keep_v.sum().clamp(min=1)
-        step_prediction_and_value(ns_loss, v_loss, optimizers, scalers, parameter_groups)
-        for scheduler in schedulers:
-            scheduler.step()
+            loss = ns_loss + v_loss
+        opt.zero_grad(set_to_none=True)
+        scaler.scale(loss).backward()
+        scaler.unscale_(opt)
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.step(opt)
+        scaler.update()
+        sched.step()
         step += 1
 
         if step % args.eval_every == 0 or step == args.steps:
@@ -722,12 +670,10 @@ def main():
             print(f"step {step:6d}  ns {ns_loss.item():.4f} {comp}v {v_loss.item():.3f}  "
                   f"val_ns {m:.4f} [copy {c:.4f} cv {cv:.4f}] skill {skill:+.1f}%  "
                   f"VALUE_AUC {vauc:.3f}  ss_p {ss_p:.3f} swaps {ss_swaps}  "
-                  f"lr {schedulers[0].get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
+                  f"lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
             meta = {"model": model.state_dict(), "args": vars(args), "seed": args.seed,
                      "feature_dim": fdim, "per_player_dim": ppd,
-                     "val_ns": m, "value_auc": vauc, "step": step,
-                     "validation_crop_policy": va_ds.crop_policy(),
-                     "optimization_domains": "independent_prediction_value_v1"}
+                     "val_ns": m, "value_auc": vauc, "step": step}
             if m < best_ns:
                 best_ns = m; torch.save(meta, out / "best_ns.pt")          # best NEXT-STATE
             if step % 2500 == 0:

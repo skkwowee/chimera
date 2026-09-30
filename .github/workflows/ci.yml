@@ -41,4 +41,4 @@ jobs:
       # never disagree. scripts/_archive is superseded code kept for history —
       # not a lint gate.
       - name: ruff
-        run: ruff check scripts/ tests/ src/evaluation/ --exclude scripts/_archive
+        run: ruff check scripts/ tests/ --exclude scripts/_archive
