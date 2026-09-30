@@ -6,6 +6,9 @@ This README is the repo front door: the thesis, the pipeline at a glance, honest
 current status, and pointers into `docs/`. For run state and what to do next,
 read the ordered runbook at the top of `claude-progress.txt`.
 
+For the reproducible forecast runner and its deliberately limited scope, see
+[`docs/evaluation-system.md`](docs/evaluation-system.md).
+
 ## Thesis
 
 Chimera learns CS2 by predicting the future. A causal transformer is trained
