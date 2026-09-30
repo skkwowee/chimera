@@ -29,7 +29,7 @@ jobs:
       - name: Install CPU torch + test deps
         run: |
           uv pip install --system torch --index-url https://download.pytorch.org/whl/cpu
-          uv pip install --system numpy pytest ruff==0.15.0
+          uv pip install --system numpy polars pytest ruff==0.15.0
 
       - name: pytest
         run: python -m pytest tests/ -q
