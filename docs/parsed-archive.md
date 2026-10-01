@@ -100,3 +100,72 @@ Recommendation: preserve P2 as the historical lane and prepare a separately
 versioned fresh-data candidate. Do not mark P2 complete or mix schema generations
 just to make a training command run. Integration fixes and candidate validation
 are the next checkpoint.
+
+### Inventory and handoff result
+
+The HF tree contains 551 raw demos. Its 506 manifest references resolve to 498
+unique paths: eight flat paths are claimed by multiple match IDs, and 53 raw
+files are unlisted. Five reused paths cross the frozen train/validation split
+(four match pairs: 2394156/2393226, 2394174/2393350, 2394148/2391109,
+2393042/2394222). This proves ambiguous **re-bake source ownership**, not that
+the already-baked tensors are identical; do not silently relabel or delete them.
+All 70 remote schema JSONs report `feature_schema_v2`, 597 dimensions, nominal
+8 Hz. The manifest's missing versions are not evidence of v2.2 compatibility.
+All 81 local raw headers are Source 2. The P2 v2 validation blob has 770 rounds
+and 14 match IDs, but no exact raw-tick vectors or raw-demo hashes in round meta.
+
+Checkpoint `176e1e9` (Chimera) and `9a7366f` (pipeline) close the handoff seams:
+the CLI requires one match ID, rejects demo-level splitting and nonempty output
+directories, and requires verified parse manifests. Unsupported maps are logged
+and excluded; an all-excluded build fails. Round metadata keeps match/source
+identity. Script hashes survive sandbox copies. The uploader refuses unreadable,
+empty or identity/tick-misaligned tensor bundles. Training checks semantic schema,
+cadence, match overlap and available raw hashes; checkpoints stamp their source
+schema and forecast evaluation rejects schema mismatches. These are compatibility
+guards, not changed model architecture, losses or canonical split assignments.
+
+The local-only integration adapter exercised the real pipeline using four raw
+demos and a filesystem upload sink, **without any HF writes**. It preserved 44
+archive files and produced 33 supported-map rounds / 33,251 frames (80 MB).
+`--from-parsed` replay passed; a separate rebuild produced identical tensors,
+round metadata, event labels and event times on all 33 rounds.
+
+A historical training-side source (`local-gamerlegion-vs-vitality`, one Mirage
+demo) was reparsed separately: 12 accepted rounds / 9,525 frames (23 MB).
+That candidate and the fresh 33-round candidate have disjoint match IDs and raw
+hashes and pass the actual `RoundWindows` loader. This two-group integration
+fixture is **not** a new canonical split or a generalization benchmark.
+
+The existing CPU smoke run completed 30 steps at k=4, with finite evaluations and
+schema-stamped checkpoints. Native-step forecast generation/scoring passed on 101
+anchors; repeating generation reproduced all saved arrays and provenance exactly.
+The smoke deliberately reuses its input as validation, runs only 30 steps, and
+does not reach scheduled sampling's ramp. Its metrics are not quality evidence.
+No GPU/pod, paid compute, mass download, canonical retrain or merge was performed.
+The split manifest and both P2 validation-file hashes still match the committed
+corpus manifest. Existing large training blobs were not loaded or modified.
+
+### Reproduction on this workspace
+
+Run from the Chimera checkout. Use fresh output directories when repeating builds;
+the local adapter is retained at `data/staging/readiness/run_pipeline_handoff.py`.
+It imports the companion pipeline checkout and redirects uploads to disk only.
+
+```bash
+../chimera-demo-pipeline/.venv/bin/python data/staging/readiness/run_pipeline_handoff.py data/staging/readiness/pipeline-pass-2
+.venv/bin/python scripts/build_tick_sequences.py --match-id 2398108 --demos-dir data/staging/readiness/pipeline-pass-1/parsed/2398108 --out-dir data/staging/readiness/replay-2
+OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 .venv/bin/python scripts/train_world_model.py --smoke --arch player --dist-head --horizon 4 --val-pt data/staging/readiness/pipeline-pass-1/tick_sequences/2398108/train.pt --out outputs/readiness-repeat --seed 0
+.venv/bin/python scripts/eval_forecasts.py run --checkpoint outputs/readiness-repeat/h4_mt/last.pt --corpus data/staging/readiness/pipeline-pass-1/tick_sequences/2398108/train.pt --out outputs/readiness-repeat/forecasts.npz --stride 256 --samples 4 --device cpu
+.venv/bin/python scripts/eval_forecasts.py score outputs/readiness-repeat/forecasts.npz
+```
+
+The trainer appends `h4_mt/` to `--out`; checkpoints are not at the bare output
+root. Existing local artifacts: `data/staging/readiness/pipeline-pass-1/`,
+`data/staging/readiness/legacy-train-candidate/`,
+`data/staging/readiness/replay-from-parsed/`, and
+`outputs/data-readiness-smoke-k4/`. These are ignored local data, not uploads.
+
+Next decision: use a separately versioned fresh corpus once ambiguous raw-source
+ownership is resolved. Decide freeze/pause treatment before recovering the 19
+excluded rounds; decide Cache/Anubis support before widening the map schema. Do
+not complete P2 by quietly substituting new-builder output: its semantics differ.
