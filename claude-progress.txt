@@ -1,5 +1,11 @@
 # Chimera — Session Progress
 
+# 2026-10-01: Fresh-data readiness is a SEPARATE, noncanonical v2.2 lane.
+# See docs/parsed-archive.md for the source inventory, pause-gap audit, verified
+# staged pipeline and smoke commands (Chimera PR #9 / pipeline PR #3).
+# P2 remains incomplete; do not substitute fresh-builder tensors for P2 or
+# change the frozen split. Raw-source ownership and pause/map policy remain open.
+
 # >>> WHY decisions were made (killed/kept/eval-traps/the Line in the Sand):
 # >>> see docs/decisions-ledger.md. THIS file tracks run STATE; that file
 # >>> tracks WHY. Add killed/refined ideas there, not here.

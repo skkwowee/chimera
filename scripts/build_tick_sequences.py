@@ -559,7 +559,7 @@ def build_round_tensor(
                pl.when((pl.col("side") == "ct") & (pl.col("health") > 0)).then(1).otherwise(0).sum().alias("ct_alive"),
            ]))
     lookup = pl.DataFrame({"tick": kept_ticks.astype(np.int64)})
-    aligned = lookup.join(agg, on="tick", how="left").fill_null(0)
+    aligned = lookup.join(agg, on="tick", how="left", validate="1:1", maintain_order="left").fill_null(0)
     t_money = aligned["t_money"].to_numpy().astype(np.float32)
     ct_money = aligned["ct_money"].to_numpy().astype(np.float32)
     t_equip = aligned["t_equip"].to_numpy().astype(np.float32)
