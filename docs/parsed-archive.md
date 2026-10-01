@@ -72,3 +72,31 @@ Only Inferno/Mirage are in the current map vocabulary (33 accepted rounds);
 Cache/Anubis were diagnostic builds, not training candidates. Three regression
 tests cover these fixes. The raw demos and all 117 archived rounds remain intact;
 no training blobs were replaced or uploaded.
+
+## Data-readiness audit checkpoints (2026-10-01)
+
+Read-only HF inventory at revision
+`69b9cbaafa70b400b1fbe7c371304f004af5e3d6`: 189 unique raw-match records
+reference 506 demo paths, all present. The 70 tensor-match records have neither
+schema versions nor archived parse bundles; all 179 referenced demo paths exist.
+Both newly downloaded match IDs are absent from HF. All 189 raw manifest dates
+are null, so this manifest alone cannot certify recency or tournament tier.
+No remote artifacts were changed.
+
+Locally, the old corpus has 81 raw demos and 81 parsed maps. The split manifest
+contains 92 groups (70 HF match IDs and 22 local team-pair groups). Both P2
+validation blobs exist; both P2 training blobs are absent. P2 remains explicitly
+`complete=false, canonical=false`. No large training blob was loaded.
+
+The 19 fresh-pilot gaps were checked directly with `DemoParser.parse_ticks`
+using every absent tick and the same game-state flags Awpy filters. All 34,727
+ticks exist with ten player rows each. Every tick is freeze time and waiting for
+resume: 18 gaps of 1,919 ticks are team timeouts, one gap of 185 ticks is a resume
+pause. This is intentional Awpy filtering, not damaged downloads. The builder's
+98-round result remains unchanged: retaining pauses, cropping freeze time or
+splitting sequences would be a separate sampling-policy decision.
+
+Recommendation: preserve P2 as the historical lane and prepare a separately
+versioned fresh-data candidate. Do not mark P2 complete or mix schema generations
+just to make a training command run. Integration fixes and candidate validation
+are the next checkpoint.
