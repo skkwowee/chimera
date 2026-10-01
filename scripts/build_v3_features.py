@@ -107,10 +107,8 @@ def compute_derived(t: np.ndarray, vc) -> np.ndarray:
     alive = pl[:, :, 13] > 0.5
     bx = g[:, 19] * 3000.0
     by = g[:, 20] * 3000.0
-    # Pre-plant, bomb_x/y are (0,0) — dist_to_bomb would be distance-to-origin.
-    # Gate on nonzero bomb pos (set only at plant, and no bombsite sits at the
-    # map origin); pre-plant frames get the 1.0 sentinel instead.
-    planted = (bx != 0.0) | (by != 0.0)
+    # Dropped bombs also have coordinates. Only explicit planted bits count.
+    planted = (g[:, 17] > 0.5) | (g[:, 18] > 0.5)
     out = np.zeros((T, NP_, DERIVED), dtype=np.float32)
     last_los = np.full(NP_, TIME_CAP, dtype=np.float32)   # frames since LOS
     T_idx, CT_idx = range(0, 5), range(5, 10)
@@ -243,11 +241,16 @@ def main():
             if not need:
                 break
             rb = torch.load(rp, map_location="cpu", weights_only=False, mmap=True)
+            if (rb.get("schema_version") != "feature_schema_v3.1"
+                    or rb.get("source_schema_version") != _BLOB.get("schema_version")):
+                raise ValueError("Cannot reuse v3 features from a different source/derived schema")
             hit = 0
             for j, m2 in enumerate(rb["metas"]):
                 i = need.pop((norm_stem(m2["demo_stem"]), m2["round_num"], m2["first_tick"], m2["n_ticks"]), None)
                 if i is None:
                     continue
+                if m2.get("raw_ticks") != _BLOB["metas"][i].get("raw_ticks"):
+                    raise ValueError("Cannot reuse v3 features from a different tick grid")
                 t = rb["tensors"][j]
                 assert t.shape == (_BLOB["tensors"][i].shape[0], exp_dim), \
                     (m2["demo_stem"], m2["round_num"], tuple(t.shape))
@@ -314,12 +317,14 @@ def main():
         save_blob = {"tensors": _BLOB["tensors"], "metas": _BLOB["metas"],
                      "feature_dim": exp_dim, "per_player_dim": PPD + DERIVED,
                      "downsample": _BLOB["downsample"],
-                     "schema_version": "feature_schema_v3"}
+                     "source_schema_version": _BLOB.get("schema_version"),
+                     "schema_version": "feature_schema_v3.1"}
     else:
         # legacy path: mutate the loaded blob in place (keeps event_* keys as before)
         _BLOB["feature_dim"] = exp_dim
         _BLOB["per_player_dim"] = PPD + DERIVED
-        _BLOB["schema_version"] = "feature_schema_v3"
+        _BLOB["source_schema_version"] = _BLOB.get("schema_version")
+        _BLOB["schema_version"] = "feature_schema_v3.1"
         save_blob = _BLOB
     torch.save(save_blob, out)
     print(f"saved {out}  feature_dim={exp_dim} per_player={PPD+DERIVED}", flush=True)
