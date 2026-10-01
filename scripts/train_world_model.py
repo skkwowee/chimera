@@ -54,7 +54,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _corpus import load_corpus
+from _corpus import load_corpus, validate_split_pair
 
 DATA_DIR = Path("data/processed/tick_sequences")
 CANONICAL_MAPS = frozenset(
@@ -508,6 +508,7 @@ def main():
         tag="val",
         clean=not args.no_clean,
     )
+    validate_split_pair(train_blob, val_blob, allow_overlap=args.smoke)
     requested_maps = set(args.maps.split(",")) if args.maps else set()
     if requested_maps == CANONICAL_MAPS and not args.smoke and not args.no_clean:
         assert len(train_blob["metas"]) == CANONICAL_TRAIN_ROUNDS, (
@@ -523,7 +524,7 @@ def main():
     assert fdim == val_blob["feature_dim"]
     ppd = train_blob.get("per_player_dim", 56)
 
-    # phase flags (build_tick_sequences.encode_global: global block starts at
+    # Phase flags: global block starts at
     # 10*ppd, map_onehot then phase_onehot = [freeze, live, post_plant, end])
     n_maps = len(train_blob.get("map_vocab", [None] * 7))
     freeze_col = N_PLAYERS * ppd + n_maps
@@ -673,6 +674,8 @@ def main():
                   f"lr {sched.get_last_lr()[0]:.2e}  {time.time()-t0:.0f}s")
             meta = {"model": model.state_dict(), "args": vars(args), "seed": args.seed,
                      "feature_dim": fdim, "per_player_dim": ppd,
+                     "schema_version": train_blob.get("schema_version"),
+                     "source_schema_version": train_blob.get("source_schema_version"),
                      "val_ns": m, "value_auc": vauc, "step": step}
             if m < best_ns:
                 best_ns = m; torch.save(meta, out / "best_ns.pt")          # best NEXT-STATE

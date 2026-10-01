@@ -18,13 +18,11 @@ Output:
                                 feature_schema_v1.json for one transition)
   data/processed/tick_sequences/manifest.json     per-round metadata for joins
 
-Train/val split is DEMO-LEVEL (per the design, avoids round-leakage). Default:
-20 demos train, 4 val (use --val-demos to override).
+Build ONE match per invocation. The train.pt filename is the per-match transport
+format, not a global split assignment. Pool/split by match downstream.
 
 Usage:
-    python scripts/build_tick_sequences.py
-    python scripts/build_tick_sequences.py --downsample 8 --val-demos 4
-    python scripts/build_tick_sequences.py --limit 2     # smoke test on 2 demos
+    python scripts/build_tick_sequences.py --match-id MATCH_ID --demos-dir PARSED --out-dir OUTPUT
 """
 
 from __future__ import annotations
@@ -38,6 +36,11 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 import torch
+
+try:
+    from .parse_demos import parse_complete, sha256
+except ImportError:  # direct script invocation / sandbox copy
+    from parse_demos import parse_complete, sha256
 
 REPO = Path(__file__).resolve().parent.parent
 DEMOS_DIR = REPO / "data" / "processed" / "demos"
@@ -665,7 +668,7 @@ def build_round_tensor(
 
 
 def process_demo(
-    parq: Path, downsample: int,
+    parq: Path, downsample: int, match_id: str | None = None,
 ) -> tuple[list[torch.Tensor], list[dict], list[torch.Tensor], list[torch.Tensor], dict]:
     """Process one demo into per-round (tensors, metas, event_labels, event_times)
     plus a demo-level summary."""
@@ -677,9 +680,13 @@ def process_demo(
     kills = json.loads((base / f"{stem}_kills.json").read_text())
     header = json.loads((base / f"{stem}_header.json").read_text())
     map_name = header.get("map_name", "unknown")
+    if map_name not in MAP_VOCAB:
+        raise ValueError(f"Unsupported map: {map_name}")
     marker = base / f"{stem}_parse.json"
-    if marker.exists() and json.loads(marker.read_text())["tickrate"] != 64:
-        raise ValueError("This builder requires a 64 Hz source demo")
+    record = json.loads(marker.read_text()) if marker.exists() else None
+    if record is not None and (record["tickrate"] != 64 or record["identity"]["version"] < 3
+                               or not parse_complete(marker, record["identity"])):
+        raise ValueError("Parse bundle is stale or damaged; reparse the Source 2 demo")
     if [r["round_num"] for r in rounds] != list(range(1, len(rounds) + 1)):
         raise ValueError("Cannot reconstruct scores without contiguous rounds starting at 1")
 
@@ -718,6 +725,8 @@ def process_demo(
         else:
             m["map_name"] = map_name
             m["demo_stem"] = stem
+            m["match_id"] = match_id
+            m["source_demo_sha256"] = record["identity"]["source_sha256"] if record else None
             tensors.append(ten)
             metas.append(m)
             label_seqs.append(torch.from_numpy(ev_lbl).long())
@@ -774,6 +783,8 @@ def builder_provenance() -> dict:
     except Exception:
         pass
     return {"schema_version": SCHEMA_VERSION, "builder_commit": commit,
+            "script_sha256": {p.name: sha256(p) for p in
+                              (Path(__file__), Path(__file__).with_name("parse_demos.py"))},
             "builder_dirty": dirty, "baked_at_unix": int(time.time())}
 
 
@@ -781,41 +792,41 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--downsample", type=int, default=DOWNSAMPLE_DEFAULT,
                     help=f"keep every Nth tick (64Hz / N) — default {DOWNSAMPLE_DEFAULT} (8Hz)")
-    ap.add_argument("--val-demos", type=int, default=12,
-                    help="how many demos to hold out for validation (default 12, ~15%)")
+    ap.add_argument("--match-id", required=True, help="source match ID shared by every input demo")
+    ap.add_argument("--demos-dir", type=Path, default=DEMOS_DIR)
+    ap.add_argument("--out-dir", type=Path, default=OUT_DIR, help="new/empty output directory")
+    ap.add_argument("--val-demos", type=int, default=0, help="legacy option; must be 0 (split by match downstream)")
     ap.add_argument("--limit", type=int, default=None,
                     help="cap total demos processed (for smoke testing)")
-    ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
     if args.downsample < 1:
         ap.error("--downsample must be positive")
 
-    parqs = sorted(DEMOS_DIR.glob("*_ticks.parquet"))
+    if args.val_demos != 0:
+        ap.error("demo-level splits leak match identity; pool and split by match downstream")
+    if not args.match_id.strip():
+        ap.error("--match-id cannot be empty")
+    parqs = sorted(args.demos_dir.glob("*_ticks.parquet"))
     if args.limit:
         parqs = parqs[:args.limit]
     if not parqs:
-        print(f"No parquets in {DEMOS_DIR}. Run scripts/parse_demos.py first.")
+        print(f"No parquets in {args.demos_dir}. Run scripts/parse_demos.py first.")
         sys.exit(1)
-
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-
-    # Demo-level shuffle then split — deterministic via seed
-    rng = np.random.default_rng(args.seed)
-    order = list(range(len(parqs)))
-    rng.shuffle(order)
-    parqs = [parqs[i] for i in order]
-    val_n = min(args.val_demos, len(parqs) - 1)
-    train_parqs = parqs[val_n:]
-    val_parqs = parqs[:val_n]
+    if args.out_dir.exists() and any(args.out_dir.iterdir()):
+        ap.error("output directory is not empty; use a new staging directory")
+    for p in parqs:
+        if not p.with_name(p.name.replace("_ticks.parquet", "_parse.json")).exists():
+            ap.error(f"verified parse manifest missing for {p.name}; reparse before building")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
 
     prov = builder_provenance()
 
-    print(f"Total demos: {len(parqs)} (train: {len(train_parqs)}, val: {len(val_parqs)})")
+    print(f"Match {args.match_id}: {len(parqs)} demos (no global split assigned)")
     print(f"Schema: {SCHEMA_VERSION} (builder {prov['builder_commit'] or 'unknown'}"
           f"{'+dirty' if prov['builder_dirty'] else ''})")
     print(f"Downsample: {args.downsample}x ({64 / args.downsample:g}Hz from 64Hz)")
     print(f"Feature dim: {TOTAL_DIM} ({N_PLAYERS}×{PER_PLAYER_DIM} player + {GLOBAL_DIM} global)")
-    print(f"Output dir: {OUT_DIR}")
+    print(f"Output dir: {args.out_dir}")
     print()
 
     def process_split(parqs_sub: list[Path], split_name: str) -> dict:
@@ -824,10 +835,16 @@ def main() -> None:
         all_event_labels = []
         all_event_times = []
         summaries = []
+        excluded_demos = []
         t0 = time.time()
         for i, p in enumerate(parqs_sub):
             t1 = time.time()
-            tensors, metas, ev_lbls, ev_times, summary = process_demo(p, args.downsample)
+            map_name = json.loads(p.with_name(p.name.replace("_ticks.parquet", "_header.json")).read_text())["map_name"]
+            if map_name not in MAP_VOCAB:
+                excluded_demos.append({"demo": p.name, "map": map_name, "reason": "unsupported map"})
+                print(f"  EXCLUDE {p.name}: unsupported map {map_name}")
+                continue
+            tensors, metas, ev_lbls, ev_times, summary = process_demo(p, args.downsample, args.match_id)
             all_tensors.extend(tensors)
             all_metas.extend(metas)
             all_event_labels.extend(ev_lbls)
@@ -839,7 +856,9 @@ def main() -> None:
                   f"{summary['total_ticks']:,} encoded ticks, "
                   f"{elapsed:.1f}s")
 
-        out_path = OUT_DIR / f"{split_name}.pt"
+        if not all_tensors:
+            raise ValueError("No supported, complete rounds; refusing to publish an empty bundle")
+        out_path = args.out_dir / f"{split_name}.pt"
         torch.save({
             "tensors": all_tensors,
             "metas": all_metas,
@@ -849,6 +868,8 @@ def main() -> None:
             "event_horizon_ticks": EVENT_HORIZON_TICKS,
             "summaries": summaries,
             "feature_dim": TOTAL_DIM,
+            "per_player_dim": PER_PLAYER_DIM,
+            "match_id": args.match_id,
             "downsample": args.downsample,
             **prov,   # schema_version, builder_commit, builder_dirty, baked_at_unix
         }, out_path)
@@ -863,14 +884,10 @@ def main() -> None:
             "n_rounds": len(all_tensors),
             "total_ticks": total_ticks,
             "size_mb": size_mb,
+            "excluded_demos": excluded_demos,
         }
 
-    print("=== train split ===")
-    train_summary = process_split(train_parqs, "train")
-    print()
-    print("=== val split ===")
-    val_summary = process_split(val_parqs, "val")
-    print()
+    train_summary = process_split(parqs, "train")
 
     # Schema doc — every downstream consumer reads this
     schema = {
@@ -922,21 +939,22 @@ def main() -> None:
     # own "feature_schema_v2" content). Keep writing the old name as a copy for
     # one transition release so existing consumers don't break.
     schema_body = json.dumps(schema, indent=2)
-    (OUT_DIR / "feature_schema.json").write_text(schema_body)
-    (OUT_DIR / "feature_schema_v1.json").write_text(schema_body)
+    (args.out_dir / "feature_schema.json").write_text(schema_body)
+    (args.out_dir / "feature_schema_v1.json").write_text(schema_body)
 
     manifest = {
         "train": train_summary,
-        "val": val_summary,
+        "match_id": args.match_id,
+        "split_unit": "match; not yet assigned to train/validation",
         "feature_schema": "feature_schema.json",
         **prov,
     }
-    (OUT_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2))
+    (args.out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
     print("=== summary ===")
     print(json.dumps(manifest, indent=2))
     print()
-    print(f"Schema: {OUT_DIR / 'feature_schema.json'} ({SCHEMA_VERSION})")
+    print(f"Schema: {args.out_dir / 'feature_schema.json'} ({SCHEMA_VERSION})")
     print("Done.")
 
 
