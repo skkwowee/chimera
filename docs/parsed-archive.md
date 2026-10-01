@@ -5,7 +5,7 @@ kills/bomb/damages/rounds/header JSON files remain compatible with the builder.
 No training features, splits or frozen corpus files change.
 
 Additional player columns: flash_duration, active_weapon_name,
-active_weapon_ammo, total_ammo_left, is_in_reload, zoom_lvl and duck_amount.
+active_weapon_ammo, total_ammo_left, is_in_reload, zoom_lvl, duck_amount and game_time.
 These are native parser values, not inferred tactical labels; nulls remain
 null (for example zoom on a knife). Ammo semantics must not be interpreted as
 a readiness guarantee. Exact ticks and player IDs remain in the records.
@@ -23,6 +23,11 @@ last. A missing, outdated or damaged bundle is reparsed; `--force` also reparses
 Use separate match-ID directories to prevent same-stem collisions across matches.
 The companion pipeline collector must include these five additional files when
 archiving. An older `--from-parsed` bundle remains legacy, not an enriched archive.
+
+Parser revision 3 explicitly configures 64 Hz and checks it against the median
+tick/game-time delta over the first 4,096 observed ticks. Revision 2 inherited
+Awpy's 128 Hz default; its tickrate metadata and duration-fallback tables must be
+regenerated. The script/version hash invalidates those completion markers.
 
 This does not fix score, missing-observation, time-grid, bomb-state or visibility
 issues in the tensor builder. Those require separate versioned changes.

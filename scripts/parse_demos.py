@@ -33,7 +33,9 @@ import multiprocessing as mp
 import sys
 import tempfile
 import time
+from itertools import pairwise
 from pathlib import Path
+from statistics import median
 
 REPO = Path(__file__).resolve().parent.parent
 DEMOS_DIRS = [REPO / "data" / "demos", REPO / "data" / "demos_new"]
@@ -49,9 +51,10 @@ PLAYER_PROPS = [
     "yaw", "pitch",
     "flash_duration", "active_weapon_name", "active_weapon_ammo",
     "total_ammo_left", "is_in_reload", "zoom_lvl", "duck_amount",
+    "game_time",
 ]
 
-PARSE_VERSION = 2
+PARSE_VERSION = 3
 EVENT_TABLES = ("kills", "bomb", "damages", "rounds")
 EXTRA_TABLES = ("smokes", "infernos", "shots", "footsteps")
 
@@ -95,11 +98,16 @@ def parse_one(dem_path: Path, force: bool = False) -> tuple[str, bool, str]:
             return (stem, True, "skip (verified bundle)")
         from awpy import Demo
         t0 = time.time()
-        d = Demo(dem_path, verbose=False)
+        d = Demo(dem_path, tickrate=64, verbose=False)
         d.parse(player_props=PLAYER_PROPS)
         missing = set(PLAYER_PROPS) - set(d.ticks.columns)
         if missing:
             raise ValueError(f"Missing requested player properties: {sorted(missing)}")
+        clock = d.ticks.select("tick", "game_time").unique("tick").sort("tick").head(4096).rows()
+        rates = [(b[0] - a[0]) / (b[1] - a[1]) for a, b in pairwise(clock)
+                 if a[1] is not None and b[1] is not None and b[1] > a[1]]
+        if not rates or abs(median(rates) - d.tickrate) > 0.1:
+            raise ValueError("Demo clock does not confirm the supported 64 Hz tickrate")
 
         OUT_DIR.mkdir(parents=True, exist_ok=True)
 
