@@ -31,8 +31,8 @@ import importlib.metadata
 import json
 import multiprocessing as mp
 import sys
-import time
 import tempfile
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
