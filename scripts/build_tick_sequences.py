@@ -13,7 +13,6 @@ Per docs/round-encoder-design.md §2:
 
 Output:
   data/processed/tick_sequences/train.pt          dict[str, list[tensor]]
-  data/processed/tick_sequences/val.pt
   data/processed/tick_sequences/feature_schema.json  (+ legacy-name copy
                                 feature_schema_v1.json for one transition)
   data/processed/tick_sequences/manifest.json     per-round metadata for joins
@@ -105,7 +104,8 @@ EVENT_HORIZON_TICKS = 256
 
 # Dim-preserving, but not merge-compatible with v2.1: uniform sampled ticks,
 # complete observations only, team-aware scores, and dropped-bomb positions.
-SCHEMA_VERSION = "feature_schema_v2.2"
+# v2.3 trims pre-live prefixes with missing ticks; gameplay gaps still reject.
+SCHEMA_VERSION = "feature_schema_v2.3"
 
 # Site-from-plant-position (datasheet D-defect): the awpy round-level
 # `bomb_site` label is broken corpus-wide (873/879 labeled B while plant
@@ -462,6 +462,14 @@ def build_round_tensor(
 
     slot_map = assign_player_slots(round_df)
     kept_ticks = np.arange(ticks_all[0], ticks_all[-1] + 1, downsample, dtype=np.int64)
+    # Awpy omits timeout ticks. Keep the original grid's continuous suffix,
+    # trimming only before play begins; never stitch over a gap or invent rows.
+    missing = kept_ticks[~np.isin(kept_ticks, ticks_all)]
+    pre_live_gaps = missing[missing < freeze_end]
+    if len(pre_live_gaps):
+        kept_ticks = kept_ticks[kept_ticks > pre_live_gaps[-1]]
+    if not len(kept_ticks):
+        raise IncompleteRound("No observed suffix after pre-live gap")
     T = len(kept_ticks)
     out = np.zeros((T, TOTAL_DIM), dtype=np.float32)
 
@@ -661,6 +669,7 @@ def build_round_tensor(
         "raw_ticks": kept_ticks.tolist(),
         "player_steamids": list(slot_map),
         "source_tickrate_hz": 64,
+        "pre_live_trim_ticks": int(kept_ticks[0] - ticks_all[0]),
         "winner": round_meta.get("winner"),
         "reason": round_meta.get("reason"),
     }
@@ -723,6 +732,8 @@ def process_demo(
             rejected.append({"round_num": r["round_num"], "reason": str(exc)})
             print(f"    REJECT r{r['round_num']}: {exc}")
         else:
+            if m["pre_live_trim_ticks"]:
+                print(f"    TRIM r{r['round_num']}: {m['pre_live_trim_ticks']} pre-live ticks")
             m["map_name"] = map_name
             m["demo_stem"] = stem
             m["match_id"] = match_id
@@ -756,6 +767,7 @@ def process_demo(
         "total_ticks": sum(t.shape[0] for t in tensors),
         "feature_dim": TOTAL_DIM,
         "rejected_rounds": rejected,
+        "n_trimmed_pre_live": sum(m["pre_live_trim_ticks"] > 0 for m in metas),
     }
     return tensors, metas, label_seqs, time_seqs, summary
 
@@ -896,7 +908,8 @@ def main() -> None:
         "builder_dirty": prov["builder_dirty"],
         "downsample": args.downsample,
         "tickrate_hz": 64 / args.downsample,
-        "sampling": "uniform raw-tick grid; incomplete rounds rejected; exact ticks in metas.raw_ticks",
+        "sampling": ("uniform raw-tick grid; pre-live gap prefixes trimmed; "
+                     "remaining incomplete rounds rejected; exact ticks in metas.raw_ticks"),
         "feature_dim": TOTAL_DIM,
         "n_players": N_PLAYERS,
         "per_player_dim": PER_PLAYER_DIM,

@@ -165,7 +165,36 @@ root. Existing local artifacts: `data/staging/readiness/pipeline-pass-1/`,
 `data/staging/readiness/replay-from-parsed/`, and
 `outputs/data-readiness-smoke-k4/`. These are ignored local data, not uploads.
 
-Next decision: use a separately versioned fresh corpus once ambiguous raw-source
-ownership is resolved. Decide freeze/pause treatment before recovering the 19
-excluded rounds; decide Cache/Anubis support before widening the map schema. Do
-not complete P2 by quietly substituting new-builder output: its semantics differ.
+## Data-cleanup completion (2026-10-03)
+
+The fresh builder now writes `feature_schema_v2.3`: when sampled ticks are absent
+before `freeze_end`, discard the prefix through the last such missing tick.
+Keep the original grid alignment and every sampled gameplay tick; never join
+across a missing interval. Missing player state or missing ticks during play
+still reject the round. `pre_live_trim_ticks` records the discarded prefix span;
+demo summaries count affected rounds. This changes sampling, not feature width.
+
+All six pilot demos were rechecked against the committed v2.2 builder in memory:
+117/117 rounds accepted, all 19 previously excluded rounds recovered, and all
+98 previously accepted tensors/event labels/event times remain exactly equal.
+Every original sampled gameplay tick is retained. Cache/Anubis were diagnostic
+checks only; they remain excluded from actual builds. The supported-map staged
+pair contains 41 fresh rounds plus 14 historical rounds, not a canonical split.
+
+HF revision `94405b3cb7107293555141bce9b02a3f7b988809` resolves the eight shared
+legacy paths: 16 distinct original CS2 files recovered from match-upload history
+into `demos/<match_id>/` paths, with 14 raw-manifest rows updated atomically.
+Source 2 headers, historical SHA-256s and destination hashes are verified.
+All 189 match records remain. No old demo or tensor was deleted or overwritten;
+HF added only the 16 files, their LFS tracking lines and the manifest references.
+Full source revisions/hashes are in the companion pipeline's
+`reports/2026-10-03-source-recovery.json`.
+
+The pipeline rejects raw paths claimed by multiple matches. Changed source paths
+make old tensor entries pending and prevent reuse of their old parse archive.
+Historical tensor provenance is intentionally unchanged: this repairs future
+re-bake inputs, not a certification of existing tensors or their historical split.
+
+P2 is still incomplete and untouched. Feature selection, Cache/Anubis support
+and the next controlled training experiment remain separate decisions. No model
+training, feature expansion or full-corpus rebuild was performed for this cleanup.
