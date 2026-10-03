@@ -37,6 +37,19 @@ def test_uniform_ticks_and_missing_player_are_not_dead():
         with pytest.raises(IncompleteRound, match="Missing player state"):
             build_round_tensor(incomplete, round_meta(), "de_mirage", (0, 0), [], [], 8)
 
+    paused = frame([100, 101, 124, 132, 140])
+    args = (round_meta(freeze_end=132), "de_mirage", (0, 0), [], [], 8)
+    tensor, meta, labels, times = build_round_tensor(paused, *args)
+    assert meta["raw_ticks"] == [124, 132, 140]
+    assert meta["pre_live_trim_ticks"] == 24
+    full, _, full_labels, full_times = build_round_tensor(frame(range(100, 141, 8)), *args)
+    np.testing.assert_array_equal(tensor, full[-3:])
+    np.testing.assert_array_equal(labels, full_labels[-3:])
+    np.testing.assert_array_equal(times, full_times[-3:])
+    # The same gap at/after live start is not a recoverable freeze prefix.
+    with pytest.raises(IncompleteRound, match="Missing player state"):
+        build_round_tensor(paused, round_meta(freeze_end=108), "de_mirage", (0, 0), [], [], 8)
+
 
 def test_dropped_bomb_is_not_planted_and_age_stops():
     df = frame(range(100, 141, 8)).with_columns(

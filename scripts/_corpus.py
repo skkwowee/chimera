@@ -20,6 +20,22 @@ import torch
 EXCLUDED_MAPS = frozenset({"de_anubis", "de_train"})
 
 
+def validate_split_pair(train: dict, val: dict, *, allow_overlap: bool = False) -> None:
+    """Keep semantic schema changes and match/source leakage out of training."""
+    keys = ("schema_version", "source_schema_version", "feature_dim", "downsample")
+    if (not train.get("schema_version") or any(train.get(k) != val.get(k) for k in keys)
+            or train.get("per_player_dim", 56) != val.get("per_player_dim", 56)):
+        raise ValueError("Train/validation schema or cadence mismatch (or unversioned corpus)")
+    for blob in (train, val):
+        if not blob["metas"] or any(not m.get("match_id") for m in blob["metas"]):
+            raise ValueError("Train/validation requires nonempty, match-identified data")
+    for key in ("match_id", "source_demo_sha256"):
+        left = {str(m[key]) for m in train["metas"] if m.get(key)}
+        right = {str(m[key]) for m in val["metas"] if m.get(key)}
+        if not allow_overlap and left & right:
+            raise ValueError(f"Train/validation overlap in {key}")
+
+
 def load_corpus(path, *, maps=None, tag=None, clean=True):
     """THE corpus reader — every script that reads a tick-sequence blob goes
     through here (infra-plan §1 item 1).

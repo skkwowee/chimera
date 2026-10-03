@@ -45,3 +45,9 @@ def test_saved_forecasts_replay(tmp_path):
     with np.load(out, allow_pickle=False) as a, np.load(args.out, allow_pickle=False) as b:
         np.testing.assert_array_equal(a["model"], b["model"])
         assert json.loads(str(a["metadata"])) == json.loads(str(b["metadata"]))
+    ck = torch.load(checkpoint, weights_only=False)
+    ck["schema_version"] = "different-same-width-schema"
+    torch.save(ck, checkpoint)
+    args.out = tmp_path / "mismatch.npz"
+    with pytest.raises(ValueError, match="semantic schema"):
+        generate(args)

@@ -97,7 +97,7 @@ deep-sweep-r2, "rb" = claude-progress runbook.
 - [x] m1 Push 3c55fe8 (= 0.3). — done 2026-07-26
 - [ ] m2 Pinned canonical commands — folds into 3.2 (counted once).
 - [ ] m3 ruff-format landmine: delete hook OR standalone reformat commit + `ruff format --check` in CI; ruff==0.15.0 into venv.
-- [ ] m4 demo-pipeline zero CI — copy chimera's ci.yml (pytest-only, fixture-based).
+- [x] m4 demo-pipeline CI — locked dependencies + offline fixture tests, green on 2026-10-01 (companion PR #3).
 - [ ] m5 feature-list.json: header vs W00 `passes=true` contradiction; W00 pre-_p1 blob names. Reconcile.
 - [ ] m6 tier-OOD three-way incoherence: strike §2 row 8 + §3 trigger (owner-declined per §6); datasheet §6 checkbox → "parked".
 - [ ] m7 pyrightconfig.json still points at pre-move `/home/soone/chimera`.

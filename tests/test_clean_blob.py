@@ -4,8 +4,9 @@ per-round lists are filtered in LOCKSTEP, scalars and non-parallel lists are
 untouched, and EXCLUDED_MAPS carries exactly the D1/D2 maps."""
 from __future__ import annotations
 
+import pytest
 import torch
-from _corpus import EXCLUDED_MAPS, clean_blob
+from _corpus import EXCLUDED_MAPS, clean_blob, validate_split_pair
 
 
 def _synthetic_blob():
@@ -60,3 +61,21 @@ def test_clean_blob_noop_when_all_kept():
     kept = clean_blob(blob, verbose=False)
     assert kept == 5
     assert len(blob["tensors"]) == 5
+
+
+def test_split_pair_rejects_semantic_mismatch_and_source_leakage():
+    train, val = _synthetic_blob(), _synthetic_blob()
+    val["metas"] = [{**m, "match_id": f"val-{m['match_id']}"} for m in val["metas"]]
+    validate_split_pair(train, val)
+    val["schema_version"] = "different-same-width-schema"
+    with pytest.raises(ValueError, match="schema"):
+        validate_split_pair(train, val)
+    val["schema_version"] = train["schema_version"]
+    val["metas"][0]["match_id"] = train["metas"][0]["match_id"]
+    with pytest.raises(ValueError, match="match_id"):
+        validate_split_pair(train, val)
+    validate_split_pair(train, val, allow_overlap=True)  # existing --smoke mode
+    val["metas"][0]["match_id"] = "different-id-same-demo"
+    train["metas"][0]["source_demo_sha256"] = val["metas"][0]["source_demo_sha256"] = "same"
+    with pytest.raises(ValueError, match="source_demo_sha256"):
+        validate_split_pair(train, val)
