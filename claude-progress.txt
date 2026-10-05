@@ -1,5 +1,9 @@
 # Chimera — Session Progress
 
+# 2026-10-05: Cleanup PR stacks merged (Chimera #7-9 / pipeline #1-3), main CI green.
+# Player-view capture recipe in docs/parsed-archive.md; no render yet. Local CS2
+# patch differs from pilot demo; recorder installation/game launch awaits approval.
+
 # 2026-10-03: Fresh-data readiness is a SEPARATE, noncanonical v2.3 lane.
 # See docs/parsed-archive.md for the source inventory, pause-gap audit, verified
 # staged pipeline and smoke commands (Chimera PR #9 / pipeline PR #3).

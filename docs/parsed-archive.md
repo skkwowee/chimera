@@ -198,3 +198,72 @@ re-bake inputs, not a certification of existing tensors or their historical spli
 P2 is still incomplete and untouched. Feature selection, Cache/Anubis support
 and the next controlled training experiment remain separate decisions. No model
 training, feature expansion or full-corpus rebuild was performed for this cleanup.
+
+## Player-view capture recipe (2026-10-05; not yet rendered)
+
+Cleanup PRs Chimera #7–9 and demo-pipeline #1–3 are merged. Both main branches
+passed CI. The next perception artifact should be **engine-rendered first-person
+video**, not another geometric visibility feature. This is a reconstruction,
+not a recording of the original player's screen or evidence of their attention.
+
+Use [CS Demo Manager's CLI](https://cs-demo-manager.com/docs/cli) with CS2,
+HLAE and FFmpeg. Its [video guide](https://cs-demo-manager.com/docs/guides/video)
+documents direct video encoding with HLAE, avoiding temporary raw-image dumps.
+Analyze a demo once, then supply a JSON config containing multiple short sequences
+to `csdm video --config-file capture.json`. No repeated GUI clicking is needed
+after installation/setup. Keep one renderer worker; batch by demo and player.
+Start with a few 8-second, 1080p/64-fps clips. Reduce resolution/frame rate only
+after checking that small enemies and brief peeks survive; rendering throughput
+has not been measured. Select ordinary live-play intervals as well as smoke,
+flash and peek examples, not just kills. Do not render every player for every
+tick before this pilot passes.
+
+### Version and safety gates
+
+- Local CS2 exists, Steam build `25687242`, `PatchVersion=1.41.8.8`,
+  `ClientVersion=2000924`. The inspected Inferno pilot's demo header reports
+  `patch_version=14181`. These are different patches. Valve warns that
+  [TrueView is disabled by default on version mismatch](https://www.counter-strike.net/newsentry/578276333072678918)
+  and is not identical to the original screen even on a matching build.
+  Forcing TrueView on does **not** certify compatibility.
+- CS Demo Manager and HLAE were not found in PATH/standard installation locations.
+  Source reviewed: CS Demo Manager `v3.20.1`; latest HLAE release observed:
+  `v2.192.6`. Their compatibility with this installed game is untested.
+- Use a separate HLAE config folder, offline `.dem` playback and `-insecure`;
+  never join live servers. Confirm CS2/anti-cheat clients are not in use before
+  launching: CS Demo Manager's launcher can stop an existing CS2 process.
+  Do not downgrade the user's normal game installation. If needed, use a separate
+  [compatible game installation and plugin](https://cs-demo-manager.com/docs/guides/playback).
+  Installation/game launch awaits approval; no capture was attempted.
+
+### Smallest executable probe
+
+Source: match `2398108`, `aurora-vs-vitality-m2-inferno.dem`, SHA-256
+`fa4973cff27742992e9a8986cd1a42fbdc50ceee7eb21b0f3173f980dfb44873`.
+Use ZywOo (`76561198113666193`), round 1, ticks **1715–2227** (8 seconds).
+The parsed archive confirms he is alive throughout, including the preceding
+64 ticks. Copy that verified demo to a Windows-local capture folder, then:
+
+```powershell
+csdm analyze "C:\chimera-capture\aurora-vs-vitality-m2-inferno.dem"
+csdm video "C:\chimera-capture\aurora-vs-vitality-m2-inferno.dem" 1715 2227 --focus-player 76561198113666193 --recording-system HLAE --encoder-software FFmpeg --recording-output video --ffmpeg-video-container mp4 --width 1920 --height 1080 --framerate 64 --true-view --no-show-x-ray --no-player-voices --cfg "cl_trueview_show_status 1" --close-game-after-recording
+```
+
+This is an **unexecuted diagnostic command**, not a verified capture. Configure
+the database, isolated game config and compatible recorder/plugin first. In
+batch JSON, set `trueView: true` at the top level and `showXRay: false`,
+`playerVoicesEnabled: false`, `cfg: "cl_trueview_show_status 1"` in **every**
+sequence. Put the player camera switch before the retained clip (e.g. tick 1651
+for this probe). Do not rely on appended CLI flags: the reviewed
+[config-file parser returns early](https://github.com/akiver/cs-demo-manager/blob/v3.20.1/src/cli/commands/video-command.ts).
+The [recorder hides TrueView status by default](https://github.com/akiver/cs-demo-manager/blob/v3.20.1/src/node/video/generation/create-cs2-video-json-file.ts);
+retain the explicit override for audit clips.
+
+Before accepting output, inspect POV identity, X-ray state, TrueView status,
+smoke/flash rendering and warm-up artifacts; verify frame-to-demo-tick alignment
+against known events rather than assuming frame 0 equals the requested tick.
+Cache only checked outputs, keyed by demo hash, player, tick interval, game build,
+CS Demo Manager/plugin/HLAE versions and capture settings. Preserve this metadata
+beside each video. Keep mismatched/uncertain captures separate from validated
+ones. Rendering produces pixels, not automatic enemy-visibility labels: reviewed
+labels remain a separate step. No model inputs or training corpus change here.
