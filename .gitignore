@@ -6,6 +6,7 @@ data/predictions/
 data/demos/
 data/demos_new/
 data/raw_demos/
+data/staging/
 data/.hf_cache/
 data/captures/
 

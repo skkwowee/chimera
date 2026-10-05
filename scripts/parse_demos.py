@@ -10,7 +10,8 @@ emits the same per-demo files the original 4 had:
   - {stem}_header.json
   - {stem}_rounds.json
 
-Idempotent: skips any demo whose ticks.parquet already exists.
+Also preserves smoke/fire lifetimes, shots and footsteps as Parquet tables.
+Idempotent: skips only source/version-matched bundles with verified file hashes.
 
 Usage:
     python scripts/parse_demos.py                          # parse everything new
@@ -25,19 +26,22 @@ this lets us iterate without depending on the pod being up.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import multiprocessing as mp
 import sys
+import tempfile
 import time
+from itertools import pairwise
 from pathlib import Path
+from statistics import median
 
 REPO = Path(__file__).resolve().parent.parent
 DEMOS_DIRS = [REPO / "data" / "demos", REPO / "data" / "demos_new"]
 OUT_DIR = REPO / "data" / "processed" / "demos"
 
-# Player-state columns that match the existing parquet schema (the 17-col
-# format the encoder design assumes). yaw/pitch are critical — the encoder
-# uses view-angle as a feature.
+# Archival state is richer than the unchanged model feature projection.
 PLAYER_PROPS = [
     "X", "Y", "Z",
     "health", "armor",
@@ -45,45 +49,92 @@ PLAYER_PROPS = [
     "inventory",
     "current_equip_value", "balance",
     "yaw", "pitch",
+    "flash_duration", "active_weapon_name", "active_weapon_ammo",
+    "total_ammo_left", "is_in_reload", "zoom_lvl", "duck_amount",
+    "game_time",
 ]
+
+PARSE_VERSION = 3
+EVENT_TABLES = ("kills", "bomb", "damages", "rounds")
+EXTRA_TABLES = ("smokes", "infernos", "shots", "footsteps")
+
+
+def sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def parse_complete(marker: Path, identity: dict) -> bool:
+    """Only a matching, intact bundle is resumable; legacy ticks alone are not."""
+    try:
+        record = json.loads(marker.read_text())
+        stem = marker.name.removesuffix("_parse.json")
+        expected = {f"{stem}_{s}.json" for s in (*EVENT_TABLES, "header")}
+        expected |= {f"{stem}_{s}.parquet" for s in ("ticks", *EXTRA_TABLES)}
+        return (record["identity"] == identity and set(record["files"]) == expected
+                and all(Path(name).name == name
+                        and sha256(marker.parent / name) == digest
+                        for name, digest in record["files"].items()))
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def parse_one(dem_path: Path, force: bool = False) -> tuple[str, bool, str]:
     """Parse a single .dem; return (stem, success, message)."""
     stem = dem_path.stem
-    ticks_out = OUT_DIR / f"{stem}_ticks.parquet"
-    if ticks_out.exists() and not force:
-        return (stem, True, "skip (exists)")
-
     try:
+        with dem_path.open("rb") as stream:
+            if stream.read(8) != b"PBDEMS2\x00":
+                raise ValueError("Not a Source 2 demo")
+        identity = {
+            "version": PARSE_VERSION,
+            "source_sha256": sha256(dem_path),
+            "script_sha256": sha256(Path(__file__)),
+            "packages": {p: importlib.metadata.version(p)
+                         for p in ("awpy", "demoparser2")},
+        }
+        marker = OUT_DIR / f"{stem}_parse.json"
+        if not force and parse_complete(marker, identity):
+            return (stem, True, "skip (verified bundle)")
         from awpy import Demo
         t0 = time.time()
-        d = Demo(dem_path, verbose=False)
+        d = Demo(dem_path, tickrate=64, verbose=False)
         d.parse(player_props=PLAYER_PROPS)
+        missing = set(PLAYER_PROPS) - set(d.ticks.columns)
+        if missing:
+            raise ValueError(f"Missing requested player properties: {sorted(missing)}")
+        clock = d.ticks.select("tick", "game_time").unique("tick").sort("tick").head(4096).rows()
+        rates = [(b[0] - a[0]) / (b[1] - a[1]) for a, b in pairwise(clock)
+                 if a[1] is not None and b[1] is not None and b[1] > a[1]]
+        if not rates or abs(median(rates) - d.tickrate) > 0.1:
+            raise ValueError("Demo clock does not confirm the supported 64 Hz tickrate")
 
         OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        # Per-tick parquet (the big one — 50+MB)
-        d.ticks.write_parquet(ticks_out)
-
-        # Per-event JSONs (small — used for round/event boundaries)
-        for attr, fname in [
-            ("kills", f"{stem}_kills.json"),
-            ("bomb", f"{stem}_bomb.json"),
-            ("damages", f"{stem}_damages.json"),
-            ("rounds", f"{stem}_rounds.json"),
-        ]:
-            df = getattr(d, attr, None)
-            if df is None:
-                continue
-            # awpy returns polars DataFrames; convert via to_dicts for JSON
-            (OUT_DIR / fname).write_text(
-                json.dumps(df.to_dicts(), default=str, indent=2)
-            )
-
-        (OUT_DIR / f"{stem}_header.json").write_text(
-            json.dumps(d.header, default=str, indent=2)
-        )
+        # Stage the complete bundle before publishing. The marker is written last.
+        with tempfile.TemporaryDirectory(dir=OUT_DIR) as tmp:
+            stage = Path(tmp)
+            for attr in ("ticks", *EXTRA_TABLES):
+                getattr(d, attr).write_parquet(stage / f"{stem}_{attr}.parquet")
+            for attr in EVENT_TABLES:
+                (stage / f"{stem}_{attr}.json").write_text(
+                    json.dumps(getattr(d, attr).to_dicts(), default=str))
+            (stage / f"{stem}_header.json").write_text(json.dumps(d.header))
+            record = {
+                "identity": identity,
+                "source_name": dem_path.name,
+                "tickrate": d.tickrate,
+                "player_props": PLAYER_PROPS,
+                "lifetime_fallback_seconds": {
+                    "smokes": d.smoke_duration, "infernos": d.inferno_duration},
+                "files": {p.name: sha256(p) for p in stage.iterdir()},
+            }
+            marker.unlink(missing_ok=True)
+            for p in stage.iterdir():
+                p.replace(OUT_DIR / p.name)
+            staged_marker = stage / marker.name
+            staged_marker.write_text(json.dumps(record, indent=2))
+            staged_marker.replace(marker)
 
         elapsed = time.time() - t0
         rows = d.ticks.height
