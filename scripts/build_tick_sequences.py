@@ -6,7 +6,7 @@ plus the matching *_rounds.json (round boundaries) and *_header.json (map name),
 then emits per-round tensors that the round encoder consumes.
 
 Per docs/round-encoder-design.md §2:
-  - Downsample 64 Hz -> 8 Hz (every 8th tick)
+  - Downsample 64 Hz -> 8 Hz on a uniform raw-tick grid
   - Per-tick feature vector ~= per-player block × 10 players + global state
   - Player slots ordered T1..T5, CT1..CT5 (positional, not identity-based)
   - Output one (T, F) tensor per round; T variable per round, F fixed
@@ -100,11 +100,9 @@ NONE_EVENT_IDX = EVENT_IDX["none"]
 # slow phases instead of being the trivial answer everywhere.
 EVENT_HORIZON_TICKS = 256
 
-# Bumped v2 -> v2.1 when the site-from-plant-position fix landed (datasheet
-# D-defect) + bomb_exploded labels from round-end reason. Dim-preserving:
-# feature_dim is unchanged, but planted_a/planted_b semantics differ, so
-# pre-fix and post-fix blobs must never be merged silently.
-SCHEMA_VERSION = "feature_schema_v2.1"
+# Dim-preserving, but not merge-compatible with v2.1: uniform sampled ticks,
+# complete observations only, team-aware scores, and dropped-bomb positions.
+SCHEMA_VERSION = "feature_schema_v2.2"
 
 # Site-from-plant-position (datasheet D-defect): the awpy round-level
 # `bomb_site` label is broken corpus-wide (873/879 labeled B while plant
@@ -238,63 +236,22 @@ GLOBAL_DIM = (len(MAP_VOCAB) + len(PHASE_VOCAB) + 2 + 1 + 1 + 4 + 2 + 1
 TOTAL_DIM = N_PLAYERS * PER_PLAYER_DIM + GLOBAL_DIM
 
 
-def encode_player_row(row: dict) -> np.ndarray:
-    """Encode one player at one tick into a per-player feature vector."""
-    out = np.zeros(PER_PLAYER_DIM, dtype=np.float32)
-    if row is None:
-        return out  # all zeros — slot empty
-
-    i = 0
-    # Position (normalized roughly to [-1, 1] — map coords are typically in [-3000, 3000])
-    out[i] = (row.get("X") or 0.0) / 3000.0; i += 1
-    out[i] = (row.get("Y") or 0.0) / 3000.0; i += 1
-    out[i] = (row.get("Z") or 0.0) / 500.0; i += 1
-    # View angles -> sin/cos
-    yaw = (row.get("yaw") or 0.0) * np.pi / 180.0
-    pitch = (row.get("pitch") or 0.0) * np.pi / 180.0
-    out[i] = np.sin(yaw); i += 1
-    out[i] = np.cos(yaw); i += 1
-    out[i] = np.sin(pitch); i += 1
-    out[i] = np.cos(pitch); i += 1
-    # HP / armor / helmet / defuser
-    hp = max(0, row.get("health") or 0)
-    out[i] = hp / 100.0; i += 1
-    out[i] = (row.get("armor") or 0) / 100.0; i += 1
-    out[i] = 1.0 if row.get("has_helmet") else 0.0; i += 1
-    out[i] = 1.0 if row.get("has_defuser") else 0.0; i += 1
-    # Money (log-normalized)
-    bal = max(0, row.get("balance") or 0)
-    out[i] = np.log1p(bal) / 10.0; i += 1
-    # Equip value (log-normalized)
-    eq = max(0, row.get("current_equip_value") or 0)
-    out[i] = np.log1p(eq) / 10.0; i += 1
-    # Alive
-    out[i] = 1.0 if hp > 0 else 0.0; i += 1
-    # Inventory features
-    inv = inventory_to_categorical(row.get("inventory"))
-    out[i] = inv["has_c4"]; i += 1
-    # primary one-hot
-    out[i + inv["primary"]] = 1.0; i += len(WEAPON_CAT_LIST)
-    # secondary one-hot
-    out[i + inv["secondary"]] = 1.0; i += len(WEAPON_CAT_LIST)
-    # util bits
-    out[i:i + 5] = inv["util_bits"]; i += 5
-
-    assert i == PER_PLAYER_DIM, f"player encoding mismatch: {i} vs {PER_PLAYER_DIM}"
-    return out
+class IncompleteRound(ValueError):
+    """A round that cannot be encoded without inventing observations."""
 
 
 def assign_player_slots(round_df: pl.DataFrame) -> dict[int, tuple[str, int]]:
     """Map steamid -> (slot_role, slot_idx) where role in {'t', 'ct'}, idx in 0..4.
 
-    Slots are assigned by order of appearance per side at the round's first tick,
-    keeping the encoder positional (not identity-based — same slot can be filled
-    by different players in different rounds).
+    Use the whole round so a missing first-tick row cannot erase a player.
+    Ambiguous rosters are rejected, not truncated or padded with dead players.
     """
-    first_tick = round_df["tick"].min()
-    first = round_df.filter(pl.col("tick") == first_tick).sort("steamid")
-    t_ids = first.filter(pl.col("side") == "t")["steamid"].to_list()[:5]
-    ct_ids = first.filter(pl.col("side") == "ct")["steamid"].to_list()[:5]
+    roster = round_df.select("steamid", "side").unique().sort("steamid")
+    t_ids = roster.filter(pl.col("side") == "t")["steamid"].to_list()
+    ct_ids = roster.filter(pl.col("side") == "ct")["steamid"].to_list()
+    if (len(t_ids) != 5 or len(ct_ids) != 5 or set(t_ids) & set(ct_ids)
+            or None in t_ids + ct_ids or 0 in t_ids + ct_ids):
+        raise ValueError("Round requires five distinct observed players per side")
     assignment: dict[int, tuple[str, int]] = {}
     for i, sid in enumerate(t_ids):
         assignment[sid] = ("t", i)
@@ -303,57 +260,24 @@ def assign_player_slots(round_df: pl.DataFrame) -> dict[int, tuple[str, int]]:
     return assignment
 
 
-def encode_global(map_name: str, phase: str, score_t: int, score_ct: int,
-                  round_num: int, round_time_s: float,
-                  bomb_state: str, bomb_x: float, bomb_y: float,
-                  bomb_age_s: float) -> np.ndarray:
-    out = np.zeros(GLOBAL_DIM, dtype=np.float32)
-    i = 0
-    # map one-hot
-    if map_name in MAP_VOCAB:
-        out[i + MAP_VOCAB.index(map_name)] = 1.0
-    i += len(MAP_VOCAB)
-    # phase one-hot
-    if phase in PHASE_VOCAB:
-        out[i + PHASE_VOCAB.index(phase)] = 1.0
-    i += len(PHASE_VOCAB)
-    # score (normalized roughly)
-    out[i] = score_t / 16.0; i += 1
-    out[i] = score_ct / 16.0; i += 1
-    # round_num (normalized)
-    out[i] = round_num / 30.0; i += 1
-    # round_time (seconds since round start, normalized to ~115s max)
-    out[i] = round_time_s / 115.0; i += 1
-    # bomb state one-hot: {none, carried, planted_a, planted_b}
-    bomb_states = ["none", "carried", "planted_a", "planted_b"]
-    if bomb_state in bomb_states:
-        out[i + bomb_states.index(bomb_state)] = 1.0
-    i += 4
-    # bomb position
-    out[i] = bomb_x / 3000.0; i += 1
-    out[i] = bomb_y / 3000.0; i += 1
-    # bomb age (seconds since plant; 0 if not planted; ~40s max)
-    out[i] = bomb_age_s / 40.0; i += 1
-    assert i == GLOBAL_DIM
-    return out
-
-
 def _encode_player_block_vectorized(
     df: pl.DataFrame, kept_ticks: np.ndarray
 ) -> np.ndarray:
     """Encode one player slot's per-tick state into shape (T, PER_PLAYER_DIM).
 
     df is the player's rows for this round (already filtered to this slot's
-    steamid). kept_ticks is the downsampled tick list. Missing ticks (player
-    didn't have a row at that tick) become all-zero rows.
+    steamid). Missing, duplicate or null sampled state rejects the round.
     """
     T = len(kept_ticks)
     out = np.zeros((T, PER_PLAYER_DIM), dtype=np.float32)
-    if df.height == 0:
-        return out
-
-    tick_lookup = pl.DataFrame({"tick": kept_ticks.astype(np.int32)})
-    aligned = tick_lookup.join(df, on="tick", how="left")
+    if df["tick"].n_unique() != df.height:
+        raise IncompleteRound("Duplicate player rows at the same tick")
+    tick_lookup = pl.DataFrame({"tick": kept_ticks}).cast({"tick": df.schema["tick"]})
+    aligned = tick_lookup.join(df, on="tick", how="left", validate="1:1", maintain_order="left")
+    required = ["steamid", "X", "Y", "Z", "yaw", "pitch", "health", "armor",
+                "has_helmet", "has_defuser", "balance", "current_equip_value", "inventory"]
+    if aligned.select(required).null_count().sum_horizontal().item():
+        raise IncompleteRound("Missing player state on sampled tick grid")
 
     x = (aligned["X"].fill_null(0.0).to_numpy() / 3000.0).astype(np.float32)
     y = (aligned["Y"].fill_null(0.0).to_numpy() / 3000.0).astype(np.float32)
@@ -505,6 +429,8 @@ def build_round_tensor(
     Returns:
       tensor (T, F) float32, meta dict, event_labels (T,) int8, event_times (T,) int16
     """
+    if downsample < 1:
+        raise ValueError("downsample must be positive")
     ticks_all = round_df["tick"].unique().sort().to_numpy()
     if len(ticks_all) == 0:
         return (torch.empty(0, TOTAL_DIM), {},
@@ -518,15 +444,21 @@ def build_round_tensor(
     plant_pos = None
     plant_z = None
     plant_event_site = None
-    for be in bomb_events:
-        if be.get("event") == "plant" and be.get("round_num") == round_meta["round_num"]:
-            plant_pos = (be.get("X") or 0.0, be.get("Y") or 0.0)
+    round_bomb = sorted((b for b in bomb_events if b.get("round_num") == round_meta["round_num"]),
+                        key=lambda b: b["tick"])
+    for be in round_bomb:
+        if be.get("event") == "plant":
+            if be["tick"] != plant_tick or be.get("X") is None or be.get("Y") is None:
+                raise IncompleteRound("Inconsistent plant tick or missing plant position")
+            plant_pos = (be["X"], be["Y"])
             plant_z = be.get("Z")
             plant_event_site = be.get("bombsite")   # e.g. 'BombsiteA'
             break
+    if plant_tick is not None and plant_pos is None:
+        raise IncompleteRound("Plant tick without a plant-position event")
 
     slot_map = assign_player_slots(round_df)
-    kept_ticks = ticks_all[::downsample]
+    kept_ticks = np.arange(ticks_all[0], ticks_all[-1] + 1, downsample, dtype=np.int64)
     T = len(kept_ticks)
     out = np.zeros((T, TOTAL_DIM), dtype=np.float32)
 
@@ -538,10 +470,9 @@ def build_round_tensor(
     # T0..T4 then CT0..CT4
     for side in ("t", "ct"):
         for slot_i in range(5):
-            sid = next((s for s, r in slot_map.items() if r == (side, slot_i)), None)
-            df = by_sid.get(sid) if sid is not None else pl.DataFrame()
+            sid = next(s for s, r in slot_map.items() if r == (side, slot_i))
             out[:, offset:offset + PER_PLAYER_DIM] = _encode_player_block_vectorized(
-                df if df is not None else pl.DataFrame(), kept_ticks,
+                by_sid[sid], kept_ticks,
             )
             offset += PER_PLAYER_DIM
 
@@ -550,7 +481,7 @@ def build_round_tensor(
     phases = np.empty(T, dtype=object)
     phases[:] = "live"
     phases[kept_ticks < freeze_end] = "freeze"
-    if plant_tick:
+    if plant_tick is not None:
         phases[kept_ticks >= plant_tick] = "post_plant"
     phases[kept_ticks >= end_tick] = "end"
 
@@ -566,7 +497,18 @@ def build_round_tensor(
     bomb_x = np.zeros(T, dtype=np.float32)
     bomb_y = np.zeros(T, dtype=np.float32)
     bomb_age_s = np.zeros(T, dtype=np.float32)
-    if plant_tick and plant_pos is not None:
+    # A drop event gives a last-known location, not simulated bomb physics.
+    # Preserve it until the next pickup/plant; never label it as planted.
+    for i, be in enumerate(round_bomb):
+        if be["event"] != "drop":
+            continue
+        stop = next((b["tick"] for b in round_bomb[i + 1:]
+                     if b["event"] in {"pickup", "plant"}), end_tick + 1)
+        dropped = ((kept_ticks >= be["tick"]) & (kept_ticks < stop)
+                   & (bomb_states == "none"))
+        if be.get("X") is not None and be.get("Y") is not None:
+            bomb_x[dropped], bomb_y[dropped] = be["X"], be["Y"]
+    if plant_tick is not None and plant_pos is not None:
         planted = kept_ticks >= plant_tick
         # Datasheet D-defect fix: derive the site from the plant POSITION.
         # The awpy round-level `bomb_site` label is broken corpus-wide
@@ -591,7 +533,10 @@ def build_round_tensor(
         bomb_states[planted] = site_str
         bomb_x[planted] = plant_pos[0]
         bomb_y[planted] = plant_pos[1]
-        bomb_age_s[planted] = (kept_ticks[planted] - plant_tick) / 64.0
+        terminal = min([end_tick] + [b["tick"] for b in round_bomb
+                                    if b["event"] in {"defuse", "detonate", "explode"}])
+        bomb_age_s[planted] = np.clip((np.minimum(kept_ticks[planted], terminal) - plant_tick) / 64.0,
+                                    0, 40)
 
     # Anchored at freeze_end, clamped at 0: round_meta["start"] is the previous
     # round's official_end, so anchoring there bakes halftime/timeout pauses
@@ -701,6 +646,8 @@ def build_round_tensor(
     event_labels, event_times = compute_event_labels(
         kept_ticks, round_meta, kills, bomb_events,
     )
+    if not np.isfinite(out).all():
+        raise IncompleteRound("Non-finite encoded state")
 
     meta = {
         "round_num": round_meta["round_num"],
@@ -708,6 +655,9 @@ def build_round_tensor(
         "first_tick": int(kept_ticks[0]),
         "last_tick": int(kept_ticks[-1]),
         "downsample": downsample,
+        "raw_ticks": kept_ticks.tolist(),
+        "player_steamids": list(slot_map),
+        "source_tickrate_hz": 64,
         "winner": round_meta.get("winner"),
         "reason": round_meta.get("reason"),
     }
@@ -727,38 +677,58 @@ def process_demo(
     kills = json.loads((base / f"{stem}_kills.json").read_text())
     header = json.loads((base / f"{stem}_header.json").read_text())
     map_name = header.get("map_name", "unknown")
+    marker = base / f"{stem}_parse.json"
+    if marker.exists() and json.loads(marker.read_text())["tickrate"] != 64:
+        raise ValueError("This builder requires a 64 Hz source demo")
+    if [r["round_num"] for r in rounds] != list(range(1, len(rounds) + 1)):
+        raise ValueError("Cannot reconstruct scores without contiguous rounds starting at 1")
 
     df = pl.read_parquet(parq)
+    df = df.filter(pl.col("side").is_in(["t", "ct"]))
 
     xc0 = dict(SITE_XCHECK)   # per-demo cross-check deltas printed below
 
-    # Running score — winner of each round so far
+    # Scores follow the rosters, not permanently the T/CT sides. This handles
+    # halftime and repeated OT switches without assuming an MR12/MR3 schedule.
     score_t = score_ct = 0
+    previous_sides = None
+    rejected = []
     tensors = []
     metas = []
     label_seqs = []
     time_seqs = []
     for r in rounds:
         round_df = df.filter(pl.col("round_num") == r["round_num"])
-        if round_df.height == 0:
-            continue
-        ten, m, ev_lbl, ev_time = build_round_tensor(
-            round_df, r, map_name,
-            (score_t, score_ct), bomb, kills, downsample,
-        )
-        if ten.numel() == 0:
-            continue
-        m["map_name"] = map_name
-        m["demo_stem"] = stem
-        tensors.append(ten)
-        metas.append(m)
-        label_seqs.append(torch.from_numpy(ev_lbl).long())
-        time_seqs.append(torch.from_numpy(ev_time).float())
-        # update score for NEXT round
+        slots = assign_player_slots(round_df)
+        sides = [set(sid for sid, (role, _) in slots.items() if role == side) for side in ("t", "ct")]
+        if previous_sides is not None:
+            if all(len(sides[i] & previous_sides[1 - i]) >= 3 for i in (0, 1)):
+                score_t, score_ct = score_ct, score_t
+            elif not all(len(sides[i] & previous_sides[i]) >= 3 for i in (0, 1)):
+                raise ValueError(f"Cannot track teams at round {r['round_num']}")
+        previous_sides = sides
+        try:
+            ten, m, ev_lbl, ev_time = build_round_tensor(
+                round_df, r, map_name,
+                (score_t, score_ct), bomb, kills, downsample,
+            )
+        except IncompleteRound as exc:
+            rejected.append({"round_num": r["round_num"], "reason": str(exc)})
+            print(f"    REJECT r{r['round_num']}: {exc}")
+        else:
+            m["map_name"] = map_name
+            m["demo_stem"] = stem
+            tensors.append(ten)
+            metas.append(m)
+            label_seqs.append(torch.from_numpy(ev_lbl).long())
+            time_seqs.append(torch.from_numpy(ev_time).float())
+        # Rejected training rounds still count toward the match score.
         if r.get("winner") == "t":
             score_t += 1
         elif r.get("winner") == "ct":
             score_ct += 1
+        else:
+            raise ValueError(f"Unknown winner at round {r['round_num']}")
 
     d_plants = SITE_XCHECK["plants"] - xc0["plants"]
     if d_plants:
@@ -768,12 +738,15 @@ def process_demo(
               f"{SITE_XCHECK['awpy_label_disagree'] - xc0['awpy_label_disagree']} "
               f"disagree vs awpy round label (known broken)")
 
+    if not tensors:
+        raise ValueError("No complete rounds available for training examples")
     summary = {
         "demo_stem": stem,
         "map_name": map_name,
         "n_rounds": len(tensors),
         "total_ticks": sum(t.shape[0] for t in tensors),
         "feature_dim": TOTAL_DIM,
+        "rejected_rounds": rejected,
     }
     return tensors, metas, label_seqs, time_seqs, summary
 
@@ -814,6 +787,8 @@ def main() -> None:
                     help="cap total demos processed (for smoke testing)")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
+    if args.downsample < 1:
+        ap.error("--downsample must be positive")
 
     parqs = sorted(DEMOS_DIR.glob("*_ticks.parquet"))
     if args.limit:
@@ -838,7 +813,7 @@ def main() -> None:
     print(f"Total demos: {len(parqs)} (train: {len(train_parqs)}, val: {len(val_parqs)})")
     print(f"Schema: {SCHEMA_VERSION} (builder {prov['builder_commit'] or 'unknown'}"
           f"{'+dirty' if prov['builder_dirty'] else ''})")
-    print(f"Downsample: {args.downsample}x ({64 // args.downsample}Hz from 64Hz)")
+    print(f"Downsample: {args.downsample}x ({64 / args.downsample:g}Hz from 64Hz)")
     print(f"Feature dim: {TOTAL_DIM} ({N_PLAYERS}×{PER_PLAYER_DIM} player + {GLOBAL_DIM} global)")
     print(f"Output dir: {OUT_DIR}")
     print()
@@ -852,14 +827,7 @@ def main() -> None:
         t0 = time.time()
         for i, p in enumerate(parqs_sub):
             t1 = time.time()
-            try:
-                tensors, metas, ev_lbls, ev_times, summary = process_demo(
-                    p, args.downsample,
-                )
-            except Exception as e:
-                print(f"  [{split_name} {i+1}/{len(parqs_sub)}] FAIL {p.stem}: "
-                      f"{type(e).__name__}: {e}")
-                continue
+            tensors, metas, ev_lbls, ev_times, summary = process_demo(p, args.downsample)
             all_tensors.extend(tensors)
             all_metas.extend(metas)
             all_event_labels.extend(ev_lbls)
@@ -910,7 +878,8 @@ def main() -> None:
         "builder_commit": prov["builder_commit"],
         "builder_dirty": prov["builder_dirty"],
         "downsample": args.downsample,
-        "tickrate_hz": 64 // args.downsample,
+        "tickrate_hz": 64 / args.downsample,
+        "sampling": "uniform raw-tick grid; incomplete rounds rejected; exact ticks in metas.raw_ticks",
         "feature_dim": TOTAL_DIM,
         "n_players": N_PLAYERS,
         "per_player_dim": PER_PLAYER_DIM,
