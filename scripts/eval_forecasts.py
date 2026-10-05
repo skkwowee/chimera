@@ -57,6 +57,8 @@ def generate(args):
     model.load_state_dict(ck["model"])
     model.to(args.device).eval()
     blob = load_corpus(args.corpus, maps=CANONICAL_MAPS)
+    if any(ck.get(k) != blob.get(k) for k in ("schema_version", "source_schema_version")):
+        raise ValueError("corpus/checkpoint semantic schema mismatch; use a matching, versioned checkpoint")
     if (blob.get("downsample"), blob.get("per_player_dim", 56), blob["feature_dim"]) != (8, ppd, 10 * ppd + 37):
         raise ValueError("corpus/checkpoint schema mismatch or unsupported cadence")
     arrays = {name: [] for name in ("truth", "alive", "copy", "cv", "model")}

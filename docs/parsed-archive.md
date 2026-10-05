@@ -72,3 +72,129 @@ Only Inferno/Mirage are in the current map vocabulary (33 accepted rounds);
 Cache/Anubis were diagnostic builds, not training candidates. Three regression
 tests cover these fixes. The raw demos and all 117 archived rounds remain intact;
 no training blobs were replaced or uploaded.
+
+## Data-readiness audit checkpoints (2026-10-01)
+
+Read-only HF inventory at revision
+`69b9cbaafa70b400b1fbe7c371304f004af5e3d6`: 189 unique raw-match records
+reference 506 demo paths, all present. The 70 tensor-match records have neither
+schema versions nor archived parse bundles; all 179 referenced demo paths exist.
+Both newly downloaded match IDs are absent from HF. All 189 raw manifest dates
+are null, so this manifest alone cannot certify recency or tournament tier.
+No remote artifacts were changed.
+
+Locally, the old corpus has 81 raw demos and 81 parsed maps. The split manifest
+contains 92 groups (70 HF match IDs and 22 local team-pair groups). Both P2
+validation blobs exist; both P2 training blobs are absent. P2 remains explicitly
+`complete=false, canonical=false`. No large training blob was loaded.
+
+The 19 fresh-pilot gaps were checked directly with `DemoParser.parse_ticks`
+using every absent tick and the same game-state flags Awpy filters. All 34,727
+ticks exist with ten player rows each. Every tick is freeze time and waiting for
+resume: 18 gaps of 1,919 ticks are team timeouts, one gap of 185 ticks is a resume
+pause. This is intentional Awpy filtering, not damaged downloads. The builder's
+98-round result remains unchanged: retaining pauses, cropping freeze time or
+splitting sequences would be a separate sampling-policy decision.
+
+Recommendation: preserve P2 as the historical lane and prepare a separately
+versioned fresh-data candidate. Do not mark P2 complete or mix schema generations
+just to make a training command run. Integration fixes and candidate validation
+are the next checkpoint.
+
+### Inventory and handoff result
+
+The HF tree contains 551 raw demos. Its 506 manifest references resolve to 498
+unique paths: eight flat paths are claimed by multiple match IDs, and 53 raw
+files are unlisted. Five reused paths cross the frozen train/validation split
+(four match pairs: 2394156/2393226, 2394174/2393350, 2394148/2391109,
+2393042/2394222). This proves ambiguous **re-bake source ownership**, not that
+the already-baked tensors are identical; do not silently relabel or delete them.
+All 70 remote schema JSONs report `feature_schema_v2`, 597 dimensions, nominal
+8 Hz. The manifest's missing versions are not evidence of v2.2 compatibility.
+All 81 local raw headers are Source 2. The P2 v2 validation blob has 770 rounds
+and 14 match IDs, but no exact raw-tick vectors or raw-demo hashes in round meta.
+
+Checkpoint `176e1e9` (Chimera) and `9a7366f` (pipeline) close the handoff seams:
+the CLI requires one match ID, rejects demo-level splitting and nonempty output
+directories, and requires verified parse manifests. Unsupported maps are logged
+and excluded; an all-excluded build fails. Round metadata keeps match/source
+identity. Script hashes survive sandbox copies. The uploader refuses unreadable,
+empty or identity/tick-misaligned tensor bundles. Training checks semantic schema,
+cadence, match overlap and available raw hashes; checkpoints stamp their source
+schema and forecast evaluation rejects schema mismatches. These are compatibility
+guards, not changed model architecture, losses or canonical split assignments.
+
+The local-only integration adapter exercised the real pipeline using four raw
+demos and a filesystem upload sink, **without any HF writes**. It preserved 44
+archive files and produced 33 supported-map rounds / 33,251 frames (80 MB).
+`--from-parsed` replay passed; a separate rebuild produced identical tensors,
+round metadata, event labels and event times on all 33 rounds.
+
+A historical training-side source (`local-gamerlegion-vs-vitality`, one Mirage
+demo) was reparsed separately: 12 accepted rounds / 9,525 frames (23 MB).
+That candidate and the fresh 33-round candidate have disjoint match IDs and raw
+hashes and pass the actual `RoundWindows` loader. This two-group integration
+fixture is **not** a new canonical split or a generalization benchmark.
+
+The existing CPU smoke run completed 30 steps at k=4, with finite evaluations and
+schema-stamped checkpoints. Native-step forecast generation/scoring passed on 101
+anchors; repeating generation reproduced all saved arrays and provenance exactly.
+The smoke deliberately reuses its input as validation, runs only 30 steps, and
+does not reach scheduled sampling's ramp. Its metrics are not quality evidence.
+No GPU/pod, paid compute, mass download, canonical retrain or merge was performed.
+The split manifest and both P2 validation-file hashes still match the committed
+corpus manifest. Existing large training blobs were not loaded or modified.
+
+### Reproduction on this workspace
+
+Run from the Chimera checkout. Use fresh output directories when repeating builds;
+the local adapter is retained at `data/staging/readiness/run_pipeline_handoff.py`.
+It imports the companion pipeline checkout and redirects uploads to disk only.
+
+```bash
+../chimera-demo-pipeline/.venv/bin/python data/staging/readiness/run_pipeline_handoff.py data/staging/readiness/pipeline-pass-2
+.venv/bin/python scripts/build_tick_sequences.py --match-id 2398108 --demos-dir data/staging/readiness/pipeline-pass-1/parsed/2398108 --out-dir data/staging/readiness/replay-2
+OMP_NUM_THREADS=4 MKL_NUM_THREADS=4 .venv/bin/python scripts/train_world_model.py --smoke --arch player --dist-head --horizon 4 --val-pt data/staging/readiness/pipeline-pass-1/tick_sequences/2398108/train.pt --out outputs/readiness-repeat --seed 0
+.venv/bin/python scripts/eval_forecasts.py run --checkpoint outputs/readiness-repeat/h4_mt/last.pt --corpus data/staging/readiness/pipeline-pass-1/tick_sequences/2398108/train.pt --out outputs/readiness-repeat/forecasts.npz --stride 256 --samples 4 --device cpu
+.venv/bin/python scripts/eval_forecasts.py score outputs/readiness-repeat/forecasts.npz
+```
+
+The trainer appends `h4_mt/` to `--out`; checkpoints are not at the bare output
+root. Existing local artifacts: `data/staging/readiness/pipeline-pass-1/`,
+`data/staging/readiness/legacy-train-candidate/`,
+`data/staging/readiness/replay-from-parsed/`, and
+`outputs/data-readiness-smoke-k4/`. These are ignored local data, not uploads.
+
+## Data-cleanup completion (2026-10-03)
+
+The fresh builder now writes `feature_schema_v2.3`: when sampled ticks are absent
+before `freeze_end`, discard the prefix through the last such missing tick.
+Keep the original grid alignment and every sampled gameplay tick; never join
+across a missing interval. Missing player state or missing ticks during play
+still reject the round. `pre_live_trim_ticks` records the discarded prefix span;
+demo summaries count affected rounds. This changes sampling, not feature width.
+
+All six pilot demos were rechecked against the committed v2.2 builder in memory:
+117/117 rounds accepted, all 19 previously excluded rounds recovered, and all
+98 previously accepted tensors/event labels/event times remain exactly equal.
+Every original sampled gameplay tick is retained. Cache/Anubis were diagnostic
+checks only; they remain excluded from actual builds. The supported-map staged
+pair contains 41 fresh rounds plus 14 historical rounds, not a canonical split.
+
+HF revision `94405b3cb7107293555141bce9b02a3f7b988809` resolves the eight shared
+legacy paths: 16 distinct original CS2 files recovered from match-upload history
+into `demos/<match_id>/` paths, with 14 raw-manifest rows updated atomically.
+Source 2 headers, historical SHA-256s and destination hashes are verified.
+All 189 match records remain. No old demo or tensor was deleted or overwritten;
+HF added only the 16 files, their LFS tracking lines and the manifest references.
+Full source revisions/hashes are in the companion pipeline's
+`reports/2026-10-03-source-recovery.json`.
+
+The pipeline rejects raw paths claimed by multiple matches. Changed source paths
+make old tensor entries pending and prevent reuse of their old parse archive.
+Historical tensor provenance is intentionally unchanged: this repairs future
+re-bake inputs, not a certification of existing tensors or their historical split.
+
+P2 is still incomplete and untouched. Feature selection, Cache/Anubis support
+and the next controlled training experiment remain separate decisions. No model
+training, feature expansion or full-corpus rebuild was performed for this cleanup.
